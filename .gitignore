@@ -31,6 +31,13 @@ playground.xcworkspace
 
 .build/
 
+# Xcode build output / DerivedData
+build/
+DerivedData/
+
+# Local tooling
+.workbuddy-ai/
+
 # CocoaPods
 #
 # We recommend against adding the Pods directory to your .gitignore. However
