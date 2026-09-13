@@ -12,23 +12,21 @@ final class CloseCrabConfig: ObservableObject {
     @Published var sharedSecret: String { didSet { CCStore.sharedSecret = sharedSecret } }
     @Published var room: String { didSet { CCStore.room = room } }
 
-    /// 改完房间列表要顺手校一次当前选择：删掉了正在用的那个之后，
-    /// 选择器会显示空白但内部还留着旧值，点连接才报「房间不允许」。
-    @Published var roomsCSV: String {
-        didSet {
-            CCStore.roomsCSV = roomsCSV
-            let normalized = CCStore.room
-            if normalized != room { room = normalized }
-        }
-    }
-
-    var rooms: [String] { CCStore.rooms }
-
     private init() {
         baseURL = CCStore.baseURL
         signalURL = CCStore.signalURL
         sharedSecret = CCStore.sharedSecret
-        roomsCSV = CCStore.roomsCSV
         room = CCStore.room
+    }
+
+    /// 拉到新名单之后更新本地缓存，顺带校一次当前选择。
+    ///
+    /// 名单本身由 `CCRoomDirectory` 持有并发布，这里只留一份逗号分隔的副本给冷启动垫底。
+    /// 校准那一步不能省：上次选的 bot 可能已经从名单里去掉了，
+    /// 不校的话选择器显示空白，要到点连接那一刻才拿到 400。
+    func applyDirectory(names: [String]) {
+        CCStore.roomsCSV = names.joined(separator: ",")
+        let normalized = CCStore.room
+        if normalized != room { room = normalized }
     }
 }

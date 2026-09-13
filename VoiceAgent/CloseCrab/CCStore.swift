@@ -9,12 +9,14 @@ import Security
 /// 读写都直接落磁盘；UI 那层由 `CloseCrabConfig` 包一层做通知，
 /// 两边看到的是同一份东西，不存在「界面改了但连接还用老值」。
 enum CCStore {
-    /// 网页版用的地址。原样填在这里只是给个起点 —— 手机版多半要换成
-    /// 一个**不在 IAP 后面**的入口，因为原生 app 没有浏览器的登录 cookie。
-    static let defaultBaseURL = "https://live.higcp.com"
+    /// 原生入口。**不是**网页版那个地址 —— 网页版走 `https://live.higcp.com`，
+    /// 整站在 IAP 后面，靠浏览器的登录 cookie 过关，原生 app 没有那张 cookie。
+    /// `/native/*` 在负载均衡上挂到不走 IAP 的后端，鉴权换成 HMAC 签名
+    /// （见 `CCEndpoint.signedHeaders`），所以这条路必须配共享密钥才能用。
+    static let defaultBaseURL = "https://live.higcp.com/native"
 
-    /// 房间名就是 bot 名。这份列表要和前端 .env.local 里的 ALLOWED_ROOMS 对齐 ——
-    /// 服务端会按白名单校验，这边多写一个只会在点连接时拿到 400。
+    /// 冷启动、还没拉到服务端名单时先垫着的一份。真理在后端的 `ALLOWED_ROOMS`，
+    /// 每次 `/api/rooms` 拉成功都会整份覆盖掉这里（见 `CCRoomDirectory`）。
     static let defaultRooms = "bunny,jarvis,hulk,tommy,xiaoaitongxue,tianmaojingling"
 
     private enum Key {
@@ -45,7 +47,7 @@ enum CCStore {
         set { UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespaces), forKey: Key.signalURL) }
     }
 
-    /// 逗号分隔的房间名，原样存着，给设置页编辑用。
+    /// 逗号分隔的房间名。只是 `/api/rooms` 上次结果的本地缓存，不给人手编。
     static var roomsCSV: String {
         get { nonEmpty(UserDefaults.standard.string(forKey: Key.rooms)) ?? defaultRooms }
         set { UserDefaults.standard.set(newValue, forKey: Key.rooms) }

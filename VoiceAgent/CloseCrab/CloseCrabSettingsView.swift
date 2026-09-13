@@ -6,6 +6,7 @@ import SwiftUI
 /// 都不该变成一次重新编译 + 重新签名 + 重新装机。
 struct CloseCrabSettingsView: View {
     @ObservedObject private var config = CloseCrabConfig.shared
+    @ObservedObject private var directory = CCRoomDirectory.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -26,7 +27,7 @@ struct CloseCrabSettingsView: View {
                 } header: {
                     Text(verbatim: "取 token 的地址")
                 } footer: {
-                    Text(verbatim: "会去请求 <这个地址>/api/token?room=<房间>。原生 app 没有浏览器的登录 cookie，所以这里要填一个不在 IAP 后面的入口。")
+                    Text(verbatim: "会去请求 <这个地址>/api/token 和 /api/rooms。原生 app 没有浏览器的登录 cookie，所以这里必须是 /native 那条不走 IAP 的入口。")
                 }
 
                 Section {
@@ -48,27 +49,60 @@ struct CloseCrabSettingsView: View {
                 }
 
                 Section {
-                    SecureField(text: $config.sharedSecret, prompt: Text(verbatim: "没配就不签名")) {
+                    SecureField(text: $config.sharedSecret, prompt: Text(verbatim: "必填，对应后端的 CC_NATIVE_SECRET")) {
                         Text(verbatim: "密钥")
                     }
                 } header: {
                     Text(verbatim: "共享密钥")
                 } footer: {
-                    Text(verbatim: "存在 Keychain 里，不上网。每次请求只发一个 HMAC 签名和时间戳。")
+                    Text(verbatim: "存在 Keychain 里，不上网。每次请求只发一个 HMAC 签名和时间戳。不填的话 /native 那条路会回 401。签名带秒级时间戳，服务端只收 ±300 秒，所以设备时钟得是准的。")
                 }
 
+                // 这里**不给编辑**。以前是一串手写的逗号分隔文本，加一个 bot 就得
+                // 把每台设备挨个改一遍；现在名单由服务端的 ALLOWED_ROOMS 说了算，
+                // 这一段只是让人确认「app 这边看到的是什么」。
                 Section {
-                    TextField(text: $config.roomsCSV, prompt: Text(verbatim: CCStore.defaultRooms), axis: .vertical) {
-                        Text(verbatim: "房间")
+                    if directory.rooms.isEmpty {
+                        Text(verbatim: "还没拉到名单")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(directory.rooms) { room in
+                            HStack {
+                                Text(verbatim: room.name)
+                                Spacer()
+                                if room.name == config.room {
+                                    Text(verbatim: "当前")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    #endif
-                    .autocorrectionDisabled()
+
+                    Button {
+                        Task { await directory.refresh() }
+                    } label: {
+                        HStack {
+                            Text(verbatim: "重新拉取")
+                            Spacer()
+                            if directory.isRefreshing {
+                                ProgressView()
+                                    #if !os(macOS)
+                                        .controlSize(.small)
+                                    #endif
+                            }
+                        }
+                    }
+                    .disabled(directory.isRefreshing)
                 } header: {
                     Text(verbatim: "房间列表")
                 } footer: {
-                    Text(verbatim: "逗号分隔，房间名就是 bot 名。要和前端 ALLOWED_ROOMS 对得上，这边多写一个只会在连接时拿到 400。")
+                    if let error = directory.lastError {
+                        Text(verbatim: "上次拉取失败，显示的是缓存：\(error)")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Text(verbatim: "从 <服务器>/api/rooms 拉，和后端换 token 用的是同一份白名单，所以不会出现「这里列得出、那里连不上」。")
+                    }
                 }
             }
             .navigationTitle(Text(verbatim: "设置"))

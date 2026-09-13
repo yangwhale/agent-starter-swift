@@ -11,6 +11,7 @@ struct StartView: View {
 
     @State private var audioOptionsPresented = false
     @State private var settingsPresented = false
+    @State private var roomsPresented = false
 
     var body: some View {
         VStack(spacing: 8 * .grid) {
@@ -90,22 +91,16 @@ struct StartView: View {
 
     /// 进谁的房间。
     ///
-    /// 一个 bot 一个常驻房间，房间名就是 bot 名 —— 所以这个选择器实际上是在问
-    /// 「要跟哪个助理说话」。放在连接按钮上面而不是藏进设置：这是每次都可能改的，
-    /// 服务器地址才是设一次就不动的。
+    /// 一个 bot 一个常驻房间，房间名就是 bot 名 —— 所以点开这里实际上是在问
+    /// 「要跟哪个助理说话」。开的是和连接之后那个汉堡菜单**同一个**抽屉：
+    /// 选房间这件事在会话前后是一回事，没道理做两套界面、两份状态。
     private func roomPicker() -> some View {
-        Menu {
-            Picker(selection: $config.room) {
-                ForEach(config.rooms, id: \.self) { room in
-                    Text(verbatim: room).tag(room)
-                }
-            } label: {
-                EmptyView()
-            }
+        Button {
+            roomsPresented = true
         } label: {
             HStack(spacing: 2 * .grid) {
                 Image(systemName: "person.wave.2.fill")
-                Text(verbatim: config.room.isEmpty ? "先去设置里填房间" : config.room)
+                Text(verbatim: config.room.isEmpty ? "挑一个房间" : config.room)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 11))
                     .foregroundStyle(.fg3)
@@ -116,6 +111,9 @@ struct StartView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .sheet(isPresented: $roomsPresented) {
+            CCRoomListView()
+        }
     }
 
     private func settingsButton() -> some View {

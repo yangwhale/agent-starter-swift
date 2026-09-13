@@ -4,8 +4,10 @@ import SwiftUI
 struct AppView: View {
     @EnvironmentObject private var session: Session
     @EnvironmentObject private var localMedia: LocalMedia
+    @ObservedObject private var config = CloseCrabConfig.shared
 
     @State private var chat: Bool = false
+    @State private var roomsPresented = false
     @FocusState private var keyboardFocus: Bool
     @Namespace private var namespace
 
@@ -13,6 +15,7 @@ struct AppView: View {
         ZStack(alignment: .top) {
             if session.isConnected {
                 interactions()
+                roomBar()
             } else {
                 start()
             }
@@ -71,6 +74,39 @@ struct AppView: View {
             .onAppear {
                 chat = false
             }
+    }
+
+    /// 连上之后左上角那颗汉堡 —— 房间列表的入口，也顺便告诉你现在在跟谁说话。
+    ///
+    /// 「在跟谁说话」这件事非显示不可：六个助理长得一模一样，只有说出口才知道
+    /// 拨错了人。所以按钮上直接写着房间名，不是一个光秃秃的三道杠。
+    private func roomBar() -> some View {
+        HStack {
+            Button {
+                roomsPresented = true
+            } label: {
+                HStack(spacing: 2 * .grid) {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 15, weight: .medium))
+                    Text(verbatim: config.room)
+                        .font(.system(size: 15, weight: .medium))
+                }
+                .foregroundStyle(.fg0)
+                .padding(.horizontal, 4 * .grid)
+                .padding(.vertical, 2 * .grid)
+                .background(Capsule().fill(.bg2))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+        }
+        .padding(.horizontal, 4 * .grid)
+        .padding(.top, 2 * .grid)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $roomsPresented) {
+            CCRoomListView()
+        }
     }
 
     @ViewBuilder

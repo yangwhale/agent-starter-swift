@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import LiveKit
 
@@ -18,45 +17,33 @@ import LiveKit
 /// 多一个能失败的环节，我们又用不上显式派发（agent 是常驻的，房间早就有人在岗）。
 struct CloseCrabTokenSource: TokenSourceConfigurable {
     func fetch(_: TokenRequestOptions) async throws -> TokenSourceResponse {
+        // 每次都现读，不在初始化时捕获 —— 切房间靠的就是这一句：
+        // 抽屉里改完选择、重连一次，新的 fetch 自然拿到新房间名。
         let room = CCStore.room
         guard !room.isEmpty else {
-            throw CCTokenError("还没选房间 —— 在设置里填上房间列表")
-        }
-        guard var comps = URLComponents(string: CCStore.baseURL) else {
-            throw CCTokenError("服务器地址填得不对：\(CCStore.baseURL)")
-        }
-        comps.path = (comps.path.hasSuffix("/") ? String(comps.path.dropLast()) : comps.path) + "/api/token"
-        comps.queryItems = [URLQueryItem(name: "room", value: room)]
-        guard let url = comps.url else {
-            throw CCTokenError("拼不出 token 地址：\(CCStore.baseURL)")
+            throw CCTokenError("还没选房间 —— 打开房间列表挑一个")
         }
 
+        let url = try CCEndpoint.url(path: "/api/token", query: [URLQueryItem(name: "room", value: room)])
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = Data("{}".utf8)
         req.timeoutInterval = 15
-        for (k, v) in authHeaders(room: room) {
+        for (k, v) in CCEndpoint.signedHeaders(scope: room) {
             req.setValue(v, forHTTPHeaderField: k)
         }
 
         let (data, response) = try await URLSession.shared.data(for: req)
-        guard let http = response as? HTTPURLResponse else {
-            throw CCTokenError("token 服务没给出 HTTP 响应")
-        }
-        guard (200 ..< 300).contains(http.statusCode) else {
-            // 把响应正文带出来。那个路由的失败信息是有内容的
-            // （"room not allowed: xxx"、"ALLOWED_ROOMS is not defined"），
-            // 吞掉它就只剩一个光秃秃的状态码，等于把排查成本原样丢给下一个人。
-            let body = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw CCTokenError("token 服务返回 \(http.statusCode)\(body.isEmpty ? "" : "：\(body)")")
-        }
+        try CCEndpoint.checkStatus(response, body: data, what: "token 服务")
 
         let decoded = try JSONDecoder().decode(CamelCaseResponse.self, from: data)
 
-        // 信令地址：设置里填了就以设置为准。
-        // 服务端给的那个是**给浏览器用的** —— 和页面同源、一起躲在 IAP 后面，
-        // 手机上没有那张登录 cookie，照着连必然在握手时被弹走。
+        // 信令地址：设置里填了就以设置为准，留空听服务端的。
+        //
+        // 服务端现在会按入口给不同的地址 —— 从 `/native/*` 进来的拿到
+        // `wss://.../native/lk`（不在 IAP 后面），浏览器拿到 `wss://.../lk`。
+        // 所以正常情况下这个覆盖项应该是空的，它只是换域名、加代理时的逃生口。
         let serverURL: URL
         if let override = URL(string: CCStore.signalURL), !CCStore.signalURL.isEmpty {
             serverURL = override
@@ -72,26 +59,6 @@ struct CloseCrabTokenSource: TokenSourceConfigurable {
             participantName: decoded.participantName,
             roomName: decoded.roomName
         )
-    }
-
-    /// 没配密钥就不发这两个头 —— 服务端现在也还没验签，发不发都能连上。
-    ///
-    /// 签的是 `<房间>:<秒级时间戳>`，不是密钥本身：密钥不上网，
-    /// 服务端按同样的串重算一遍比对，再看时间戳偏差（建议 ±300 秒）挡重放。
-    /// 服务端那一半还没接（见 README「还差什么」），这边先按这个约定发着，
-    /// 接的时候不用再改 app。
-    private func authHeaders(room: String) -> [String: String] {
-        let secret = CCStore.sharedSecret
-        guard !secret.isEmpty else { return [:] }
-        let ts = String(Int(Date().timeIntervalSince1970))
-        let mac = HMAC<SHA256>.authenticationCode(
-            for: Data("\(room):\(ts)".utf8),
-            using: SymmetricKey(data: Data(secret.utf8))
-        )
-        return [
-            "X-CC-Ts": ts,
-            "X-CC-Sig": mac.map { String(format: "%02x", $0) }.joined(),
-        ]
     }
 
     private struct CamelCaseResponse: Decodable {
