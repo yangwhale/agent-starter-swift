@@ -1,45 +1,6 @@
 import LiveKit
 import SwiftUI
 
-/// The agent this app talks to. Edit ``current`` to switch.
-enum AgentToConnect {
-    struct HomepageTokenSource: EndpointTokenSource {
-        let url = URL(string: "https://livekit.com/api/homepage-agent/token")!
-    }
-
-    /// The LiveKit homepage agent you can also try at https://livekit.com.
-    /// Voice and text only: it does not accept video input.
-    case liveKitHomepage
-
-    /// Your own agent, reached through the LiveKit Cloud
-    /// [development token server](https://docs.livekit.io/frontends/build/authentication/development-token-server/)
-    /// (development only):
-    /// - Switch on the Development token server toggle on your project's
-    ///   Settings page: https://cloud.livekit.io/projects/p_/settings/project
-    /// - Pass the Token server ID shown below the toggle here.
-    case development(id: String)
-
-    /// Change this to `.development(id: "your-token-server-id")` to talk to your own agent.
-    static let current: Self = .liveKitHomepage
-
-    var tokenSource: any TokenSourceConfigurable {
-        switch self {
-        case .liveKitHomepage:
-            HomepageTokenSource()
-        case let .development(id):
-            DevelopmentTokenSource(id: id)
-        }
-    }
-
-    /// Camera and screen share input, which requires a vision-capable agent.
-    var videoEnabled: Bool {
-        switch self {
-        case .liveKitHomepage: false
-        case .development: true
-        }
-    }
-}
-
 @main
 struct VoiceAgentApp: App {
     private let session: Session
@@ -52,8 +13,18 @@ struct VoiceAgentApp: App {
         // already use custom processing options, set them as room defaults
         // here instead, e.g.
         // RoomOptions(defaultAudioCaptureOptions: AudioCaptureOptions(echoCancellationMode: .software, ...))
+        //
+        // ── 和上游 starter 的区别 ──────────────────────────────────────
+        // 上游这里是一个 `AgentToConnect` 枚举，在 LiveKit 官网演示 agent 和
+        // LiveKit Cloud 的开发 token server 之间二选一。两个我们都不用：
+        // 房间是自己的、token 也是自己签的，所以整个枚举删掉，直接换成
+        // `CloseCrabTokenSource`。
+        //
+        // 房间**不在这里定**。Session 的 tokenOptions 是 let，定死了就换不了房间，
+        // 而我们是一个 bot 一个常驻房间、要能随时切。所以房间名由 token source
+        // 在每次 fetch 的时候现读设置 —— Session 只有一个，切房间不用重建。
         session = Session(
-            tokenSource: AgentToConnect.current.tokenSource,
+            tokenSource: CloseCrabTokenSource(),
             options: SessionOptions(room: Room(roomOptions: RoomOptions(
                 defaultScreenShareCaptureOptions: ScreenShareCaptureOptions(useBroadcastExtension: true)
             )))
@@ -68,8 +39,13 @@ struct VoiceAgentApp: App {
                 .environmentObject(session)
                 .environmentObject(localMedia)
                 .environmentObject(audioOptions)
+                // 只要说和听。
+                // 摄像头和屏幕共享关掉：我们的 agent 是 Gemini Live 的语音链路，
+                // 收到视频轨也没人看，留着只会在控制栏上多两个按错就要重连的按钮。
                 .environment(\.voiceEnabled, true)
-                .environment(\.videoEnabled, AgentToConnect.current.videoEnabled)
+                .environment(\.videoEnabled, false)
+                // 文字这一路留着 —— 它同时是**字幕**：控制栏上那个聊天按钮打开的
+                // 就是转写记录，出问题时想知道「它到底听成了什么」全靠它。
                 .environment(\.textEnabled, true)
         }
         #if os(macOS)
