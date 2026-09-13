@@ -6,7 +6,11 @@ import Foundation
 /// 抽出来是因为现在有两个调用方（要 token 的 `CloseCrabTokenSource`、
 /// 要房间列表的 `CCRoomDirectory`），而签名格式一旦两边写歪一个字符，
 /// 症状是 403「签名不匹配」—— 看不出是哪边错的。一份实现就没这个问题。
-enum CCEndpoint {
+///
+/// `nonisolated` 的理由同 `CCStore`：工程默认 MainActor 隔离，而两个调用方里
+/// `CloseCrabTokenSource.fetch` 是 nonisolated async，不脱离 actor 就调不到。
+/// 这里全是纯函数（拼地址、算 HMAC、查状态码），没有状态可言。
+nonisolated enum CCEndpoint {
     /// 在配置的根地址后面接一段路径。
     ///
     /// 会把根地址尾部的 `/` 吃掉：`https://x/native/` + `/api/token` 拼成

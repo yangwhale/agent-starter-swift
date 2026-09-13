@@ -8,7 +8,13 @@ import Security
 /// 把它塞进跨 actor 的闭包只会换来一串告警。这里退成一个无状态的静态门面，
 /// 读写都直接落磁盘；UI 那层由 `CloseCrabConfig` 包一层做通知，
 /// 两边看到的是同一份东西，不存在「界面改了但连接还用老值」。
-enum CCStore {
+///
+/// `nonisolated` 是必须的：工程开了 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`，
+/// 不标注的类型会被隐式推成 `@MainActor`，上面那段「退成静态门面」的打算就落空了 ——
+/// `CloseCrabTokenSource.fetch` 是协议要求的 nonisolated async，从那里读会直接编译失败。
+/// 这里没有共享可变状态（读写都直接落 UserDefaults / Keychain，两者本身线程安全），
+/// 所以脱离 actor 是安全的。
+nonisolated enum CCStore {
     /// 原生入口。**不是**网页版那个地址 —— 网页版走 `https://live.higcp.com`，
     /// 整站在 IAP 后面，靠浏览器的登录 cookie 过关，原生 app 没有那张 cookie。
     /// `/native/*` 在负载均衡上挂到不走 IAP 的后端，鉴权换成 HMAC 签名
