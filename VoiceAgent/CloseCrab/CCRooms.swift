@@ -170,7 +170,7 @@ final class CCRooms: ObservableObject {
         // 并发连，不要一个个排队 —— 六个房间串行连，最后一个要等到天荒地老。
         await withTaskGroup(of: Void.self) { group in
             for slot in slots where !slot.session.isConnected {
-                group.addTask { @MainActor in await self.connectAwait(slot) }
+                group.addTask { await self.connectAwait(slot) }
             }
         }
     }

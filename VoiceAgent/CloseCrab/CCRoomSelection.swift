@@ -9,7 +9,7 @@ import Foundation
 ///
 /// 所以规则尽量往这里塞：能写成纯函数的判断，就不要写在 View 里。
 /// View 里写的东西，在真机跑之前没有任何人能说它对不对。
-public enum CCRoomSelection {
+nonisolated public enum CCRoomSelection {
     /// 把一份「勾选了哪些房间」规范化成真正能用的名单。
     ///
     /// 两条不变量，**读和写都各过一遍**，不靠调用方自觉：
@@ -44,7 +44,7 @@ public enum CCRoomSelection {
 }
 
 /// 槽位该怎么增删排。**纯数据，不碰连接**，所以能离线测。
-public struct CCSlotPlan: Equatable, Sendable {
+nonisolated public struct CCSlotPlan: Equatable, Sendable {
     /// 要新建连接的房间（按目标顺序）。
     public let toAdd: [String]
     /// 要断开并丢掉的房间。
@@ -55,7 +55,7 @@ public struct CCSlotPlan: Equatable, Sendable {
     public let active: String
 }
 
-public extension CCRoomSelection {
+nonisolated public extension CCRoomSelection {
     /// 算出「现有槽位」到「想要的房间」之间该做哪些增删。
     ///
     /// 抽成纯函数的理由跟上面一样：槽位生命周期错了，症状是**房间悄悄断了**
@@ -84,7 +84,7 @@ public extension CCRoomSelection {
 /// （它确实在出声，只是我听不见）。这时候该显示哪个？显示红色。
 /// 因为「我听不见」是用户主动造成的、需要被提醒的状态；
 /// 而「它在说话」此刻对用户没有任何可操作性。
-public enum CCTileRing: String, Equatable, Sendable {
+nonisolated public enum CCTileRing: String, Equatable, Sendable {
     /// 还没连上（多房间连接层尚未落地时，非当前房间都是这个）。
     case pending
     /// 被我静音了 —— 连着，但它说什么我都听不见。
