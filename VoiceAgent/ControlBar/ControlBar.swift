@@ -26,6 +26,10 @@ struct ControlBar: View {
             if voiceEnabled {
                 audioControls()
                 flexibleSpacer()
+                // 「从哪儿播」——抄 Discord 的作业，用系统路由选择器。
+                // 放在麦克风旁边：输入输出挨着，不用满屏找。
+                outputControls()
+                flexibleSpacer()
             }
             if videoEnabled {
                 videoControls()
@@ -128,6 +132,13 @@ struct ControlBar: View {
         .popover(isPresented: $audioOptionsPresented) {
             AudioOptionsSheet()
         }
+    }
+
+    /// 输出设备。macOS 上系统设置里管，`CCAudioOutputButton` 自己会退成空视图，
+    /// 所以这里不用再包一层 `#if`。
+    private func outputControls() -> some View {
+        CCAudioOutputButton(height: Constants.buttonHeight)
+            .frame(width: Constants.buttonWidth)
     }
 
     private func videoControls() -> some View {

@@ -61,36 +61,62 @@ struct CCRoomListView: View {
 
     // MARK: - 行
 
+    /// 一行 = 两个独立的点击区，对应两个不同的意思：
+    ///
+    ///   左边的勾    这个房间**在不在线**（连着、听得见它说话）。可以勾好几个。
+    ///   行的其余部分 把**话筒**切给它。同一时刻只有一个。
+    ///
+    /// **外层刻意不是 Button。** SwiftUI 的 List 里 Button 套 Button，点子按钮
+    /// 经常连外层一起触发 —— 症状是勾一下在线，顺手把话筒也切过去了。
+    /// 改成裸 HStack + 两个各自的手势，边界就清楚了。
     private func row(_ room: CCRoom) -> some View {
-        Button {
-            select(room)
-        } label: {
-            HStack(spacing: 12) {
-                statusDot(room)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: room.name)
-                        .font(.system(size: 17, weight: room.name == config.room ? .semibold : .regular))
-                    Text(verbatim: status(room))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if switchingTo == room.name {
-                    ProgressView()
-                        #if !os(macOS)
-                            .controlSize(.small)
-                        #endif
-                } else if room.name == config.room {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 14, weight: .semibold))
-                }
+        let isOnline = config.onlineRooms.contains(room.name)
+        let isActive = room.name == config.room
+        let locked = switchingTo != nil
+
+        return HStack(spacing: 12) {
+            Button {
+                config.toggleOnline(room.name)
+            } label: {
+                Image(systemName: isOnline ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    // 当前说话的那个勾不掉（见 CloseCrabConfig.toggleOnline），
+                    // 所以画成灰的，明说「这个你动不了」而不是点了没反应。
+                    .foregroundStyle(isActive ? .secondary : (isOnline ? Color.accentColor : .secondary))
+                    .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .disabled(locked || isActive)
+
+            statusDot(room)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: room.name)
+                    .font(.system(size: 17, weight: isActive ? .semibold : .regular))
+                Text(verbatim: status(room))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if switchingTo == room.name {
+                ProgressView()
+                    #if !os(macOS)
+                        .controlSize(.small)
+                    #endif
+            } else if isActive {
+                // 话筒图标，不是对勾 —— 左边那个勾已经是「在线」的意思了，
+                // 两处都画对勾的话没人分得出这一行到底在说哪件事。
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 14, weight: .semibold))
+            }
         }
-        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onTapGesture { if !locked { select(room) } }
         // 切换过程中把整张表锁上。连着按两个房间会让 end/start 互相打架，
         // 症状是连上了但进的是上一个房间 —— 看起来像「点错了」。
-        .disabled(switchingTo != nil)
+        .opacity(locked ? 0.5 : 1)
     }
 
     private func statusDot(_ room: CCRoom) -> some View {
@@ -127,6 +153,9 @@ struct CCRoomListView: View {
                 Text(verbatim: "列表没刷新成功，下面是上次拿到的：\(error)")
                     .foregroundStyle(.orange)
             } else {
+                Text(verbatim: "左边的勾 = 这个房间在线，听得见它说话，可以勾好几个。点行 = 把话筒切给它，同一时刻只有一个（🎤 标着的那个）。")
+                Text(verbatim: "⚠️ 勾选目前只是记下来，还没接上连接层 —— 勾了也暂时不会真的多连一个房间。")
+                    .foregroundStyle(.orange)
                 Text(verbatim: "名单由服务端的 ALLOWED_ROOMS 决定，加了 bot 这里会自动多出来。下拉可以手动刷新。")
             }
         }

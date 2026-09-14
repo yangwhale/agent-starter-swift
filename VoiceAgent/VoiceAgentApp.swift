@@ -6,6 +6,7 @@ struct VoiceAgentApp: App {
     private let session: Session
     private let localMedia: LocalMedia
     private let audioOptions: AudioOptions
+    private let micPolicy: CCMicPolicy
 
     init() {
         // The audio options panel applies its selection when the microphone
@@ -23,14 +24,24 @@ struct VoiceAgentApp: App {
         // 房间**不在这里定**。Session 的 tokenOptions 是 let，定死了就换不了房间，
         // 而我们是一个 bot 一个常驻房间、要能随时切。所以房间名由 token source
         // 在每次 fetch 的时候现读设置 —— Session 只有一个，切房间不用重建。
+        // `preConnectAudio: false` —— 不要连接之前就开始采集。
+        //
+        // ⚠️ **只改这一项不够，做不到「进房默认闭麦」。** 扒过 `Session.start()`：
+        // 两条分支都会开麦，这个参数管的只是**什么时候开**，不是**开不开**。
+        // 走 false 这一支时它紧接着就 `setMicrophone(enabled: true)`。
+        // 所以还要 `CCMicPolicy` 在每次连上的那一刻把它按回去，两件事缺一不可。
         session = Session(
             tokenSource: CloseCrabTokenSource(),
-            options: SessionOptions(room: Room(roomOptions: RoomOptions(
-                defaultScreenShareCaptureOptions: ScreenShareCaptureOptions(useBroadcastExtension: true)
-            )))
+            options: SessionOptions(
+                room: Room(roomOptions: RoomOptions(
+                    defaultScreenShareCaptureOptions: ScreenShareCaptureOptions(useBroadcastExtension: true)
+                )),
+                preConnectAudio: false
+            )
         )
         localMedia = LocalMedia(session: session)
         audioOptions = AudioOptions(localMedia: localMedia)
+        micPolicy = CCMicPolicy(session: session)
     }
 
     var body: some Scene {
@@ -39,6 +50,7 @@ struct VoiceAgentApp: App {
                 .environmentObject(session)
                 .environmentObject(localMedia)
                 .environmentObject(audioOptions)
+                .environmentObject(micPolicy)
                 // 只要说和听。
                 // 摄像头和屏幕共享关掉：我们的 agent 是 Gemini Live 的语音链路，
                 // 收到视频轨也没人看，留着只会在控制栏上多两个按错就要重连的按钮。

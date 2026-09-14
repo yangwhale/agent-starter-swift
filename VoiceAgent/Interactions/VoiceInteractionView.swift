@@ -40,6 +40,11 @@ struct VoiceInteractionView: View {
             AgentView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
+            // 中间这片本来什么都干不了 —— 铺成「按住说话」。
+            // 压在 AgentView 上面、在下面那排预览下面：按住区要能接到点击，
+            // 但不能挡住摄像头/屏幕共享的小窗。
+            CCHoldToTalkArea()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             HStack {
                 Spacer()
                 ScreenShareView()

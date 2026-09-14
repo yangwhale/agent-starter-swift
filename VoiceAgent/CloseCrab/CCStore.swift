@@ -30,6 +30,7 @@ nonisolated enum CCStore {
         static let signalURL = "cc.signalURL"
         static let rooms = "cc.rooms"
         static let room = "cc.room"
+        static let onlineRooms = "cc.onlineRooms"
     }
 
     private static let keychainService = "com.higcp.closecrab.voice"
@@ -75,6 +76,39 @@ nonisolated enum CCStore {
             return rooms.first ?? ""
         }
         set { UserDefaults.standard.set(newValue, forKey: Key.room) }
+    }
+
+    /// 勾选为「在线」的房间 —— 连着、听得见声音的那几个。
+    ///
+    /// **这跟 `room` 是两个轴，别合成一个。** `room` 是「话筒现在对着谁」，
+    /// 同一时刻只有一个；`onlineRooms` 是「哪几个连着」，可以有好几个。
+    /// Chris 09-14 的原话：通常就选俩，多了脑子受不了。
+    ///
+    /// 两条不变量，读写都强制一遍，**不靠调用方自觉**：
+    /// 1. 只保留仍在服务端名单里的 —— bot 下架之后勾选还留着的话，
+    ///    界面会显示一个连不上的房间，而错误要到连接那一刻才冒出来。
+    /// 2. **当前说话的那个永远在线。** 对着一个没连上的 bot 说话是无意义状态，
+    ///    与其在界面上防，不如让它在数据层就不可能出现。
+    ///
+    /// 输出顺序跟随 `rooms`（服务端名单顺序），不跟随勾选先后 ——
+    /// 否则头像方块的位置会随着你勾来勾去乱跳，肌肉记忆全废。
+    static var onlineRoomsCSV: String {
+        get { nonEmpty(UserDefaults.standard.string(forKey: Key.onlineRooms)) ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: Key.onlineRooms) }
+    }
+
+    static var onlineRooms: [String] {
+        get { normalizeOnline(onlineRoomsCSV.split(separator: ",").map { String($0) }) }
+        set { onlineRoomsCSV = normalizeOnline(newValue).joined(separator: ",") }
+    }
+
+    private static func normalizeOnline(_ names: [String]) -> [String] {
+        let all = rooms
+        var picked = Set(names.map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { all.contains($0) })
+        let active = room
+        if !active.isEmpty { picked.insert(active) }      // 不变量 2
+        return all.filter { picked.contains($0) }         // 不变量 1 + 稳定顺序
     }
 
     // MARK: - 共享密钥（Keychain）

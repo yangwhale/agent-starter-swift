@@ -10,13 +10,42 @@ final class CloseCrabConfig: ObservableObject {
     @Published var baseURL: String { didSet { CCStore.baseURL = baseURL } }
     @Published var signalURL: String { didSet { CCStore.signalURL = signalURL } }
     @Published var sharedSecret: String { didSet { CCStore.sharedSecret = sharedSecret } }
-    @Published var room: String { didSet { CCStore.room = room } }
+    /// 话筒现在对着谁。改它会顺带把它拉进在线名单（见 `CCStore.onlineRooms` 的不变量 2）。
+    @Published var room: String { didSet { CCStore.room = room; syncOnline() } }
+
+    /// 哪几个房间连着、听得见。**跟 `room` 是两个轴**，说明见 `CCStore.onlineRooms`。
+    ///
+    /// 写进去的值会被 store 规范化（丢掉已下架的、补上当前房间），所以赋值之后
+    /// 立刻回读对齐一次 —— 不然界面上的勾会跟真正生效的名单对不上，
+    /// 而这种不一致**看不出来**：勾是亮的，房间却没连。
+    @Published var onlineRooms: [String] { didSet { CCStore.onlineRooms = onlineRooms; syncOnline() } }
 
     private init() {
         baseURL = CCStore.baseURL
         signalURL = CCStore.signalURL
         sharedSecret = CCStore.sharedSecret
         room = CCStore.room
+        onlineRooms = CCStore.onlineRooms
+    }
+
+    /// 把内存里的勾选拉回跟磁盘一致。递归只会发生一次：
+    /// 第二趟 `normalized == onlineRooms`，不再赋值。
+    private func syncOnline() {
+        let normalized = CCStore.onlineRooms
+        if normalized != onlineRooms { onlineRooms = normalized }
+    }
+
+    /// 勾 / 取消勾一个房间。
+    ///
+    /// 当前说话的那个**不许取消** —— 直接忽略，而不是弹个提示。
+    /// 想让它下线，先把话筒切给别人，那才是用户真正的意图。
+    func toggleOnline(_ name: String) {
+        guard name != room else { return }
+        if onlineRooms.contains(name) {
+            onlineRooms = onlineRooms.filter { $0 != name }
+        } else {
+            onlineRooms = onlineRooms + [name]
+        }
     }
 
     /// 拉到新名单之后更新本地缓存，顺带校一次当前选择。
@@ -28,5 +57,7 @@ final class CloseCrabConfig: ObservableObject {
         CCStore.roomsCSV = names.joined(separator: ",")
         let normalized = CCStore.room
         if normalized != room { room = normalized }
+        // 勾选也要跟着校：名单里去掉的 bot，勾还留着的话界面会显示一个连不上的房间。
+        syncOnline()
     }
 }
