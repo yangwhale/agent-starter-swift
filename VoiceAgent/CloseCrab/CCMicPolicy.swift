@@ -65,6 +65,34 @@ final class CCMicPolicy: ObservableObject {
         Task { await setMic(false) }
     }
 
+    /// `session.start()` 返回之后必须再闭一次 —— **这一次才是真正生效的那次。**
+    ///
+    /// 上面那个监听靠不住，原因在 SDK 的 `isConnected`：
+    ///
+    /// ```swift
+    /// public var isConnected: Bool {
+    ///     switch connectionState {
+    ///     case .connecting, .connected, .reconnecting: true   // ← .connecting 就算连上了
+    /// ```
+    ///
+    /// 而 `start()` 的顺序是「先把状态置成 .connecting，再去连，连上了才开麦」：
+    ///
+    /// ```swift
+    /// connectionState = .connecting                                  // (1) isConnected 变 true
+    /// dispatchesAgent = try await connect()                          // (2) 网络往返
+    /// try await room.localParticipant.setMicrophone(enabled: true)   // (3) 开麦
+    /// ```
+    ///
+    /// 监听在 (1) 就被叫醒，那时 room 还没连上，闭麦是空操作；等它把 `wasConnected`
+    /// 置成 true，(3) 的开麦就再也没人管了 —— 表现就是「进去麦是开的」。
+    ///
+    /// 所以闭麦必须发生在 `start()` 返回之后，那是唯一能保证晚于 (3) 的时机。
+    func enforceMutedAfterConnect() async {
+        guard session.isConnected else { return }
+        isHolding = false
+        await setMic(false)
+    }
+
     // MARK: - 按住说话
 
     /// 按住中间那片空白 → 临时开麦。

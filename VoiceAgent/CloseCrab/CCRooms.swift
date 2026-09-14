@@ -192,6 +192,9 @@ final class CCRooms: ObservableObject {
     private func connectAwait(_ slot: CCRoomSlot) async {
         connecting.insert(slot.name)
         await slot.session.start()
+        // start() 内部连上之后会无条件开一次麦，必须在它返回之后按回去。
+        // 靠监听连接状态是拦不住的，原因见 CCMicPolicy.enforceMutedAfterConnect。
+        await slot.micPolicy.enforceMutedAfterConnect()
         connecting.remove(slot.name)
     }
 
