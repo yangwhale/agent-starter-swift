@@ -96,7 +96,15 @@ struct ControlBar: View {
                 }
                 .frame(height: Constants.buttonHeight)
                 .padding(.horizontal, 2 * .grid)
-                .contentShape(Rectangle())
+                                    .contentShape(Rectangle())
+                    // 逐颗按钮的触摸反馈。`.identity` = **静止时完全不改变外观**，
+                    // 手指落下才浮出形变和高光。
+                    //
+                    // 为什么要逐颗加而不是靠整条那块玻璃：整条只有一块，按哪儿
+                    // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
+                    // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
+                    // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
+                    .glassEffect(.identity.interactive(), in: .capsule)
             }
             #if os(macOS)
                 separator()
@@ -125,7 +133,15 @@ struct ControlBar: View {
                     .transition(.symbolEffect)
                     .frame(height: Constants.buttonHeight)
                     .padding(.horizontal, 2 * .grid)
-                    .contentShape(Rectangle())
+                                        .contentShape(Rectangle())
+                    // 逐颗按钮的触摸反馈。`.identity` = **静止时完全不改变外观**，
+                    // 手指落下才浮出形变和高光。
+                    //
+                    // 为什么要逐颗加而不是靠整条那块玻璃：整条只有一块，按哪儿
+                    // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
+                    // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
+                    // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
+                    .glassEffect(.identity.interactive(), in: .capsule)
             }
             #if os(macOS)
                 separator()
@@ -144,7 +160,15 @@ struct ControlBar: View {
         } label: {
             Image(systemName: "arrow.up.square.fill")
                 .frame(width: Constants.buttonWidth, height: Constants.buttonHeight)
-                .contentShape(Rectangle())
+                                    .contentShape(Rectangle())
+                    // 逐颗按钮的触摸反馈。`.identity` = **静止时完全不改变外观**，
+                    // 手指落下才浮出形变和高光。
+                    //
+                    // 为什么要逐颗加而不是靠整条那块玻璃：整条只有一块，按哪儿
+                    // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
+                    // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
+                    // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
+                    .glassEffect(.identity.interactive(), in: .capsule)
         }
         .buttonStyle(
             ControlBarButtonStyle(
@@ -163,7 +187,15 @@ struct ControlBar: View {
         } label: {
             Image(systemName: "ellipsis.message.fill")
                 .frame(width: Constants.buttonWidth, height: Constants.buttonHeight)
-                .contentShape(Rectangle())
+                                    .contentShape(Rectangle())
+                    // 逐颗按钮的触摸反馈。`.identity` = **静止时完全不改变外观**，
+                    // 手指落下才浮出形变和高光。
+                    //
+                    // 为什么要逐颗加而不是靠整条那块玻璃：整条只有一块，按哪儿
+                    // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
+                    // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
+                    // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
+                    .glassEffect(.identity.interactive(), in: .capsule)
         }
         .buttonStyle(
             ControlBarButtonStyle(
@@ -184,7 +216,15 @@ struct ControlBar: View {
         } label: {
             Image(systemName: "phone.down.fill")
                 .frame(width: Constants.buttonWidth, height: Constants.buttonHeight)
-                .contentShape(Rectangle())
+                                    .contentShape(Rectangle())
+                    // 逐颗按钮的触摸反馈。`.identity` = **静止时完全不改变外观**，
+                    // 手指落下才浮出形变和高光。
+                    //
+                    // 为什么要逐颗加而不是靠整条那块玻璃：整条只有一块，按哪儿
+                    // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
+                    // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
+                    // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
+                    .glassEffect(.identity.interactive(), in: .capsule)
         }
         .buttonStyle(
             ControlBarButtonStyle(

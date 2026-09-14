@@ -64,8 +64,20 @@ struct CCRoomTileRow: View {
                 }
             }
         }
-        .sheet(item: $iconEditing) { ref in
+        // **popover 而不是 sheet。**
+        //
+        // 同样是抄 Tide Guide 那个 session：他原本把选项放在 context menu 里，
+        // 发现「进子菜单→选一个→整个菜单崩塌」要点很多下；改成 popover 之后
+        // 可以连着调、不会关，收起时收回到触发它的那个控件里 ——
+        // 他的原话是这给了设置**「一个来处」**。
+        //
+        // 换图标正是这种「调一下看一眼」的操作：从方块弹出、方块还在视野里，
+        // 比一张盖住半屏、把方块本身遮掉的 sheet 合理得多。
+        // `presentationCompactAdaptation(.popover)` 不能省 —— iPhone 上
+        // popover 默认会退化成 sheet，不写这句改了等于没改。
+        .popover(item: $iconEditing, attachmentAnchor: .rect(.bounds), arrowEdge: .top) { ref in
             CCIconPickerSheet(room: ref.id)
+                .presentationCompactAdaptation(.popover)
         }
     }
 }
@@ -99,15 +111,27 @@ private struct CCRoomTile: View {
                 // 当前这个用玻璃，其余用平面底。**材质本身就是选中态** ——
                 // 比再套一圈描边干净，也跟下面那块窗口是同一种材质，
                 // 「它俩是一体的」这件事不用颈部一个人扛。
+                // **两种玻璃，都带 interactive。**
+                //
+                // 抄的是 Tide Guide 那位开发者在 Apple 官方 session 里讲的做法
+                // （"Liquid Glass showcase: Tide Guide"，Tucker MacDonald）。他明确说
+                // **交互式玻璃在小按钮上收益最大** —— 那种按下去被手指整个盖住的目标，
+                // 以前你得抬手才知道有没有按中；加了之后手指一落就有形变反馈。
+                // 我们这个方块 54pt，正是他说的那一类。
+                //
+                // 非当前的用 `.identity`：**静止时完全不改变外观**，一碰才浮出高光。
+                // 他把这个变体用在主潮汐波浪上 —— 不滑动时看不出是玻璃。
+                // 好处是六个方块并排时不会变成六块亮片，安静，但摸上去是活的。
                 if isActive {
                     RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
                         .fill(.clear)
                         .frame(width: CC.Size.tile, height: CC.Size.tile)
-                        .glassEffect(.regular, in: .cc(CC.Radius.tile))
+                        .glassEffect(.regular.interactive(), in: .cc(CC.Radius.tile))
                 } else {
                     RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
                         .fill(identity.opacity(0.14))
                         .frame(width: CC.Size.tile, height: CC.Size.tile)
+                        .glassEffect(.identity.interactive(), in: .cc(CC.Radius.tile))
                 }
 
                 face
@@ -119,9 +143,18 @@ private struct CCRoomTile: View {
                     .shadow(color: ring == .speaking ? identity.opacity(0.45) : .clear, radius: 26)
 
                 if ring == .muted {
-                    Circle()
-                        .fill(.fgSerious)
-                        .frame(width: 12, height: 12)
+                    // 斜杠图标，不是纯色圆点。
+                    //
+                    // 今年 ADA 的包容性奖（Guitar Wiz）获奖词里专门点了
+                    // **Differentiate Without Color** —— 不依赖颜色也能区分。
+                    // 一个红圆点的全部信息都在「红」上：色觉障碍用户看到的是
+                    // 一个灰点，跟没有区别。换成喇叭加斜杠，形状自己就说清楚了，
+                    // 颜色只是加强。
+                    Image(systemName: "speaker.slash.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(4)
+                        .background(Circle().fill(.fgSerious))
                         .overlay(Circle().strokeBorder(.bg1, lineWidth: 2))
                         .offset(x: -23, y: -23)
                 }

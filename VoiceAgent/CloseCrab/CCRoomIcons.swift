@@ -109,8 +109,8 @@ struct CCIconPickerSheet: View {
                     }
                 }
         }
-        #if os(iOS)
-        .presentationDetents([.medium])
-        #endif
+        // popover 要自己定尺寸 —— sheet 靠 detents，popover 靠内容固有大小。
+        // 不给的话它会撑到一个很怪的宽度。
+        .frame(minWidth: 300, idealWidth: 320, minHeight: 380, idealHeight: 420)
     }
 }
