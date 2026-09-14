@@ -213,17 +213,14 @@ private struct CCShell: View {
     @ViewBuilder
     private func pages() -> some View {
         #if os(iOS)
-            // **页面顺序是反着排的**，这是故意的。
+            // 页序和方块行一致，走 TabView 的标准分页方向：
+            // 手指往左划 = 数组里的下一个 = 右边那个方块。
             //
-            // TabView 的标准行为是「手指往左划 = 去数组里的下一个 = 右边那个方块」，
-            // 也就是把内容当一条向左卷动的胶片。但顶上那排方块在这儿更像一排实体
-            // 按键，人的直觉是「往左划 = 把左边那个拨过来」。两种模型都成立，
-            // 用户实测后要的是后者，所以把页序倒过来。
-            //
-            // 只倒页序、不动方块行：滑动时新内容仍然从手指来的方向进场，
-            // 只是落到隔壁哪一个变了。
+            // 中间试过倒过来（把内容当一排实体按键、往左划取左边那个），
+            // 真机上手后还是标准方向顺手 —— 它和系统相册、日历、
+            // 所有分页界面是同一套肌肉记忆，独树一帜的代价比收益大。
             TabView(selection: pageSelection) {
-                ForEach(Array(rooms.slots.reversed())) { slot in
+                ForEach(rooms.slots) { slot in
                     page(slot)
                         .tag(slot.name)
                 }
