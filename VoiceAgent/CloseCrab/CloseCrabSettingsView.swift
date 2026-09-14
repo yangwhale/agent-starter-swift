@@ -58,6 +58,27 @@ struct CloseCrabSettingsView: View {
                     Text(verbatim: "存在 Keychain 里，不上网。每次请求只发一个 HMAC 签名和时间戳。不填的话 /native 那条路会回 401。签名带秒级时间戳，服务端只收 ±300 秒，所以设备时钟得是准的。")
                 }
 
+                // 语音处理放在设置里而不是通话界面：它描述的是「这台设备的麦克风
+                // 怎么处理声音」，跟你在跟谁说话没关系，也不是一个需要边说边调的东西。
+                // 原来挂在控制栏麦克风旁边那个小箭头里，等于把一个装一次就不用再碰的
+                // 开关摆在最显眼的位置，还每个房间各调一次。
+                Section {
+                    Picker(selection: $config.voiceProcessing) {
+                        Text(verbatim: "软件（WebRTC）").tag(VoiceProcessingMode.software)
+                        Text(verbatim: "系统（Apple）").tag(VoiceProcessingMode.platform)
+                        Text(verbatim: "自动").tag(VoiceProcessingMode.automatic)
+                    } label: {
+                        Text(verbatim: "实现")
+                    }
+                    #if os(iOS)
+                    .pickerStyle(.menu)
+                    #endif
+                } header: {
+                    Text(verbatim: "语音处理")
+                } footer: {
+                    Text(modeFooter)
+                }
+
                 // 这里**不给编辑**。以前是一串手写的逗号分隔文本，加一个 bot 就得
                 // 把每台设备挨个改一遍；现在名单由服务端的 ALLOWED_ROOMS 说了算，
                 // 这一段只是让人确认「app 这边看到的是什么」。
@@ -114,6 +135,20 @@ struct CloseCrabSettingsView: View {
                         Button { dismiss() } label: { Text(verbatim: "完成") }
                     }
                 }
+        }
+    }
+
+    /// 每种实现干了什么。**默认是软件那一档** —— bot 的声音从扬声器出来又被
+    /// 麦克风收回去，实测 WebRTC 这套消得更干净。改完立刻对所有房间生效，
+    /// 不用重连。
+    private var modeFooter: String {
+        switch config.voiceProcessing {
+        case .software:
+            "WebRTC 软件处理，关掉 Apple 的那套。默认，回声消除最干净。"
+        case .platform:
+            "只用 Apple 的系统语音处理。设备不支持时会应用失败。"
+        case .automatic:
+            "SDK 默认：优先 Apple，不可用时退回 WebRTC。"
         }
     }
 }

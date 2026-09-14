@@ -31,6 +31,7 @@ nonisolated enum CCStore {
         static let rooms = "cc.rooms"
         static let room = "cc.room"
         static let onlineRooms = "cc.onlineRooms"
+        static let voiceProcessing = "cc.voiceProcessing"
     }
 
     private static let keychainService = "com.higcp.closecrab.voice"
@@ -118,6 +119,26 @@ nonisolated enum CCStore {
     /// 勾 / 取消勾。当前房间取消不掉的规则也在 `CCRoomSelection` 里。
     static func toggleOnline(_ name: String) {
         onlineRooms = CCRoomSelection.toggle(name, in: onlineRooms, all: rooms, active: room)
+    }
+
+    // MARK: - 语音处理
+
+    /// 麦克风的回声消除 / 降噪 / 自动增益由谁来做。
+    ///
+    /// **默认 `.software`（WebRTC 自己那套），不是 SDK 默认的 `.automatic`。**
+    /// `.automatic` 会优先用 Apple 的系统语音处理，而我们这个场景里
+    /// bot 的声音从扬声器出来又被麦克风收回去，实测软件这套消得更干净。
+    ///
+    /// 这是**全局**设置，不跟房间走 —— 它描述的是「这台设备的麦克风怎么处理声音」，
+    /// 跟你在跟谁说话没关系。所以入口在设置页的齿轮里，不在通话界面上。
+    static var voiceProcessing: VoiceProcessingMode {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.voiceProcessing),
+                  let mode = VoiceProcessingMode(rawValue: raw)
+            else { return .software }
+            return mode
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.voiceProcessing) }
     }
 
     // MARK: - 共享密钥（Keychain）

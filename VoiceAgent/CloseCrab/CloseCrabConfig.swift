@@ -20,12 +20,17 @@ final class CloseCrabConfig: ObservableObject {
     /// 而这种不一致**看不出来**：勾是亮的，房间却没连。
     @Published var onlineRooms: [String] { didSet { CCStore.onlineRooms = onlineRooms; syncOnline() } }
 
+    /// 麦克风语音处理的实现。**全局一份**，每个房间的 `AudioOptions` 各自订阅它
+    /// 往自己那条麦克风轨上应用（见 `AudioOptions.init`）。
+    @Published var voiceProcessing: VoiceProcessingMode { didSet { CCStore.voiceProcessing = voiceProcessing } }
+
     private init() {
         baseURL = CCStore.baseURL
         signalURL = CCStore.signalURL
         sharedSecret = CCStore.sharedSecret
         room = CCStore.room
         onlineRooms = CCStore.onlineRooms
+        voiceProcessing = CCStore.voiceProcessing
     }
 
     /// 把内存里的勾选拉回跟磁盘一致。递归只会发生一次：
