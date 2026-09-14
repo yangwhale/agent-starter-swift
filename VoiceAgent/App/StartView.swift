@@ -10,53 +10,58 @@ struct StartView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Namespace private var button
 
-    @State private var audioOptionsPresented = false
     @State private var settingsPresented = false
     @State private var roomsPresented = false
 
     var body: some View {
-        VStack(spacing: 8 * .grid) {
-            bars()
+        VStack(spacing: 0) {
+            Spacer()
+
+            mark()
+                .padding(.bottom, CC.Space.loose)
+
+            Text(verbatim: "CloseCrab")
+                .font(.largeTitle.bold())
+                .foregroundStyle(.fg0)
+
+            Text(verbatim: "挑一个助理，按住说话")
+                .font(.subheadline)
+                .foregroundStyle(.fg3)
+                .padding(.top, CC.Space.tight)
+
+            Spacer()
+
             roomPicker()
+                .padding(.bottom, CC.Space.snug)
+
             connectButton()
-            HStack(spacing: 8 * .grid) {
-                audioOptionsButton()
-                settingsButton()
-            }
+
+            settingsButton()
+                .padding(.top, CC.Space.regular)
+
+            Spacer()
         }
-        .padding(.horizontal, horizontalSizeClass == .regular ? 32 * .grid : 16 * .grid)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .safeAreaInset(edge: .bottom, content: tip)
+        .padding(.horizontal, horizontalSizeClass == .regular ? CC.Space.section * 2 : CC.Space.screen)
         #if os(visionOS)
-            .glassBackgroundEffect()
-            .frame(maxWidth: 175 * .grid)
+        .glassBackgroundEffect()
+        .frame(maxWidth: 175 * .grid)
         #endif
     }
 
-    private func bars() -> some View {
-        HStack(spacing: .grid) {
-            let bars = [2, 8, 12, 8, 2].map { $0 * .grid }
-            ForEach(0 ..< 5, id: \.self) { index in
-                Rectangle()
+    /// 那五根竖条。**不再是干巴巴五个矩形** —— 包进一块圆形玻璃里，
+    /// 它就从「一张贴图」变成了这一屏的主体。
+    private func mark() -> some View {
+        HStack(alignment: .center, spacing: 5) {
+            let heights: [CGFloat] = [12, 28, 44, 28, 12]
+            ForEach(heights.indices, id: \.self) { index in
+                Capsule()
                     .fill(.fg0)
-                    .frame(width: 2 * .grid, height: bars[index])
+                    .frame(width: 6, height: heights[index])
             }
         }
-    }
-
-    private func tip() -> some View {
-        VStack(spacing: 2 * .grid) {
-            #if targetEnvironment(simulator)
-                Text("connect.simulator")
-                    .foregroundStyle(.fgModerate)
-            #endif
-            Text("connect.tip")
-                .foregroundStyle(.fg3)
-        }
-        .font(.system(size: 12))
-        .multilineTextAlignment(.center)
-        .safeAreaPadding(.horizontal, horizontalSizeClass == .regular ? 32 * .grid : 16 * .grid)
-        .safeAreaPadding(.vertical)
+        .frame(width: 116, height: 116)
+        .glassEffect(.regular, in: .circle)
     }
 
     @ViewBuilder
@@ -66,30 +71,26 @@ struct StartView: View {
             // 并发连，不排队 —— 六个房间串行连最后一个要等很久。
             await rooms.startAll()
         } label: {
-            HStack {
-                Spacer()
-                Text("connect.start")
-                    .matchedGeometryEffect(id: "connect", in: button)
-                Spacer()
-            }
-            .frame(width: 58 * .grid, height: 11 * .grid)
+            Text(verbatim: "开始通话")
+                .matchedGeometryEffect(id: "connect", in: button)
+                .frame(maxWidth: .infinity)
+                .frame(height: CC.Size.talkBar)
         } busyLabel: {
-            HStack(spacing: 4 * .grid) {
-                Spacer()
-                Spinner()
+            HStack(spacing: CC.Space.snug) {
+                ProgressView()
+                    .tint(.white)
                     .transition(.scale.combined(with: .opacity))
-                Text("connect.connecting")
+                Text(verbatim: "正在连接")
                     .matchedGeometryEffect(id: "connect", in: button)
-                Spacer()
             }
-            .frame(width: 58 * .grid, height: 11 * .grid)
+            .frame(maxWidth: .infinity)
+            .frame(height: CC.Size.talkBar)
         }
-        #if os(visionOS)
-        .buttonStyle(.borderedProminent)
-        .controlSize(.extraLarge)
-        #else
-        .buttonStyle(ProminentButtonStyle())
-        #endif
+        .font(.headline)
+        // 主操作用 prominent 玻璃：它自带染色、按压形变和无障碍对比度处理，
+        // 比自己拿一个蓝色矩形加圆角要「像系统的东西」。
+        .buttonStyle(.glassProminent)
+        .tint(.fgAccent)
     }
 
     /// 进谁的房间。
@@ -101,19 +102,23 @@ struct StartView: View {
         Button {
             roomsPresented = true
         } label: {
-            HStack(spacing: 2 * .grid) {
+            HStack(spacing: CC.Space.snug) {
                 Image(systemName: "person.wave.2.fill")
+                    .foregroundStyle(.fgAccent)
                 Text(verbatim: config.room.isEmpty ? "挑一个房间" : config.room)
+                    .foregroundStyle(.fg0)
+                Spacer()
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 11))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.fg3)
             }
-            .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(.fg0)
-            .frame(width: 58 * .grid, height: 9 * .grid)
-            .contentShape(Rectangle())
+            .font(.body.weight(.medium))
+            .padding(.horizontal, CC.Space.regular)
+            .frame(height: CC.Size.talkBar)
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .cc(CC.Radius.bar))
         .sheet(isPresented: $roomsPresented) {
             CCRoomListView()
         }
@@ -123,35 +128,19 @@ struct StartView: View {
         Button {
             settingsPresented = true
         } label: {
-            HStack(spacing: .grid) {
+            HStack(spacing: CC.Space.tight) {
                 Image(systemName: "gearshape")
-                Text(verbatim: "服务器")
+                Text(verbatim: "设置")
             }
-            .font(.system(size: 13))
+            .font(.subheadline)
             .foregroundStyle(.fg3)
-            .contentShape(Rectangle())
+            .padding(.horizontal, CC.Space.regular)
+            .frame(height: CC.Size.tapTarget)
+            .contentShape(.capsule)
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $settingsPresented) {
             CloseCrabSettingsView()
-        }
-    }
-
-    private func audioOptionsButton() -> some View {
-        Button {
-            audioOptionsPresented = true
-        } label: {
-            HStack(spacing: .grid) {
-                Image(systemName: "slider.horizontal.3")
-                Text("audio.title")
-            }
-            .font(.system(size: 13))
-            .foregroundStyle(.fg3)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $audioOptionsPresented) {
-            AudioOptionsSheet()
         }
     }
 }

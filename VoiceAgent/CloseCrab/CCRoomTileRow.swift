@@ -30,24 +30,40 @@ struct CCRoomTileRow: View {
     @State private var iconEditing: CCRoomRef?
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(rooms.slots) { slot in
-                    CCRoomTile(
-                        slot: slot,
-                        isActive: slot.name == rooms.activeName,
-                        isConnecting: rooms.connecting.contains(slot.name),
-                        onTap: { rooms.activate(slot.name) },
-                        onDoubleTap: { rooms.toggleMute(slot.name) },
-                        onLongPress: { iconEditing = CCRoomRef(id: slot.name) }
-                    )
+        ScrollViewReader { scroller in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(rooms.slots) { slot in
+                        CCRoomTile(
+                            slot: slot,
+                            isActive: slot.name == rooms.activeName,
+                            isConnecting: rooms.connecting.contains(slot.name),
+                            onTap: { rooms.activate(slot.name) },
+                            onDoubleTap: { rooms.toggleMute(slot.name) },
+                            onLongPress: { iconEditing = CCRoomRef(id: slot.name) }
+                        )
+                        .id(slot.name)
+                        // 把自己的位置报给颈部。**必须挂在这一层**（方块整体）
+                        // 而不是里面那个 52×52 的方框上：颈部要对准的是
+                        // 「方块加名字」这个视觉单元的中线。
+                        .anchorPreference(key: CCTileAnchorKey.self, value: .bounds) {
+                            [slot.name: $0]
+                        }
+                    }
+                }
+                .padding(.horizontal, 4 * .grid)
+                .padding(.vertical, 2 * .grid)
+            }
+            // 只有一两个方块时不要弹；多了才允许滚。
+            .scrollBounceBehavior(.basedOnSize)
+            // 横滑切到一个滚出屏幕的房间时，方块行得自己跟过去 ——
+            // 否则颈部会指向一个看不见的地方，看着像断了。
+            .onChange(of: rooms.activeName) { _, name in
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    scroller.scrollTo(name, anchor: .center)
                 }
             }
-            .padding(.horizontal, 4 * .grid)
-            .padding(.vertical, 2 * .grid)
         }
-        // 只有一两个方块时不要弹；多了才允许滚。
-        .scrollBounceBehavior(.basedOnSize)
         .sheet(item: $iconEditing) { ref in
             CCIconPickerSheet(room: ref.id)
         }
@@ -80,17 +96,35 @@ private struct CCRoomTile: View {
     var body: some View {
         VStack(spacing: 5) {
             ZStack {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(.bg2)
-                    .frame(width: 52, height: 52)
+                // 当前这个用玻璃，其余用平面底。**材质本身就是选中态** ——
+                // 比再套一圈描边干净，也跟下面那块窗口是同一种材质，
+                // 「它俩是一体的」这件事不用颈部一个人扛。
+                if isActive {
+                    RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
+                        .fill(.clear)
+                        .frame(width: CC.Size.tile, height: CC.Size.tile)
+                        .glassEffect(.regular, in: .cc(CC.Radius.tile))
+                } else {
+                    RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
+                        .fill(identity.opacity(0.14))
+                        .frame(width: CC.Size.tile, height: CC.Size.tile)
+                }
 
                 face
 
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
                     .strokeBorder(ringColor, style: ringStroke)
-                    .frame(width: 52, height: 52)
-                    // 说话时那圈发光。纯装饰，但它是「谁在说」最快的视觉线索。
-                    .shadow(color: ring == .speaking ? .green.opacity(0.6) : .clear, radius: 7)
+                    .frame(width: CC.Size.tile, height: CC.Size.tile)
+                    .shadow(color: ring == .speaking ? identity.opacity(0.75) : .clear, radius: 14)
+                    .shadow(color: ring == .speaking ? identity.opacity(0.45) : .clear, radius: 26)
+
+                if ring == .muted {
+                    Circle()
+                        .fill(.fgSerious)
+                        .frame(width: 12, height: 12)
+                        .overlay(Circle().strokeBorder(.bg1, lineWidth: 2))
+                        .offset(x: -23, y: -23)
+                }
 
                 if isConnecting {
                     ProgressView()
@@ -103,22 +137,28 @@ private struct CCRoomTile: View {
                     Image(systemName: "mic.fill")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.white)
-                        .padding(4)
-                        .background(Circle().fill(.blue))
-                        .offset(x: 22, y: -22)
+                        .padding(5)
+                        .background(Circle().fill(.fgAccent))
+                        .offset(x: 23, y: -23)
                 }
             }
-            .frame(width: 56, height: 56)
+            .frame(width: CC.Size.tile + 4, height: CC.Size.tile + 4)
 
             Text(verbatim: slot.name)
-                .font(.system(size: 10, weight: isActive ? .bold : .regular))
-                .foregroundStyle(isActive ? .fg1 : .fg3)
+                .font(CC.Font.caption)
+                .foregroundStyle(isActive ? .fg0 : .fg3)
                 .lineLimit(1)
-                .frame(width: 58)
+                .frame(width: CC.Size.tile + 8)
+
+            // 选中态改成身份色的一小条。原来是整圈 3pt 描边，
+            // 六个并排时整排像一串警告牌。
+            Capsule()
+                .fill(isActive ? identity : .clear)
+                .frame(width: 18, height: 3)
         }
         .opacity(ring == .pending ? 0.45 : 1)
         .scaleEffect(ring == .speaking ? 1.05 : 1)
-        .animation(.spring(duration: 0.25), value: ring)
+        .animation(CC.Motion.snap, value: ring)
         .contentShape(Rectangle())
         .gesture(gestures)
         .accessibilityLabel(Text(verbatim: "\(slot.name)，\(ringDescription)"))
@@ -131,12 +171,11 @@ private struct CCRoomTile: View {
     @ViewBuilder
     private var face: some View {
         if ring == .speaking, let track = slot.agentAudioTrack {
-            BarAudioVisualizer(audioTrack: track,
-                               agentState: .speaking,
-                               barCount: 4,
-                               barSpacingFactor: 0.08,
-                               barMinOpacity: 0.2)
-                .frame(width: 34, height: 30)
+            // 和主视图用同一套语言的小尺寸版本。原来主视图 5 根柱子、
+            // 方块里 4 根，两个尺寸各说各话。
+            CCLiquidOrb(track: track, state: .speaking, tint: identity)
+                .frame(width: CC.Size.tile, height: CC.Size.tile)
+                .scaleEffect(0.42)
                 .transition(.opacity)
         } else {
             Text(verbatim: icons.icon(for: slot.name))
@@ -164,19 +203,25 @@ private struct CCRoomTile: View {
 
     // MARK: - 样式
 
+    /// 这个 bot 的身份色。六个助理长得一样，颜色是比 11pt 的名字
+    /// 快一个数量级的识别通道。
+    private var identity: Color { CCIdentityColor.color(for: slot.name) }
+
     private var ringColor: Color {
         switch ring {
-        case .speaking: .green
-        case .muted: .red
-        case .pending: .fg3.opacity(0.5)
-        case .idle: .clear
+        // 描边只剩「未连接」在用 —— 说话改用发光、静音改用角标，
+        // 一个方块不能同时用形状喊三件事。
+        case .pending: .fg4.opacity(0.6)
+        default: .clear
         }
     }
 
     private var ringStroke: StrokeStyle {
         switch ring {
         case .pending: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
-        default: StrokeStyle(lineWidth: 3)
+        // 从 3pt 收到 2.5pt。3pt 在 54 见方的方块上占比太重，
+        // 六个并排时整排看着像一串警告牌。
+        default: StrokeStyle(lineWidth: 2.5)
         }
     }
 

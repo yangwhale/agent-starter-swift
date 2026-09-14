@@ -53,11 +53,18 @@ struct ControlBarButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(isEnabled ? foregroundColor.opacity(configuration.isPressed ? 0.75 : 1) : borderColor)
-            .background(
-                RoundedRectangle(cornerRadius: .cornerRadiusPerPlatform)
-                    .fill(isToggled ? backgroundColor : .clear)
-            )
+            .foregroundStyle(isEnabled ? foregroundColor : borderColor)
+            // 选中态用一块实心药丸，跟系统标签栏选中项一致。
+            // 未选中**什么都不画** —— 整条已经是一块玻璃了，
+            // 每个按钮再来一层底会把那块玻璃切得稀碎。
+            .background {
+                if isToggled {
+                    Capsule().fill(backgroundColor)
+                }
+            }
+            // 按下去缩一点。原来只改透明度，在玻璃上几乎看不出来。
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .animation(CC.Motion.press, value: configuration.isPressed)
     }
 }
 

@@ -14,11 +14,10 @@ struct ControlBar: View {
     @Environment(\.videoEnabled) private var videoEnabled
     @Environment(\.textEnabled) private var textEnabled
 
-    @State private var audioOptionsPresented = false
 
     private enum Constants {
-        static let buttonWidth: CGFloat = 16 * .grid
-        static let buttonHeight: CGFloat = 11 * .grid
+        static let buttonWidth: CGFloat = CC.Size.tapTarget
+        static let buttonHeight: CGFloat = CC.Size.tapTarget
     }
 
     var body: some View {
@@ -53,19 +52,12 @@ struct ControlBar: View {
             )
         )
         .font(.system(size: 17, weight: .medium))
-        .frame(height: 15 * .grid)
+        .frame(height: CC.Size.controlBar)
         #if !os(visionOS)
-            .overlay(
-                RoundedRectangle(cornerRadius: 7.5 * .grid)
-                    .stroke(.separator1, lineWidth: 1)
-            )
-            .background(
-                RoundedRectangle(cornerRadius: 7.5 * .grid)
-                    .fill(.bg1)
-                    .shadow(color: .black.opacity(0.1), radius: 10, y: 10)
-            )
-            .safeAreaPadding(.bottom, 8 * .grid)
-            .safeAreaPadding(.horizontal, 16 * .grid)
+            // 一整条就是一块玻璃，按钮本身不再各带背景 —— 这是系统标签栏
+            // 和 App Store 底栏的做法。原来那套「描边 + 实心底 + 投影」
+            // 是 Liquid Glass 之前的语言，摆在 iOS 26 上一眼是上个时代的。
+            .glassEffect(.regular, in: .cc(CC.Radius.bar))
         #endif
     }
 
@@ -106,33 +98,14 @@ struct ControlBar: View {
                 .padding(.horizontal, 2 * .grid)
                 .contentShape(Rectangle())
             }
-            .contextMenu {
-                Button("audio.title") { audioOptionsPresented = true }
-            }
             #if os(macOS)
                 separator()
                 AudioDeviceSelector()
                     .frame(height: Constants.buttonHeight)
-            #else
-                // The context menu above is not discoverable on touch platforms,
-                // show an explicit affordance for the audio options.
-                separator()
-                Button {
-                    audioOptionsPresented = true
-                } label: {
-                    Image(systemName: "chevron.up")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(height: Constants.buttonHeight)
-                        .padding(.horizontal, .grid)
-                        .contentShape(Rectangle())
-                }
             #endif
             Spacer()
         }
         .frame(width: Constants.buttonWidth)
-        .popover(isPresented: $audioOptionsPresented) {
-            AudioOptionsSheet()
-        }
     }
 
     /// 输出设备。macOS 上系统设置里管，`CCAudioOutputButton` 自己会退成空视图，

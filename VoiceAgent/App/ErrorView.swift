@@ -9,7 +9,7 @@ struct ErrorView: View {
         VStack(spacing: 2 * .grid) {
             HStack(spacing: 2 * .grid) {
                 Image(systemName: "exclamationmark.triangle")
-                Text("error.title")
+                Text(verbatim: "出错了")
                 Spacer()
                 Button {
                     onDismiss()
