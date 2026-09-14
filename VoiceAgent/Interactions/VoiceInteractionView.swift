@@ -39,12 +39,9 @@ struct VoiceInteractionView: View {
         ZStack(alignment: .bottom) {
             AgentView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea()
-            // 中间这片本来什么都干不了 —— 铺成「按住说话」。
-            // 压在 AgentView 上面、在下面那排预览下面：按住区要能接到点击，
-            // 但不能挡住摄像头/屏幕共享的小窗。
-            CCHoldToTalkArea()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 「按住说话」原来铺在这片中间区域上，现在挪到底部长条了 ——
+            // 它用 DragGesture(minimumDistance: 0)，手指一落下就把手势吃掉，
+            // 而这片区域现在要留给左右滑动切 bot，两者不能共存。
             HStack {
                 Spacer()
                 ScreenShareView()

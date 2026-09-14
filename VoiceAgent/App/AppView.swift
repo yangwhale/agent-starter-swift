@@ -1,123 +1,36 @@
 import LiveKit
 import SwiftUI
 
+/// **一个房间的内容页** —— 分页器里的一页。
+///
+/// 它曾经是整屏（自带方块行、控制栏、启动页分支）。改多房间横滑之后，
+/// 那些「不该跟着页面走」的东西全提到了 `CCRootView`：
+/// 方块行要常驻（否则滑动时它自己也在重建），控制栏和说话条要常驻
+/// （底部两条跟着内容一起横移，看着像整个 app 在漂）。
+///
+/// 留在这儿的只有**真正属于这个房间**的东西：它的音频可视化、
+/// 它的字幕、它的摄像头预览。每一页在自己子树里注入自己槽位的环境对象，
+/// 所以这里读到的 `session` 永远是本页那个房间 —— 哪怕它此刻不是当前页。
 struct AppView: View {
     @EnvironmentObject private var session: Session
     @EnvironmentObject private var localMedia: LocalMedia
-    @ObservedObject private var config = CloseCrabConfig.shared
 
-    @State private var chat: Bool = false
-    @State private var roomsPresented = false
-    @FocusState private var keyboardFocus: Bool
-    @Namespace private var namespace
+    /// 字幕开关。**由 chrome 持有**，跨房间共享，所以这里是只读的值不是 `@State`。
+    let chat: Bool
+    @FocusState.Binding var keyboardFocus: Bool
 
     var body: some View {
-        ZStack(alignment: .top) {
+        Group {
             if session.isConnected {
                 interactions()
-                roomBar()
-                tileBar()
             } else {
-                start()
+                notConnected()
             }
-
-            errors()
         }
-        .environment(\.namespace, namespace)
-        #if os(visionOS)
-            .ornament(attachmentAnchor: .scene(.bottom)) {
-                if session.isConnected {
-                    ControlBar(chat: $chat)
-                        .glassBackgroundEffect()
-                }
-            }
-            .alert(session.error?.localizedDescription ?? "error.title", isPresented: .constant(session.error != nil)) {
-                Button("error.ok") { session.dismissError() }
-            }
-            .alert(
-                session.agent.error?.localizedDescription ?? "error.title",
-                isPresented: .constant(session.agent.error != nil)
-            ) {
-                Button("error.ok") { Task { await session.end() } }
-            }
-            .alert(
-                localMedia.error?.localizedDescription ?? "error.title",
-                isPresented: .constant(localMedia.error != nil)
-            ) {
-                Button("error.ok") { localMedia.dismissError() }
-            }
-        #else
-            .safeAreaInset(edge: .bottom) {
-                    if session.isConnected, !keyboardFocus {
-                        ControlBar(chat: $chat)
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .bottom).combined(with: .opacity),
-                                removal: .opacity
-                            ))
-                    }
-                }
-        #endif
-                .background(.bg1)
-                .animation(.default, value: chat)
-                .animation(.default, value: session.isConnected)
-                .animation(.default, value: session.error?.localizedDescription)
-                .animation(.default, value: session.agent.error?.localizedDescription)
-                .animation(.default, value: localMedia.isCameraEnabled)
-                .animation(.default, value: localMedia.isScreenShareEnabled)
-                .animation(.default, value: localMedia.error?.localizedDescription)
-        #if os(iOS)
-            .sensoryFeedback(.impact, trigger: session.isConnected)
-        #endif
-    }
-
-    private func start() -> some View {
-        StartView()
-            .onAppear {
-                chat = false
-            }
-    }
-
-    /// 连上之后左上角那颗汉堡 —— 房间列表的入口，也顺便告诉你现在在跟谁说话。
-    ///
-    /// 「在跟谁说话」这件事非显示不可：六个助理长得一模一样，只有说出口才知道
-    /// 拨错了人。所以按钮上直接写着房间名，不是一个光秃秃的三道杠。
-    private func roomBar() -> some View {
-        HStack {
-            Button {
-                roomsPresented = true
-            } label: {
-                HStack(spacing: 2 * .grid) {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 15, weight: .medium))
-                    Text(verbatim: config.room)
-                        .font(.system(size: 15, weight: .medium))
-                }
-                .foregroundStyle(.fg0)
-                .padding(.horizontal, 4 * .grid)
-                .padding(.vertical, 2 * .grid)
-                .background(Capsule().fill(.bg2))
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-        }
-        .padding(.horizontal, 4 * .grid)
-        .padding(.top, 2 * .grid)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .sheet(isPresented: $roomsPresented) {
-            CCRoomListView()
-        }
-    }
-
-    /// 汉堡下面那一排小方块。勾了几个房间在线就有几个。
-    ///
-    /// 单独一层而不是塞进 `roomBar`：方块行要能横向滚动，
-    /// 跟汉堡按钮放同一个 HStack 里会互相挤。
-    private func tileBar() -> some View {
-        CCRoomTileRow()
-            .padding(.top, 10 * .grid)
-            .frame(maxWidth: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.default, value: session.isConnected)
+        .animation(.default, value: localMedia.isCameraEnabled)
+        .animation(.default, value: localMedia.isScreenShareEnabled)
     }
 
     @ViewBuilder
@@ -141,21 +54,25 @@ struct AppView: View {
         #endif
     }
 
-    @ViewBuilder
-    private func errors() -> some View {
-        #if !os(visionOS)
-            if let error = session.error {
-                ErrorView(error: error) { session.dismissError() }
-            }
-
-            if let agentError = session.agent.error {
-                ErrorView(error: agentError) { Task { await session.end() }}
-            }
-
-            if let mediaError = localMedia.error {
-                ErrorView(error: mediaError) { localMedia.dismissError() }
-            }
-        #endif
+    /// 这一页的房间还没连上。
+    ///
+    /// 滑到一个没连上的房间时必须有东西，不能是一片黑 —— 黑屏会让人以为
+    /// 滑坏了。但也**不要在这里放「连接」按钮**：连接是整批的
+    /// （`rooms.startAll()`），单独连一个会让「勾选了哪些」和「连着哪些」对不上。
+    private func notConnected() -> some View {
+        VStack(spacing: 3 * .grid) {
+            Image(systemName: "bolt.horizontal.circle")
+                .font(.system(size: 32))
+                .foregroundStyle(.fg3)
+            Text(verbatim: "这个房间还没连上")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.fg2)
+            Text(verbatim: "挂断后重新连接会把勾选的房间一起连上")
+                .font(.system(size: 12))
+                .foregroundStyle(.fg3)
+                .multilineTextAlignment(.center)
+        }
+        .padding(6 * .grid)
     }
 
     private func agentListening() -> some View {
@@ -166,9 +83,9 @@ struct AppView: View {
             {
                 Group {
                     if session.agent.isConnected {
-                        Text("agent.listening")
+                        Text(verbatim: "在听着呢")
                     } else {
-                        Text("agent.waiting")
+                        Text(verbatim: "正在接通助理…")
                     }
                 }
                 .font(.system(size: 15))

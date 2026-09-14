@@ -1,13 +1,22 @@
 import LiveKit
 import SwiftUI
 
-/// 「按住这里说话」—— 盖在中间那片本来什么都干不了的空白上。
+/// 「按住说话」长条 —— 控制栏正上方那一条。
 ///
 /// ## 它不是对讲机
 ///
 /// 这是**直播房间**：按下去就是开麦，声音一边说一边流过去；松手就是闭麦。
 /// 没有「录一段 → 发送」这个动作，所以界面上**不许出现「发送」字样，
 /// 也不许有录音时长** —— 那会让人以为松手之前对方听不见，于是说完还要等一下。
+///
+/// ## 为什么从「中间一大片」改成「底部一条」
+///
+/// 原来整个中间区域都是按住区，占了半个屏幕。问题是它用
+/// `DragGesture(minimumDistance: 0)`，手指一落下就把手势吃掉了 ——
+/// 而中间那片现在要用来左右滑动切 bot，两者在同一块区域上是互斥的。
+///
+/// 收成一条还有个附带好处：拇指够得着。半屏热区听着大方，实际按的时候
+/// 手要往上抬，单手握持时很别扭。
 ///
 /// ## 为什么用 DragGesture 而不是 onLongPressGesture
 ///
@@ -17,70 +26,94 @@ import SwiftUI
 ///
 /// `DragGesture(minimumDistance: 0)` 的 `onChanged` 在手指落下那一刻就来，
 /// `onEnded` 在抬起那一刻来，正好是我们要的两端，而且**零延迟**。
-/// 手指在区域里滑动也不会中断，这对一块占半屏的区域很重要。
-struct CCHoldToTalkArea: View {
+/// 手指按住后小幅滑动也不会中断。
+struct CCTalkBar: View {
     @EnvironmentObject private var localMedia: LocalMedia
     @EnvironmentObject private var mic: CCMicPolicy
 
-    var body: some View {
-        ZStack {
-            // 透明命中层：整块区域都能按。`contentShape` 不能省 ——
-            // 纯透明的 Color 在 SwiftUI 里默认不接收点击。
-            Color.clear
-                .contentShape(Rectangle())
+    /// 麦克风常开时这条不该还摆出「按住说话」的样子 —— 它此刻没作用。
+    private var isAlwaysOn: Bool { localMedia.isMicrophoneEnabled && !mic.isHolding }
 
-            hint
+    var body: some View {
+        HStack(spacing: CC.Space.snug) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .semibold))
+                .contentTransition(.symbolEffect(.replace))
+            Text(verbatim: label)
+                .font(CC.Font.title)
+                .contentTransition(.numericText())
         }
+        .foregroundStyle(foreground)
+        .frame(maxWidth: .infinity)
+        .frame(height: CC.Size.talkBar)
+        // Liquid Glass 本体。`.interactive()` 让它在手指按下时自己产生
+        // 折射和高光的形变 —— 这是系统按钮的那套反馈，自己用 scaleEffect
+        // 模仿永远差一口气。
+        .glassEffect(glass, in: .cc(CC.Radius.bar))
+        .overlay(alignment: .leading) { holdingPulse }
+        .contentShape(.cc(CC.Radius.bar))
+        .animation(CC.Motion.fade, value: mic.isHolding)
+        .animation(CC.Motion.fade, value: isAlwaysOn)
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in mic.beginHold(isMicrophoneEnabled: localMedia.isMicrophoneEnabled) }
                 .onEnded { _ in mic.endHold() }
         )
-        .animation(.easeOut(duration: 0.15), value: mic.isHolding)
         #if os(iOS)
-            // 开麦那一下给个震动。看不见的状态变化必须有别的通道告诉人，
-            // 否则你只能靠「说完发现没人回」来发现自己没按住。
-            .sensoryFeedback(.impact(weight: .medium), trigger: mic.isHolding)
+        // 开麦那一下给个震动。看不见的状态变化必须有别的通道告诉人，
+        // 否则你只能靠「说完发现没人回」来发现自己没按住。
+        .sensoryFeedback(.impact(weight: .medium), trigger: mic.isHolding)
         #endif
+        .accessibilityLabel(Text(verbatim: label))
+        .accessibilityAddTraits(.isButton)
     }
 
-    @ViewBuilder
-    private var hint: some View {
-        if localMedia.isMicrophoneEnabled, !mic.isHolding {
-            // 已经手动常开麦了 —— 这块区域此刻没有作用，就别假装能按。
-            pill(text: "麦克风常开中", systemImage: "microphone.fill",
-                 tint: .green, border: .green.opacity(0.5), filled: true)
-        } else if mic.isHolding {
-            pill(text: "麦克风开着，说吧", systemImage: "waveform",
-                 tint: .green, border: .green, filled: true)
+    // MARK: - 样式
+
+    /// 三个状态用**染色**区分，不用描边。
+    ///
+    /// 之前这里是一圈虚线框。虚线在 iOS 上有固定语义 —— 空占位、拖放目标、
+    /// 未完成 —— 唯独不表示「可以按」。一个最主要的操作长得像占位符，
+    /// 是这版界面最刺眼的一处。
+    private var glass: Glass {
+        if mic.isHolding {
+            .regular.tint(.green).interactive()
+        } else if isAlwaysOn {
+            .regular.tint(.green.opacity(0.5)).interactive()
         } else {
-            pill(text: "按住这里说话", systemImage: "mic.slash.fill",
-                 tint: .secondary, border: .secondary.opacity(0.35), filled: false)
+            .regular.interactive()
         }
     }
 
-    private func pill(text: String, systemImage: String,
-                      tint: Color, border: Color, filled: Bool) -> some View
-    {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-            Text(verbatim: text)
-                .font(.system(size: 13, weight: .medium))
+    private var foreground: Color {
+        mic.isHolding || isAlwaysOn ? .white : .primary
+    }
+
+    private var icon: String {
+        if mic.isHolding { "waveform" }
+        else if isAlwaysOn { "mic.fill" }
+        else { "mic.slash.fill" }
+    }
+
+    private var label: String {
+        if mic.isHolding { "松开结束" }
+        else if isAlwaysOn { "麦克风常开中" }
+        else { "按住说话" }
+    }
+
+    /// 按住时左边那颗呼吸的点。
+    ///
+    /// 光靠变色不够 —— 绿色在余光里和灰色区分度没想象中大，而「麦还开着」
+    /// 是个漏了会尴尬的状态。一个动的东西在余光里永远比一块静止的颜色显眼。
+    @ViewBuilder
+    private var holdingPulse: some View {
+        if mic.isHolding {
+            Circle()
+                .fill(.white)
+                .frame(width: 8, height: 8)
+                .padding(.leading, CC.Space.regular)
+                .symbolEffect(.pulse)
+                .transition(.scale.combined(with: .opacity))
         }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            Capsule()
-                .fill(filled ? tint.opacity(0.12) : Color.clear)
-                .overlay(Capsule().strokeBorder(border, style: StrokeStyle(
-                    lineWidth: filled ? 1.5 : 1,
-                    dash: filled ? [] : [5, 4]
-                )))
-        )
-        // 松手之后提示淡下去，不抢镜；按住时完全不透明。
-        .opacity(mic.isHolding ? 1 : 0.85)
-        .scaleEffect(mic.isHolding ? 1.04 : 1)
     }
 }
