@@ -43,6 +43,41 @@ public enum CCRoomSelection {
     }
 }
 
+/// 槽位该怎么增删排。**纯数据，不碰连接**，所以能离线测。
+public struct CCSlotPlan: Equatable, Sendable {
+    /// 要新建连接的房间（按目标顺序）。
+    public let toAdd: [String]
+    /// 要断开并丢掉的房间。
+    public let toRemove: [String]
+    /// 最终顺序。
+    public let order: [String]
+    /// 话筒该对着谁。
+    public let active: String
+}
+
+public extension CCRoomSelection {
+    /// 算出「现有槽位」到「想要的房间」之间该做哪些增删。
+    ///
+    /// 抽成纯函数的理由跟上面一样：槽位生命周期错了，症状是**房间悄悄断了**
+    /// 或者**同一个房间连了两条**，两种都不会报错，只会表现成「它怎么不说话了」。
+    /// 这种 bug 必须在能跑测试的地方挡住。
+    ///
+    /// ⚠️ **`want` 为空时什么都不做。** 空名单几乎总是「服务端列表还没拉到」
+    /// 而不是「用户真的一个都不要」—— 照单执行会把正连着的全断掉，
+    /// 然后界面空白，看着像 app 崩了。
+    static func planSlots(current: [String], want: [String], active: String) -> CCSlotPlan {
+        guard !want.isEmpty else {
+            return CCSlotPlan(toAdd: [], toRemove: [], order: current, active: active)
+        }
+        return CCSlotPlan(
+            toAdd: want.filter { !current.contains($0) },
+            toRemove: current.filter { !want.contains($0) },
+            order: want,
+            active: want.contains(active) ? active : (want.first ?? "")
+        )
+    }
+}
+
 /// 一个方块外面那圈的状态。**互斥，按优先级取第一个命中的。**
 ///
 /// 优先级不是随便定的 —— 同一时刻可能同时「被静音」且「在说话」

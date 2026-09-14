@@ -114,6 +114,12 @@ final class CCRooms: ObservableObject {
         sync()
         // 勾选变了就增删槽位。用 `objectWillChange` 而不是盯具体字段：
         // 勾选、当前房间、服务端名单三者都会影响 onlineRooms，盯一个会漏。
+        //
+        // ⚠️ **那个 `Task` 跳跃是承重的，不是为了 actor 隔离才加的。**
+        // `objectWillChange` 顾名思义是在值**改变之前**发的 —— 在 sink 里直接读
+        // `config.onlineRooms` 拿到的是**旧值**，于是刚勾上的房间要等下一次
+        // 无关变更才被建出来。表现是「勾了没反应，再随便点一下它才出现」。
+        // 丢进 Task 推到下一个 runloop tick，那时新值已经写进去了。
         config.objectWillChange
             .sink { [weak self] _ in Task { @MainActor in self?.sync() } }
             .store(in: &bag)
@@ -124,31 +130,36 @@ final class CCRooms: ObservableObject {
     /// 让槽位和「勾了哪几个在线」对齐。多退少补，已有的原样保留 ——
     /// **不能整份重建**，那会把正连着的房间也挂掉重连。
     func sync() {
-        let want = config.onlineRooms
-        guard !want.isEmpty else { return }
+        // 增删排的决定全在 `CCRoomSelection.planSlots` 里 —— 纯函数，已离线测过。
+        // 这儿只负责按计划动手：建连接、断连接、重排。
+        let plan = CCRoomSelection.planSlots(
+            current: slots.map(\.name),
+            want: config.onlineRooms,
+            active: activeName
+        )
+        guard !plan.toAdd.isEmpty || !plan.toRemove.isEmpty
+            || plan.order != slots.map(\.name) || plan.active != activeName
+        else { return }      // 没变化就别动，免得白触发一轮界面刷新
 
-        // 先补：新勾的房间建槽位；如果别的房间已经连着，新的也立刻连上，
-        // 否则用户勾完要等下次点连接才生效，中间那段时间方块是灰的，看着像坏了。
+        // 先补。如果已经有房间连着，新勾的也立刻连上 —— 否则用户勾完要等下次
+        // 点连接才生效，中间那段方块是灰的，看着像坏了。
         let shouldConnect = isAnyConnected
-        for name in want where !slots.contains(where: { $0.name == name }) {
+        for name in plan.toAdd {
             let slot = CCRoomSlot(name: name)
             slots.append(slot)
             if shouldConnect { connect(slot) }
         }
 
-        // 再退：取消勾选的断开并丢掉。
-        for slot in slots where !want.contains(slot.name) {
+        // 再退。断开要等它真的断干净再丢引用，直接 removeAll 的话
+        // Session 没人持有、end() 那个 Task 可能还没跑完就被回收。
+        let removing = slots.filter { plan.toRemove.contains($0.name) }
+        for slot in removing {
             Task { await slot.session.end() }
         }
-        slots.removeAll { !want.contains($0.name) }
+        slots.removeAll { plan.toRemove.contains($0.name) }
 
-        // 顺序跟 `onlineRooms` 走（服务端名单顺序），方块位置才稳定。
-        //
-        // ⚠️ 两边的括号不能省：`??` 的优先级**低于** `<`，写成
-        // `a ?? 0 < b ?? 0` 会被解析成 `a ?? ((0 < b) ?? 0)` —— 类型直接对不上。
-        slots.sort { (want.firstIndex(of: $0.name) ?? 0) < (want.firstIndex(of: $1.name) ?? 0) }
-
-        if !want.contains(activeName) { activeName = want.first ?? "" }
+        slots.sort { (plan.order.firstIndex(of: $0.name) ?? 0) < (plan.order.firstIndex(of: $1.name) ?? 0) }
+        if activeName != plan.active { activeName = plan.active }
     }
 
     // MARK: - 连接
@@ -165,6 +176,9 @@ final class CCRooms: ObservableObject {
     }
 
     func endAll() async {
+        // 先清「连接中」：挂断发生在某个房间还在连的途中时，
+        // 那个名字会永远留在集合里，方块上的转圈就再也停不下来。
+        connecting.removeAll()
         for slot in slots {
             await slot.session.end()
             slot.session.restoreMessageHistory([])

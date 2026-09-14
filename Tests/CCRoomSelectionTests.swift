@@ -81,5 +81,44 @@ check("正在说话 → speaking",
 check("在线没说话 → idle",
       CCTileRing.derive(isConnected: true, isMuted: false, isSpeaking: false), CCTileRing.idle)
 
+
+// ── 槽位增删计划 ─────────────────────────────────────────────────────
+func plan(_ cur: [String], _ want: [String], _ active: String) -> String {
+    let p = CCRoomSelection.planSlots(current: cur, want: want, active: active)
+    return "add=\(p.toAdd) rm=\(p.toRemove) order=\(p.order) active=\(p.active)"
+}
+
+check("正例：勾了新房间 → 只新建它，不碰已有的",
+      plan(["bunny"], ["bunny", "jarvis"], "bunny"),
+      "add=[\"jarvis\"] rm=[] order=[\"bunny\", \"jarvis\"] active=bunny")
+
+check("正例：取消勾选 → 只断它",
+      plan(["bunny", "jarvis"], ["bunny"], "bunny"),
+      "add=[] rm=[\"jarvis\"] order=[\"bunny\"] active=bunny")
+
+check("正例：当前房间被取消 → 话筒退给名单第一个",
+      plan(["bunny", "jarvis"], ["jarvis"], "bunny"),
+      "add=[] rm=[\"bunny\"] order=[\"jarvis\"] active=jarvis")
+
+check("反例：没变化 → 三个清单全空，不该触发任何动作",
+      plan(["bunny", "jarvis"], ["bunny", "jarvis"], "bunny"),
+      "add=[] rm=[] order=[\"bunny\", \"jarvis\"] active=bunny")
+
+check("★ 反例：want 为空（名单还没拉到）→ 什么都不做，绝不能把连着的全断掉",
+      plan(["bunny", "jarvis"], [], "bunny"),
+      "add=[] rm=[] order=[\"bunny\", \"jarvis\"] active=bunny")
+
+check("正例：整批换掉",
+      plan(["bunny"], ["hulk", "tommy"], "bunny"),
+      "add=[\"hulk\", \"tommy\"] rm=[\"bunny\"] order=[\"hulk\", \"tommy\"] active=hulk")
+
+check("反例：只是顺序变了，不该产生任何增删",
+      plan(["jarvis", "bunny"], ["bunny", "jarvis"], "bunny"),
+      "add=[] rm=[] order=[\"bunny\", \"jarvis\"] active=bunny")
+
+check("冷启动：一个槽位都没有 → 全建",
+      plan([], ["bunny", "jarvis"], ""),
+      "add=[\"bunny\", \"jarvis\"] rm=[] order=[\"bunny\", \"jarvis\"] active=bunny")
+
 print("\n\(pass) 通过 / \(fail) 失败")
 exit(fail == 0 ? 0 : 1)
