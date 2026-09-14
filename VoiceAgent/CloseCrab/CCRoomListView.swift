@@ -154,9 +154,8 @@ struct CCRoomListView: View {
                 Text(verbatim: "列表没刷新成功，下面是上次拿到的：\(error)")
                     .foregroundStyle(.orange)
             } else {
-                Text(verbatim: "左边的勾 = 这个房间在线，听得见它说话，可以勾好几个。点行 = 把话筒切给它，同一时刻只有一个（🎤 标着的那个）。")
-                Text(verbatim: "⚠️ 勾选目前只是记下来，还没接上连接层 —— 勾了也暂时不会真的多连一个房间。")
-                    .foregroundStyle(.orange)
+                Text(verbatim: "左边的勾 = 这个房间在线，会真的连上、听得见它说话，可以勾好几个。点行 = 把话筒切给它，同一时刻只有一个（🎤 标着的那个）。")
+                Text(verbatim: "切换是瞬间的，不重连 —— 房间本来就连着。")
                 Text(verbatim: "名单由服务端的 ALLOWED_ROOMS 决定，加了 bot 这里会自动多出来。下拉可以手动刷新。")
             }
         }
