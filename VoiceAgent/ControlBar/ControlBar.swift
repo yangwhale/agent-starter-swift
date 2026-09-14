@@ -6,6 +6,7 @@ import LiveKitComponents
 struct ControlBar: View {
     @EnvironmentObject private var session: Session
     @EnvironmentObject private var localMedia: LocalMedia
+    @EnvironmentObject private var rooms: CCRooms
 
     @Binding var chat: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -204,8 +205,9 @@ struct ControlBar: View {
 
     private func disconnectButton() -> some View {
         AsyncButton {
-            await session.end()
-            session.restoreMessageHistory([])
+            // 挂断挂全部。只挂当前那个的话，别的房间还连着、还在烧 Gemini，
+            // 而界面已经回到启动页 —— 用户以为断干净了。
+            await rooms.endAll()
         } label: {
             Image(systemName: "phone.down.fill")
                 .frame(width: Constants.buttonWidth, height: Constants.buttonHeight)
@@ -218,6 +220,6 @@ struct ControlBar: View {
                 borderColor: .separatorSerious
             )
         )
-        .disabled(!session.isConnected)
+        .disabled(!rooms.isAnyConnected)
     }
 }

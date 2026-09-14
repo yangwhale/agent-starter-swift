@@ -13,6 +13,7 @@ import SwiftUI
 /// 所以「改选择 → 重连」自然就连到新房间，一个 `Session` 用到底。
 struct CCRoomListView: View {
     @EnvironmentObject private var session: Session
+    @EnvironmentObject private var rooms: CCRooms
     @ObservedObject private var config = CloseCrabConfig.shared
     @ObservedObject private var directory = CCRoomDirectory.shared
 
@@ -170,20 +171,10 @@ struct CCRoomListView: View {
             return
         }
 
-        config.room = room.name
-
-        // 没连着就只是改个选择，等用户自己点连接。
-        guard session.isConnected else {
-            dismiss()
-            return
-        }
-
-        switchingTo = room.name
-        Task {
-            await session.end()
-            await session.start()
-            switchingTo = nil
-            dismiss()
-        }
+        // 多房间之后切换是**纯本地**的：房间本来就连着，只是把话筒挪过去。
+        // 以前这里要 end() → start() 整个重连，等一两秒；现在是瞬间的。
+        // 没连着时 activate 也只是改选择，等用户点连接。
+        rooms.activate(room.name)
+        dismiss()
     }
 }

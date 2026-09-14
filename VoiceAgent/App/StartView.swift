@@ -4,6 +4,7 @@ import SwiftUI
 /// The initial view that is shown when the app is not connected to the server.
 struct StartView: View {
     @EnvironmentObject private var session: Session
+    @EnvironmentObject private var rooms: CCRooms
     @ObservedObject private var config = CloseCrabConfig.shared
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -61,7 +62,9 @@ struct StartView: View {
     @ViewBuilder
     private func connectButton() -> some View {
         AsyncButton {
-            await session.start()
+            // 连的是**所有勾选在线的房间**，不是当前这一个。
+            // 并发连，不排队 —— 六个房间串行连最后一个要等很久。
+            await rooms.startAll()
         } label: {
             HStack {
                 Spacer()

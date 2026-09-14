@@ -16,10 +16,19 @@ import LiveKit
 /// 而 SDK 默认塞的 `room_config` 会被它拿去 `RoomConfiguration.fromJson`，
 /// 多一个能失败的环节，我们又用不上显式派发（agent 是常驻的，房间早就有人在岗）。
 struct CloseCrabTokenSource: TokenSourceConfigurable {
+    /// 绑定到哪个房间。
+    ///
+    /// - 非 nil：这条连接**固定**连这个房间。多房间层用这个 —— 否则 N 条连接
+    ///   会全部跑去连「当前房间」那一个。
+    /// - nil：现读全局当前房间（单房间时代的行为，留着兼容）。
+    var room: String?
+
+    init(room: String? = nil) { self.room = room }
+
     func fetch(_: TokenRequestOptions) async throws -> TokenSourceResponse {
-        // 每次都现读，不在初始化时捕获 —— 切房间靠的就是这一句：
+        // nil 时每次现读，不在初始化时捕获 —— 单房间那条路靠的就是这一句：
         // 抽屉里改完选择、重连一次，新的 fetch 自然拿到新房间名。
-        let room = CCStore.room
+        let room = self.room ?? CCStore.room
         guard !room.isEmpty else {
             throw CCTokenError("还没选房间 —— 打开房间列表挑一个")
         }
