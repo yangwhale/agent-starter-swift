@@ -40,12 +40,8 @@ final class CloseCrabConfig: ObservableObject {
     /// 当前说话的那个**不许取消** —— 直接忽略，而不是弹个提示。
     /// 想让它下线，先把话筒切给别人，那才是用户真正的意图。
     func toggleOnline(_ name: String) {
-        guard name != room else { return }
-        if onlineRooms.contains(name) {
-            onlineRooms = onlineRooms.filter { $0 != name }
-        } else {
-            onlineRooms = onlineRooms + [name]
-        }
+        CCStore.toggleOnline(name)
+        syncOnline()
     }
 
     /// 拉到新名单之后更新本地缓存，顺带校一次当前选择。

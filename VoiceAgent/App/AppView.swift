@@ -16,6 +16,7 @@ struct AppView: View {
             if session.isConnected {
                 interactions()
                 roomBar()
+                tileBar()
             } else {
                 start()
             }
@@ -107,6 +108,16 @@ struct AppView: View {
         .sheet(isPresented: $roomsPresented) {
             CCRoomListView()
         }
+    }
+
+    /// 汉堡下面那一排小方块。勾了几个房间在线就有几个。
+    ///
+    /// 单独一层而不是塞进 `roomBar`：方块行要能横向滚动，
+    /// 跟汉堡按钮放同一个 HStack 里会互相挤。
+    private func tileBar() -> some View {
+        CCRoomTileRow()
+            .padding(.top, 10 * .grid)
+            .frame(maxWidth: .infinity, alignment: .top)
     }
 
     @ViewBuilder

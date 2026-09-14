@@ -97,18 +97,27 @@ nonisolated enum CCStore {
         set { UserDefaults.standard.set(newValue, forKey: Key.onlineRooms) }
     }
 
+    /// 规则本身在 `CCRoomSelection` 里，这儿只负责存取。
+    /// 分开是为了能测 —— 那个文件只依赖 Foundation，Linux 上 swiftc 能直接编译运行，
+    /// 而这个文件碰 UserDefaults / Keychain，离开真机就跑不了。
     static var onlineRooms: [String] {
-        get { normalizeOnline(onlineRoomsCSV.split(separator: ",").map { String($0) }) }
-        set { onlineRoomsCSV = normalizeOnline(newValue).joined(separator: ",") }
+        get {
+            CCRoomSelection.normalize(
+                all: rooms,
+                picked: onlineRoomsCSV.split(separator: ",").map { String($0) },
+                active: room
+            )
+        }
+        set {
+            onlineRoomsCSV = CCRoomSelection
+                .normalize(all: rooms, picked: newValue, active: room)
+                .joined(separator: ",")
+        }
     }
 
-    private static func normalizeOnline(_ names: [String]) -> [String] {
-        let all = rooms
-        var picked = Set(names.map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { all.contains($0) })
-        let active = room
-        if !active.isEmpty { picked.insert(active) }      // 不变量 2
-        return all.filter { picked.contains($0) }         // 不变量 1 + 稳定顺序
+    /// 勾 / 取消勾。当前房间取消不掉的规则也在 `CCRoomSelection` 里。
+    static func toggleOnline(_ name: String) {
+        onlineRooms = CCRoomSelection.toggle(name, in: onlineRooms, all: rooms, active: room)
     }
 
     // MARK: - 共享密钥（Keychain）
