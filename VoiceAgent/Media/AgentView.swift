@@ -33,14 +33,27 @@ struct AgentView: View {
                         videoTransition = true
                     }
             } else if session.isConnected {
-                // 液态球取代原来那 5 根柱子。换形态的理由写在 CCLiquidOrb 里:
-                // 柱状图把「没声音」映射成「最矮」,而最矮长得像渲染失败。
+                // 换回 SDK 的柱状图。
+                //
+                // 液态球的问题不是形态，是**它根本不动** —— 根因见下面那行 `.id`：
+                // 这些可视化组件在 init 里就把 track 捕获进 `@StateObject`，
+                // 而 `StateObject(wrappedValue:)` 的闭包**只求值一次**。
+                // agent 的音轨是连上之后才出现的，第一次构造时是 nil，
+                // 于是它永远绑在 nil 上，再也收不到音频。
+                //
+                // 上游 ControlBar 里那句 `.id(localMedia.microphoneTrack?.id)`
+                // 就是在解这个 —— 音轨一到，强制换一个视图身份重新构造。
+                // 我之前换成球的时候把这行丢了，所以球是死的。
                 VStack(spacing: CC.Space.loose) {
-                    CCLiquidOrb(
-                        track: session.agent.audioTrack,
-                        state: session.agent.agentState ?? .listening,
-                        tint: CCIdentityColor.color(for: rooms.activeName)
+                    BarAudioVisualizer(
+                        audioTrack: session.agent.audioTrack,
+                        barColor: CCIdentityColor.color(for: rooms.activeName),
+                        barCount: 5,
+                        barSpacingFactor: 0.05,
+                        barMinOpacity: 0.1
                     )
+                    .frame(maxWidth: 75 * .grid, maxHeight: 48 * .grid)
+                    .id(session.agent.audioTrack?.id)
                     // 可视化能表达「设备活着」,但表达不了「轮到你说了」。
                     // 语音交互最大的困惑就是这个,用一个词解决的成本远低于用动画。
                     Text(verbatim: stateHint)

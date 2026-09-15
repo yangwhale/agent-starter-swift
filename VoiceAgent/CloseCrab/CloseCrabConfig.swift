@@ -18,6 +18,9 @@ final class CloseCrabConfig: ObservableObject {
     /// 写进去的值会被 store 规范化（丢掉已下架的、补上当前房间），所以赋值之后
     /// 立刻回读对齐一次 —— 不然界面上的勾会跟真正生效的名单对不上，
     /// 而这种不一致**看不出来**：勾是亮的，房间却没连。
+    /// 显不显示网络读数。见 `CCStore.netReadout`。
+    @Published var netReadout: Bool { didSet { CCStore.netReadout = netReadout } }
+
     @Published var onlineRooms: [String] { didSet { CCStore.onlineRooms = onlineRooms; syncOnline() } }
 
     /// 麦克风语音处理的实现。**全局一份**，每个房间的 `AudioOptions` 各自订阅它
@@ -30,6 +33,7 @@ final class CloseCrabConfig: ObservableObject {
         sharedSecret = CCStore.sharedSecret
         room = CCStore.room
         onlineRooms = CCStore.onlineRooms
+        netReadout = CCStore.netReadout
         voiceProcessing = CCStore.voiceProcessing
     }
 

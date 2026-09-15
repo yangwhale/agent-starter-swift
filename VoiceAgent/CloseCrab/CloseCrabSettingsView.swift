@@ -13,6 +13,16 @@ struct CloseCrabSettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    Toggle(isOn: $config.netReadout) {
+                        Text(verbatim: "显示网络读数")
+                    }
+                } header: {
+                    Text(verbatim: "排障")
+                } footer: {
+                    Text(verbatim: "在控制栏上方显示抖动缓冲深度和丢包率。信号差时用来分辨是「缓冲没涨上去」还是「整段断流」—— 这两种听起来一模一样，但处理方式完全相反。平时建议关掉。")
+                }
+
+                Section {
                     TextField(text: $config.baseURL, prompt: Text(verbatim: CCStore.defaultBaseURL)) {
                         Text(verbatim: "服务器")
                     }

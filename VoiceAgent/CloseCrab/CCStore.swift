@@ -31,6 +31,7 @@ nonisolated enum CCStore {
         static let rooms = "cc.rooms"
         static let room = "cc.room"
         static let onlineRooms = "cc.onlineRooms"
+        static let netReadout = "cc.netReadout"
         static let voiceProcessing = "cc.voiceProcessing"
     }
 
@@ -139,6 +140,15 @@ nonisolated enum CCStore {
             return mode
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.voiceProcessing) }
+    }
+
+    /// 显不显示网络读数（缓冲深度 / 丢包率）。
+    ///
+    /// **默认关。** 平时它是噪音 —— 正常人不需要随时盯着丢包率。
+    /// 只有「地铁上又吞字了」那一刻它才值钱，所以做成开关。
+    static var netReadout: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.netReadout) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.netReadout) }
     }
 
     // MARK: - 共享密钥（Keychain）

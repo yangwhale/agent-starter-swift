@@ -204,11 +204,16 @@ private struct CCRoomTile: View {
     @ViewBuilder
     private var face: some View {
         if ring == .speaking, let track = slot.agentAudioTrack {
-            // 和主视图用同一套语言的小尺寸版本。原来主视图 5 根柱子、
-            // 方块里 4 根，两个尺寸各说各话。
-            CCLiquidOrb(track: track, state: .speaking, tint: identity)
-                .frame(width: CC.Size.tile, height: CC.Size.tile)
-                .scaleEffect(0.42)
+            // 跟中间那块同一个组件的小尺寸版本。**`.id` 不能省** ——
+            // 组件在 init 里捕获 track，不给新身份就永远绑在旧的（或 nil）上，
+            // 表现就是「方块里那个绿色小框框不跳了」。
+            BarAudioVisualizer(audioTrack: track,
+                               barColor: identity,
+                               barCount: 4,
+                               barSpacingFactor: 0.1,
+                               barMinOpacity: 0.25)
+                .frame(width: 26, height: 22)
+                .id(track.id)
                 .transition(.opacity)
         } else {
             Text(verbatim: icons.icon(for: slot.name))

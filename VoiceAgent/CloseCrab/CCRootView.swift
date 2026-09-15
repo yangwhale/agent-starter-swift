@@ -85,6 +85,8 @@ struct CCRootView: View {
 private struct CCShell: View {
     @ObservedObject var rooms: CCRooms
     @ObservedObject var active: CCRoomSlot
+    /// 要订阅，不能直接读 `.shared` —— 直接读拿得到值，但**开关拨了界面不会重绘**。
+    @ObservedObject private var config = CloseCrabConfig.shared
 
     /// 聊天（字幕）开关。**提到 chrome 这一层 = 跨房间共享**：
     /// 开着字幕滑到隔壁，字幕还开着。字幕是「我想看文字」这个偏好，
@@ -258,10 +260,19 @@ private struct CCShell: View {
     private func bottomBar() -> some View {
         // 两条同属一个玻璃容器：靠得近时系统会让两块玻璃的形状互相影响，
         // 出现/消失时也能互相融进融出，而不是各弹各的。
-        GlassEffectContainer(spacing: CC.Space.snug) {
-            VStack(spacing: CC.Space.snug) {
-                CCTalkBar()
-                ControlBar(chat: $chat)
+        VStack(spacing: CC.Space.tight) {
+            // 读数挂在玻璃容器**外面**：它不是控件，是仪表。
+            // 放进容器会被当成一块要参与形变的玻璃，语义不对，
+            // 而且它宽度一变就会带着说话条一起形变，很吵。
+            if config.netReadout {
+                CCNetReadout()
+            }
+
+            GlassEffectContainer(spacing: CC.Space.snug) {
+                VStack(spacing: CC.Space.snug) {
+                    CCTalkBar()
+                    ControlBar(chat: $chat)
+                }
             }
         }
         .padding(.horizontal, CC.Space.screen)
