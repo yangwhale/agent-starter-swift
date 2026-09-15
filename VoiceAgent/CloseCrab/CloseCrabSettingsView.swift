@@ -209,7 +209,10 @@ struct CloseCrabSettingsView: View {
     /// 背景那一段的说明。`auto` 要额外说清「现在是哪一段、什么时候换」——
     /// 不说的话用户看到的是一张跟自己选的选项对不上号的图。
     private var backdropFooter: String {
-        let base = "背景图不只是好看：Liquid Glass 折射的是它背后的东西，背后是一块纯色的话，所有玻璃都只是半透明灰块。"
+        // 这句「浅色模式下会淡很多」必须写出来。六张图都是暗调的，浅色模式下
+        // 要让近黑的文字活下去就得提亮，提亮就吃掉对比 —— 这是物理不是 bug。
+        // 不说的话，用户在浅色模式下看到的是「设了没反应」。
+        let base = "背景图不只是好看：Liquid Glass 折射的是它背后的东西，背后是一块纯色的话，所有玻璃都只是半透明灰块。\n六张图都是暗调的，所以浅色模式下会淡很多 —— 想看完整效果，把上面的深浅色切到「深色」，再选「深空」或「轨道」。"
         switch config.backdrop {
         case .auto:
             let now = Calendar.current.component(.hour, from: Date())

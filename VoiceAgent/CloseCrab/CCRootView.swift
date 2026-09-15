@@ -190,7 +190,10 @@ private struct CCShell: View {
                 .foregroundStyle(.fg0)
                 .padding(.horizontal, 4 * .grid)
                 .padding(.vertical, 2 * .grid)
-                .background(Capsule().fill(.bg2))
+                // 原来是 `Capsule().fill(.bg2)` —— 浅色下是一颗不透明的白药丸，
+                // 正好压在背景图最亮那一块上，看着像贴了张纸。
+                // 换成玻璃，和控制栏那排按钮同一种材质。
+                .glassEffect(.regular.interactive(), in: .capsule)
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -313,8 +316,26 @@ private struct CCShell: View {
 
     /// 窗口和颈部共用同一套描边/填充，接缝处才不会露馅。
     ///
-    /// 用调色板里的语义色而不是写死的灰：这两个都带浅色/深色两份，
-    /// 跟随系统切换时自己会翻过来。
+    /// ## 填充从「不透明白」换成了材质
+    ///
+    /// 原来是 `Color.bg2` —— 浅色模式下那是**纯白、不透明**。而这块窗口占了
+    /// 屏幕六成以上，于是加了背景图之后整屏只剩四边一圈能看见图，
+    /// 中间最大的一块还是一张白纸。Chris 装上第一版的反应是「跟之前没啥变化」，
+    /// 根因一半在这儿（另一半是那层雾压太狠，见 `CCBackdrop.scrim`）。
+    ///
+    /// **Liquid Glass 的价值在于背后有东西可折射 —— 前提是它自己得是透的。**
+    /// 一个不透明的大白块盖在背景图上，等于把折射源挡掉，剩下的玻璃
+    /// （说话条、控制栏、方块）只能折射到边角那一点点图。
+    ///
+    /// 换成 `.ultraThinMaterial`：它自带模糊和对环境色的采样，
+    /// 底下的图能透出来，同时文字仍然坐在一层材质上，可读性不靠背景买单。
+    ///
+    /// ## 为什么颈部也得跟着换，而且必须是同一个
+    ///
+    /// 颈部是把方块和窗口缝成一体的那截带子。两边材质只要有一点差别，
+    /// 接缝处就会出现一道边 —— 而那道边正好在最显眼的位置上。
+    /// 所以 `CCTileNeckView.fill` 的类型从 `Color` 放宽成 `AnyShapeStyle`，
+    /// 就是为了让它能收下同一个材质。
     private static let cardStroke = Color.separator1
-    private static let cardFill = Color.bg2
+    private static let cardFill = AnyShapeStyle(.ultraThinMaterial)
 }
