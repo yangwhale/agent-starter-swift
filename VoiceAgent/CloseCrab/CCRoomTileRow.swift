@@ -145,8 +145,8 @@ private struct CCRoomTile: View {
                 RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
                     .strokeBorder(ringColor, style: ringStroke)
                     .frame(width: CC.Size.tile, height: CC.Size.tile)
-                    .shadow(color: ring == .speaking ? identity.opacity(0.75) : .clear, radius: 14)
-                    .shadow(color: ring == .speaking ? identity.opacity(0.45) : .clear, radius: 26)
+                    .shadow(color: ring == .speaking ? .ccSpeaking.opacity(0.9) : .clear, radius: 10)
+                    .shadow(color: ring == .speaking ? .ccSpeaking.opacity(0.5) : .clear, radius: 22)
 
                 if ring == .muted {
                     // 斜杠图标，不是纯色圆点。
@@ -274,8 +274,15 @@ private struct CCRoomTile: View {
 
     private var ringColor: Color {
         switch ring {
-        // 描边只剩「未连接」在用 —— 说话改用发光、静音改用角标，
-        // 一个方块不能同时用形状喊三件事。
+        // 「正在说话」＝ 绿色描边 ＋ 同色外发光。
+        //
+        // 之前这里试过「只发光、不描边」，理由是「描边是框住，发光是发出」。
+        // 那个说法在纯色背景上成立，但背景换成实景照片之后发光糊进图里就没了 ——
+        // 而这是全屏最需要一眼看到的状态。实心描边在任何背景上都跳得出来。
+        //
+        // 颜色用绿：这是所有会议软件（Meet / Zoom / Teams / Discord）
+        // 表示「此人正在说话」的共同约定，不该在这儿自创一套。
+        case .speaking: .ccSpeaking
         case .pending: .fg4.opacity(0.6)
         default: .clear
         }
@@ -283,6 +290,7 @@ private struct CCRoomTile: View {
 
     private var ringStroke: StrokeStyle {
         switch ring {
+        case .speaking: StrokeStyle(lineWidth: 3)
         case .pending: StrokeStyle(lineWidth: 1.5, dash: [4, 3])
         // 从 3pt 收到 2.5pt。3pt 在 54 见方的方块上占比太重，
         // 六个并排时整排看着像一串警告牌。

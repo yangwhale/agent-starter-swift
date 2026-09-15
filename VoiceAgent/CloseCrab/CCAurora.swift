@@ -143,6 +143,12 @@ extension Color {
         Color(light: Color(hex: 0xFFD9EC).opacity(0.55), dark: Color(hex: 0x6E1E4A).opacity(0.70))
     }
 
+    /// 「正在说话」的绿。
+    ///
+    /// 写死一个色而不是用 `.green`：系统绿在浅色模式下偏暗、在深色模式下偏荧光，
+    /// 而这个信号要求两种模式下都是同一个「说话绿」。取值参考会议软件的通行值。
+    static let ccSpeaking = Color(light: Color(hex: 0x1DB954), dark: Color(hex: 0x32E86B))
+
     init(hex: UInt32) {
         self.init(
             .sRGB,
