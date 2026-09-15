@@ -61,6 +61,7 @@ final class CCMicPolicy: ObservableObject {
         defer { wasConnected = now }
         guard now, !wasConnected else { return }
         // 刚连上：把 SDK 替我们开的那一下按回去。
+        cancelTail()
         isHolding = false
         Task { await setMic(false) }
     }
@@ -89,27 +90,80 @@ final class CCMicPolicy: ObservableObject {
     /// 所以闭麦必须发生在 `start()` 返回之后，那是唯一能保证晚于 (3) 的时机。
     func enforceMutedAfterConnect() async {
         guard session.isConnected else { return }
+        cancelTail()
         isHolding = false
         await setMic(false)
     }
 
     // MARK: - 按住说话
 
+    /// 松手之后麦克风**还要多开这么久**。
+    ///
+    /// ## 为什么非要留这条尾巴
+    ///
+    /// 09-15 20:20 实测的服务端日志：
+    ///
+    /// ```
+    /// 20:20:04 解除静音
+    /// 20:20:05 SFU 听见有人在出声
+    /// 20:20:06 静音了            ← 说完一秒就切了
+    /// ```
+    ///
+    /// 三次按住全是这个形状，而助手**一次都没回答**。
+    ///
+    /// 原因是 Gemini Live 的轮次判断靠的是**音频流里的那段静音** ——
+    /// 「他不说了，该我了」。一说完就把轨切掉，它收到的不是静音，
+    /// 是音频**直接没了**，那一轮永远等不到收尾，于是它一直在听。
+    ///
+    /// 留 900ms 的尾巴就是把这段静音补上。代价是松手之后近一秒内的环境音
+    /// 也会进去 —— 可接受，因为那正是模型用来判断「说完了」的素材。
+    private static let releaseTailMs = 900
+
+    /// 松手之后那条还没落地的尾巴。再次按下要能把它撤回来。
+    private var releaseTask: Task<Void, Never>?
+
     /// 按住中间那片空白 → 临时开麦。
     ///
     /// **仅在当前是闭麦状态时有效**（Chris 09-14 定）：已经手动常开了就什么都不做，
     /// 否则松手会把用户手动打开的麦克风关掉 —— 那是「我明明开着的怎么没了」。
     func beginHold(isMicrophoneEnabled: Bool) {
+        // 尾巴还没落地就又按下来了（连着说两句）：麦本来就还开着，
+        // 撤掉那个关麦任务、直接接上就行。
+        //
+        // **这一支不能省。** 走下面那条的话，`isMicrophoneEnabled` 此刻是 true，
+        // guard 会直接 return，`isHolding` 停在 false —— 然后松手时 `endHold`
+        // 的 guard 也过不去，麦克风就**再也关不上了**。
+        if releaseTask != nil {
+            releaseTask?.cancel()
+            releaseTask = nil
+            isHolding = true
+            return
+        }
         guard !isHolding, !isMicrophoneEnabled, session.isConnected else { return }
         isHolding = true
         Task { await setMic(true) }
     }
 
-    /// 松手 → 回到闭麦。
+    /// 松手 → 等一小段再闭麦，给模型留出判断「说完了」的静音。
     func endHold() {
         guard isHolding else { return }
+        // 界面立刻回弹，不等尾巴 —— 按钮黏在按下态会让人以为没松开。
+        // 真正的闭麦晚 900ms，这个不一致是**故意的**：
+        // 界面反映的是「手的意图」，麦克风反映的是「模型还需要什么」。
         isHolding = false
-        Task { await setMic(false) }
+        releaseTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(Self.releaseTailMs))
+            guard !Task.isCancelled else { return }
+            await self?.setMic(false)
+            self?.releaseTask = nil
+        }
+    }
+
+    /// 把还没落地的尾巴撤掉并立刻闭麦。切房间、断线重连这种场合用 ——
+    /// 那时候留着尾巴等于把麦克风交给下一个房间。
+    private func cancelTail() {
+        releaseTask?.cancel()
+        releaseTask = nil
     }
 
     // MARK: -
