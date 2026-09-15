@@ -65,8 +65,8 @@ struct AgentView: View {
     /// （这行状态提示一直在变就是证据），可以拿它跑兜底动画。
     private var voiceBars: some View {
         CCVoiceBars(
-            track: session.agent.audioTrack,
-            isSpeaking: session.agent.agentState == .speaking,
+            tracks: session.ccBotAudioTracks,
+            isSpeaking: session.ccIsSpeaking,
             tint: CCIdentityColor.color(for: rooms.activeName),
             showsDebug: config.netReadout
         )

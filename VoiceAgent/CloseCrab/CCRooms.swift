@@ -47,14 +47,48 @@ final class CCRoomSlot: ObservableObject, Identifiable {
             .store(in: &bag)
     }
 
-    /// 这个房间的 agent 在不在说话。用语义状态，不是音量 VAD。
-    var isSpeaking: Bool {
-        if case .speaking = session.agent.agentState { return true }
-        return false
-    }
+    /// 这个房间里**会出声的那些远端参与者**。
+    ///
+    /// ## 为什么不能只看「agent」
+    ///
+    /// 一个房间里其实有**两个**会说话的东西，而且走的是完全不同的两条路：
+    ///
+    ///   语音助手   `agent-AJ_xxx`，Gemini Live 那条实时对话链路。
+    ///              它有 `lk.agent.state` 属性，`session.agent` 指的就是它。
+    ///   本体旁路   `<bot>-speaker`，bot 查完东西之后把结论念进房间的那条。
+    ///              它**没有** agent 状态 —— 它不是一个会话，就是一路音频。
+    ///
+    /// 而 `session.agent` 只认前者：SDK 的 `Room.agentParticipants` 明确过滤掉
+    /// 带 `lk.publish_on_behalf` 的参与者，而旁路那条正好带着这个属性
+    /// （服务端当初加它是为了让网页前端别把旁路误当成助手本人）。
+    ///
+    /// 结果就是 Chris 09-15 看到的：跟语音助手对话时绿框和柱子都正常，
+    /// 而 bunny / jarvis 查完东西在房间里播报时，**一点反应都没有** ——
+    /// 因为那路声音根本不在 `session.agent.audioTrack` 上。
+    ///
+    /// 这里按 `kind == .agent` 取：两条路的 token 都签了 `with_kind("agent")`，
+    /// 所以这一条同时抓得到它们俩，又不会把房间里的真人算进来
+    /// （真人说话不该让 bot 的头像亮绿框）。
+    var botParticipants: [Participant] { session.ccBotParticipants }
 
-    /// 给方块上的波形用。没连上或 agent 没上线时是 nil，波形会自己画成平的。
-    var agentAudioTrack: (any AudioTrack)? { session.agent.audioTrack }
+    /// 这个房间在不在出声。
+    ///
+    /// 两个来源取或：
+    /// - 语音助手的**语义状态**（准，而且在它开口之前就为真）
+    /// - 旁路参与者的 `isSpeaking`（服务端的活跃说话人检测，是音量驱动的）
+    ///
+    /// 语义状态优先是有道理的：它表达的是「轮到它了」，比音量早一点点，
+    /// 界面反应会显得跟手。旁路那条没有语义状态可用，只能退回音量。
+    var isSpeaking: Bool { session.ccIsSpeaking }
+
+    /// 给波形用的**全部** bot 音轨 —— 语音助手的 ＋ 旁路的。
+    ///
+    /// 返回数组不是单条：两条路可能同时有声（助手在说话时本体也播了个提示音），
+    /// 而且哪条在响是运行时才知道的。表头把它们一起量，取最大值。
+    var botAudioTracks: [any AudioTrack] { session.ccBotAudioTracks }
+
+    /// 旧名字留着：方块上的小波形只关心「有没有东西在响」，给它第一条就够。
+    var agentAudioTrack: (any AudioTrack)? { session.agent.audioTrack ?? botAudioTracks.first }
 
     /// 静音 = 把这个房间所有远端音轨的音量拧到 0。
     ///
@@ -69,6 +103,32 @@ final class CCRoomSlot: ObservableObject, Identifiable {
         Task.detached {
             for track in tracks { track.volume = muted ? 0 : 1 }
         }
+    }
+}
+
+/// 「这个房间里谁会出声」的单一定义。
+///
+/// 放在 `Session` 上而不是 `CCRoomSlot` 上，是因为**分页里的每个 `AgentView`
+/// 拿到的是自己那一页的 `Session`，拿不到对应的槽位**。从 `rooms.active` 取的话，
+/// 每一页画的都会是当前页的数据 —— 横滑过去还没切完的那一帧就穿帮了。
+///
+/// 判据是 `kind == .agent`：语音助手和本体旁路的 token 都签了
+/// `with_kind("agent")`，一条抓俩；房间里的真人是 `.standard`，不会被算进来。
+extension Session {
+    var ccBotParticipants: [Participant] {
+        room.remoteParticipants.values.filter { $0.kind == .agent }
+    }
+
+    var ccBotAudioTracks: [any AudioTrack] {
+        ccBotParticipants
+            .flatMap(\.audioTracks)
+            .compactMap { $0.track as? (any AudioTrack) }
+    }
+
+    /// 这一路在不在出声。语义状态优先，旁路退回服务端的活跃说话人检测。
+    var ccIsSpeaking: Bool {
+        if case .speaking = agent.agentState { return true }
+        return ccBotParticipants.contains(where: \.isSpeaking)
     }
 }
 

@@ -48,8 +48,16 @@ final class CCVoiceMeter: ObservableObject, AudioRenderer {
 
     let barCount: Int
 
-    /// 存 `Track` 不存 `AudioTrack`：后者是协议，没有 class 约束就不能 weak。
-    private weak var attached: Track?
+    /// 当前挂着的所有音轨。
+    ///
+    /// **是数组不是一条**：一个房间里有两个会出声的东西 —— Gemini 语音助手，
+    /// 和 bot 本体播报结论的那条旁路。哪条在响是运行时才知道的，所以两条都量，
+    /// 取最大值（见 `ingest`）。只挂 `session.agent.audioTrack` 的话，
+    /// bot 本体说话时柱子一动不动 —— 那路声音压根不在那条轨上。
+    ///
+    /// 持有的是强引用：轨那头只弱引用我们（`MulticastDelegate` 用 `NSHashTable`），
+    /// 不构成环。`detach()` 会清干净。
+    private var attached: [any AudioTrack] = []
     private var pump: Task<Void, Never>?
     /// 最近一次算出来的电平，等泵去消费。
     private var incoming: Float = 0
@@ -63,12 +71,12 @@ final class CCVoiceMeter: ObservableObject, AudioRenderer {
 
     // MARK: - 接上 / 断开
 
-    /// 换音轨时调。传 nil ＝ 只断开。
-    func attach(_ track: AudioTrack?) {
+    /// 换音轨时调。传空数组 ＝ 只断开。
+    func attach(_ tracks: [any AudioTrack]) {
         detach()
-        guard let track else { return }
-        attached = track as? Track
-        track.add(audioRenderer: self)
+        guard !tracks.isEmpty else { return }
+        attached = tracks
+        for track in tracks { track.add(audioRenderer: self) }
         frames = 0
         isFallback = false
         startPump()
@@ -77,10 +85,8 @@ final class CCVoiceMeter: ObservableObject, AudioRenderer {
     func detach() {
         pump?.cancel()
         pump = nil
-        if let attached = attached as? AudioTrack {
-            attached.remove(audioRenderer: self)
-        }
-        attached = nil
+        for track in attached { track.remove(audioRenderer: self) }
+        attached = []
         incoming = 0
     }
 
@@ -202,7 +208,9 @@ extension CCVoiceMeter {
 
 /// 金属柱状图。
 struct CCVoiceBars: View {
-    let track: (any AudioTrack)?
+    /// 房间里**所有**会出声的 bot 音轨 —— 语音助手的 ＋ 本体旁路的。
+    /// 只给一条的话，bot 查完东西播报结论时柱子不会动（那是另一条轨）。
+    let tracks: [any AudioTrack]
     let isSpeaking: Bool
     let tint: Color
     /// 排障开关打开时，在柱子底下显示收了多少帧、是不是在跑兜底。
@@ -211,19 +219,23 @@ struct CCVoiceBars: View {
     @StateObject private var meter = CCVoiceMeter(barCount: 5)
 
     /// 静止时的高度 ＝ 柱子宽度，于是是个圆点；一说话就抽成长条。
-    private let barWidth: CGFloat = 22
-    private let maxHeight: CGFloat = 190
+    /// 方块上那个小版本会把这三个都调小（见 `CCRoomTileRow`）。
+    var barWidth: CGFloat = 22
+    var spacing: CGFloat = 12
+    var maxHeight: CGFloat = 190
+    /// 辉光半径。小尺寸下要按比例收，不然一个 22pt 的波形拖着 40pt 的光晕。
+    var glow: CGFloat = 1
 
     var body: some View {
         VStack(spacing: CC.Space.snug) {
             metal
                 .mask { bars }
-                .frame(width: CGFloat(meter.barCount) * barWidth + CGFloat(meter.barCount - 1) * 12,
+                .frame(width: CGFloat(meter.barCount) * barWidth + CGFloat(meter.barCount - 1) * spacing,
                        height: maxHeight)
                 // 辉光跟着遮罩的 alpha 走，所以是从每根柱子的实际形状散出来的，
                 // 不是一个方块的外发光。
-                .shadow(color: tint.opacity(0.55), radius: 18)
-                .shadow(color: tint.opacity(0.28), radius: 40)
+                .shadow(color: tint.opacity(0.55), radius: 18 * glow)
+                .shadow(color: tint.opacity(0.28), radius: 40 * glow)
 
             if showsDebug { debugLine }
         }
@@ -231,13 +243,23 @@ struct CCVoiceBars: View {
         // 这正是 SDK 那个组件栽的地方：它在 init 里把音轨捕进 @StateObject，
         // 而 StateObject 的闭包只求值一次，第一次是 nil 就永远是 nil。
         // 我们把「挂载」从 init 里拿出来变成一个显式动作，这个坑就不存在了。
-        .onChange(of: track?.id, initial: true) { _, _ in meter.attach(track) }
+        //
+        // 盯的是**拼起来的 id 串**而不是数组本身：`[any AudioTrack]` 不是
+        // Equatable，`onChange` 收不了；而且轨的增删（本体旁路中途进房）
+        // 正是要重挂的时机，id 串能如实反映这件事。
+        .onChange(of: trackKey, initial: true) { _, _ in meter.attach(tracks) }
         .onChange(of: isSpeaking, initial: true) { _, speaking in meter.setSpeaking(speaking) }
         .onDisappear { meter.detach() }
     }
 
+    /// 挂了哪几条轨的指纹。排序过 —— 参与者字典的遍历顺序不保证稳定，
+    /// 不排的话同一批轨可能每次算出不同的串，白白重挂。
+    private var trackKey: String {
+        tracks.map(\.id).sorted().joined(separator: ",")
+    }
+
     private var bars: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: spacing) {
             ForEach(0 ..< meter.barCount, id: \.self) { index in
                 Capsule(style: .continuous)
                     .fill(.white)

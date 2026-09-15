@@ -8,8 +8,8 @@ import SwiftUI
 ///
 /// ## 方块上显示什么
 ///
-///   波形   那个房间的 agent 正在出声时会抖动 —— 用 SDK 现成的
-///          `BarAudioVisualizer`，喂它那个房间的 agent 音轨。
+///   波形   那个房间**有东西在出声**时会抖动 —— 用 `CCVoiceBars`，
+///          喂它那个房间全部 bot 音轨（语音助手的 ＋ 本体播报那条旁路的）。
 ///          **比「绿灯闪一闪」信息量大得多**：能看出说得急还是缓。
 ///   绿圈   正在说话
 ///   红圈   被我静音了（连着，但听不见）
@@ -209,17 +209,23 @@ private struct CCRoomTile: View {
     /// 常驻的动画层，白烧电，而且静止的波形看着像坏了。
     @ViewBuilder
     private var face: some View {
-        if ring == .speaking, let track = slot.agentAudioTrack {
-            // 跟中间那块同一个组件的小尺寸版本。**`.id` 不能省** ——
-            // 组件在 init 里捕获 track，不给新身份就永远绑在旧的（或 nil）上，
-            // 表现就是「方块里那个绿色小框框不跳了」。
-            BarAudioVisualizer(audioTrack: track,
-                               barColor: identity,
-                               barCount: 4,
-                               barSpacingFactor: 0.1,
-                               barMinOpacity: 0.25)
-                .frame(width: 26, height: 22)
-                .id(track.id)
+        if ring == .speaking, !slot.botAudioTracks.isEmpty {
+            // 跟中间那块**同一个组件**的小尺寸版本。
+            //
+            // 原来用的是 SDK 的 `BarAudioVisualizer` —— 换掉的原因见
+            // `CCVoiceBars` 的文档：那个组件的柱子高度只认它自己内部那份
+            // 频段数据，收不到音频时在任何状态下都只是一排等高的圆点。
+            //
+            // 而且这里必须喂**全部** bot 音轨，不能只喂 `agentAudioTrack`：
+            // bot 本体播报结论走的是另一条轨，只喂前者的话，
+            // 「bunny 查完东西在房间里说话」时这个小波形完全不动。
+            CCVoiceBars(tracks: slot.botAudioTracks,
+                        isSpeaking: true,
+                        tint: identity,
+                        barWidth: 4,
+                        spacing: 3,
+                        maxHeight: 24,
+                        glow: 0.22)
                 .transition(.opacity)
         } else {
             Text(verbatim: icons.icon(for: slot.name))
