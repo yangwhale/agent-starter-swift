@@ -178,17 +178,37 @@ extension Color {
     /// 编译期抓不到 —— 隔离推断在编译期，违反发生在 UIKit 的回调时机。
     /// （09-15 18:19 实际崩过一次，`ccSpeaking` 让方块每帧重算颜色之后必现。）
     ///
-    /// 把转换提到闭包外，闭包就只剩一次三元选择，不碰任何需要隔离的东西，
-    /// UIKit 在哪个线程回调都无所谓。顺带也不用每帧重做 `Color` → `UIColor` 转换。
+    /// ## 光把转换提到闭包外不够，必须 `@Sendable`
+    ///
+    /// 第一版修法（09-15 19:59）只把 `UIColor(light)` 挪出闭包，19:59 装机、20:02
+    /// 就以**完全相同的堆栈**又崩了一次。反汇编闭包看到断言的真实位置：
+    ///
+    ///     0x3d254  bl  _swift_task_isCurrentExecutor        ← 第 4 条指令
+    ///     0x3d288  mov w8, #0xbb                            ← 行号 187
+    ///     0x3d28c  bl  _swift_task_reportUnexpectedExecutor
+    ///
+    /// 检查在**闭包 prologue**，不在闭包体。被推成 `@MainActor` 的是闭包*类型本身*，
+    /// 所以进函数第一件事就断言——闭包体写得再干净也没用。
+    ///
+    /// `@Sendable` 是 Swift 6 里唯一能在**表达式位置**取消 actor 推断的标注，
+    /// 加上之后 prologue 里那两条 `swift_task_*` 调用直接消失。
+    /// 捕获的 `l` / `d` 必须是 `Sendable`——`UIColor` / `NSColor` 满足。
+    ///
+    /// 转换提到闭包外仍然保留：既是 `@Sendable` 的前提（避免捕获非 Sendable 的
+    /// `Color`），也省掉每帧重做一次 `Color` → `UIColor`。
     init(light: Color, dark: Color) {
         #if canImport(UIKit)
             let l = UIColor(light)
             let d = UIColor(dark)
-            self.init(uiColor: UIColor { $0.userInterfaceStyle == .dark ? d : l })
+            self.init(uiColor: UIColor { @Sendable tc in
+                tc.userInterfaceStyle == .dark ? d : l
+            })
         #else
             let l = NSColor(light)
             let d = NSColor(dark)
-            self.init(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? d : l })
+            self.init(nsColor: NSColor(name: nil) { @Sendable appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? d : l
+            })
         #endif
     }
 }
