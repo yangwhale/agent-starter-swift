@@ -20,6 +20,7 @@ struct CCRoomListView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var switchingTo: String?
     @State private var settingsPresented = false
+    @State private var diagPresented = false
 
     var body: some View {
         NavigationStack {
@@ -44,8 +45,16 @@ struct CCRoomListView: View {
             #endif
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button { settingsPresented = true } label: {
-                            Image(systemName: "gearshape")
+                        HStack(spacing: 4 * .grid) {
+                            Button { settingsPresented = true } label: {
+                                Image(systemName: "gearshape")
+                            }
+                            // 诊断入口放这儿而不是设置里：**它不是设置，是仪表。**
+                            // 埋进设置二级页的话，真出问题那一刻要点三下才看得到，
+                            // 而那正是最急的时候。
+                            Button { diagPresented = true } label: {
+                                Image(systemName: "waveform.badge.magnifyingglass")
+                            }
                         }
                         .disabled(switchingTo != nil)
                     }
@@ -56,6 +65,9 @@ struct CCRoomListView: View {
                 }
                 .sheet(isPresented: $settingsPresented) {
                     CloseCrabSettingsView()
+                }
+                .sheet(isPresented: $diagPresented) {
+                    CCDiagnosticsView()
                 }
         }
     }
