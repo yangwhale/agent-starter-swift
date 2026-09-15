@@ -121,8 +121,13 @@ struct CCNetReadout: View {
                     .foregroundStyle(.fg3)
             }
         }
-        .task(id: rooms.activeName) {
-            // 换房间要重新盯 —— 统计是**每条音轨**各自的，不换等于一直看着旧房间。
+        // 换房间要重新盯 —— 统计是**每条音轨**各自的，不换等于一直看着旧房间。
+        //
+        // `onChange(initial: true)` 而不是 `task(id:)`：`watch` 是同步的
+        // MainActor 方法，而 `task` 的闭包是 `@Sendable`、不保证继承主 actor。
+        // `onChange` 收普通同步闭包，在这个工程（默认 MainActor 隔离）下必然继承。
+        // `initial: true` 补上「第一次出现时也跑一次」，语义和 task 一样。
+        .onChange(of: rooms.activeName, initial: true) { _, _ in
             stats.watch(rooms.active?.agentAudioTrack)
         }
         .onDisappear { stats.stop() }

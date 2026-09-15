@@ -27,6 +27,20 @@ final class CloseCrabConfig: ObservableObject {
     /// 往自己那条麦克风轨上应用（见 `AudioOptions.init`）。
     @Published var voiceProcessing: VoiceProcessingMode { didSet { CCStore.voiceProcessing = voiceProcessing } }
 
+    // MARK: - 外观
+    //
+    // 这四个都是纯显示偏好，跟连接无关，所以不像 `room` 那样要回读对齐 ——
+    // 没有任何后台任务会去改它们。
+
+    /// 背景图。见 `CCBackdrop`。
+    @Published var backdrop: CCBackdropChoice { didSet { CCStore.backdrop = backdrop } }
+    /// 深浅色三档。见 `CCAppearance`。
+    @Published var appearance: CCAppearance { didSet { CCStore.appearance = appearance } }
+    /// 手势震动。见 `CCHaptics`。
+    @Published var haptics: Bool { didSet { CCStore.haptics = haptics } }
+    /// 房间名用手写体。见 `CCHandFont`。
+    @Published var handwritten: Bool { didSet { CCStore.handwritten = handwritten } }
+
     private init() {
         baseURL = CCStore.baseURL
         signalURL = CCStore.signalURL
@@ -35,6 +49,10 @@ final class CloseCrabConfig: ObservableObject {
         onlineRooms = CCStore.onlineRooms
         netReadout = CCStore.netReadout
         voiceProcessing = CCStore.voiceProcessing
+        backdrop = CCStore.backdrop
+        appearance = CCStore.appearance
+        haptics = CCStore.haptics
+        handwritten = CCStore.handwritten
     }
 
     /// 把内存里的勾选拉回跟磁盘一致。递归只会发生一次：

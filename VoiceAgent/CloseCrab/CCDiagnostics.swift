@@ -289,7 +289,9 @@ struct CCDiagnosticsView: View {
                     }
                 }
         }
-        .task(id: rooms.activeName) {
+        // 同 CCNetReadout：`start` 是同步的 MainActor 方法，走 `onChange` 而不是
+        // `task(id:)` —— 后者的闭包是 `@Sendable`，不保证继承主 actor。
+        .onChange(of: rooms.activeName, initial: true) { _, _ in
             diag.start(remote: rooms.active?.agentAudioTrack,
                        local: rooms.active?.localMedia.microphoneTrack)
         }

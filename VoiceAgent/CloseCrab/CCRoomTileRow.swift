@@ -23,6 +23,9 @@ import SwiftUI
 ///   双击   静音 / 取消静音
 ///   长按   换图标
 ///
+/// 三个都带触觉反馈（见 `CCHaptics`）。这三下经常是在地铁上、走路时做的，
+/// 眼睛不一定在屏幕上 —— 手上有没有回应决定了要不要低头确认一次。
+///
 /// 单击和双击必须用 `ExclusiveGesture` 串起来，否则 SwiftUI 会把双击的第一下
 /// 也当成单击派发，结果「切房间 + 静音」一起发生。代价是单击晚约 0.25 秒。
 struct CCRoomTileRow: View {
@@ -90,6 +93,9 @@ struct CCRoomTileRow: View {
 private struct CCRoomTile: View {
     @ObservedObject var slot: CCRoomSlot
     @ObservedObject private var icons = CCRoomIcons.shared
+    /// 只为「手写体」那个开关订阅。**不订阅的话开关拨了字不会变** ——
+    /// `CCType` 是纯函数，它不知道谁该重绘。
+    @ObservedObject private var config = CloseCrabConfig.shared
 
     let isActive: Bool
     let isConnecting: Bool
@@ -178,7 +184,7 @@ private struct CCRoomTile: View {
             .frame(width: CC.Size.tile + 4, height: CC.Size.tile + 4)
 
             Text(verbatim: slot.name)
-                .font(CC.Font.caption)
+                .font(CCType.roomName(11, hand: config.handwritten))
                 .foregroundStyle(isActive ? .fg0 : .fg3)
                 .lineLimit(1)
                 .frame(width: CC.Size.tile + 8)
@@ -217,7 +223,15 @@ private struct CCRoomTile: View {
                 .transition(.opacity)
         } else {
             Text(verbatim: icons.icon(for: slot.name))
-                .font(.system(size: icons.hasCustomIcon(slot.name) ? 26 : 20, weight: .semibold))
+                // emoji 不走手写体 —— 手写字库里没有 emoji，套上去只会被系统
+                // 逐字回退，白绕一圈。只有「没设过图标、显示首字母」那种情况
+                // 才是手写体真正的用武之地：一个手写的 J 自带笔锋和不对称，
+                // 六个并排时一眼能分开，SF 的 J 不行。
+                .font(
+                    icons.hasCustomIcon(slot.name)
+                        ? .system(size: 26, weight: .semibold)
+                        : CCType.roomInitial(20, hand: config.handwritten)
+                )
                 .foregroundStyle(.fg1)
                 .transition(.opacity)
         }
@@ -227,14 +241,27 @@ private struct CCRoomTile: View {
         let double = TapGesture(count: 2).onEnded {
             // 没连上的方块双击不该有反应 —— 静音一个没连上的房间是空动作，
             // 但红圈会亮，那就成了骗人的界面。
-            guard slot.session.isConnected else { return }
+            //
+            // 但**不能完全没反应**：方块本来就是灰的、点了也不亮，手上再没动静的话
+            // 用户只会以为自己没点准，于是原地再点两下。给一记「拒绝」的震动。
+            guard slot.session.isConnected else {
+                CCHaptics.refuse()
+                return
+            }
+            CCHaptics.toggleMute()
             onDoubleTap()
         }
         let single = TapGesture(count: 1).onEnded {
+            // 点已经选中的那个不算拒绝，是「你已经在这儿了」—— 不给震动，
+            // 免得每次误触都咯噔一下。
             guard !isActive else { return }
+            CCHaptics.switchRoom()
             onTap()
         }
-        let long = LongPressGesture(minimumDuration: 0.45).onEnded { _ in onLongPress() }
+        let long = LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+            CCHaptics.reveal()
+            onLongPress()
+        }
         // 顺序即优先级：先长按，再双击，最后单击。
         return long.exclusively(before: double.exclusively(before: single))
     }

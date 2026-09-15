@@ -12,6 +12,64 @@ struct CloseCrabSettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // 外观放最上面：这是唯一一组「想起来就会去调一下」的设置。
+                // 下面那几段（服务器、密钥、信令）是装一次就再也不碰的东西。
+                Section {
+                    Picker(selection: $config.backdrop) {
+                        ForEach(CCBackdropChoice.allCases) { choice in
+                            Text(verbatim: choice.label).tag(choice)
+                        }
+                    } label: {
+                        Text(verbatim: "背景")
+                    }
+                    #if os(iOS)
+                    .pickerStyle(.menu)
+                    #endif
+
+                    Picker(selection: $config.appearance) {
+                        ForEach(CCAppearance.allCases) { mode in
+                            Text(verbatim: mode.label).tag(mode)
+                        }
+                    } label: {
+                        Text(verbatim: "深浅色")
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text(verbatim: "外观")
+                } footer: {
+                    Text(verbatim: backdropFooter)
+                }
+
+                Section {
+                    Toggle(isOn: $config.handwritten) {
+                        Text(verbatim: "房间名用手写体")
+                    }
+                    .disabled(!CCHandFont.isAvailable)
+
+                    #if os(iOS)
+                        Toggle(isOn: $config.haptics) {
+                            Text(verbatim: "手势震动")
+                        }
+                    #endif
+                } header: {
+                    Text(verbatim: "细节")
+                } footer: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if CCHandFont.isAvailable {
+                            Text(verbatim: "手写体只作用在房间名和「没设过图标时显示的首字母」上，其余一律不动。字库里没有中文，中文会自动回退到系统字。")
+                        } else {
+                            // 字体没装上时**必须说出来**：Font.custom 找不到字体
+                            // 不会报错，会安静地退回系统字。不说的话用户看到的是
+                            // 一个拨了没反应的开关，只会以为是 app 坏了。
+                            Text(verbatim: "手写体没能加载：\(CCHandFont.lastNote)")
+                                .foregroundStyle(.orange)
+                        }
+                        #if os(iOS)
+                            Text(verbatim: "震动：切房间轻轻一下，静音重一点，长按换图标是软的一下；双击一个还没连上的方块会给一记「不行」。")
+                        #endif
+                    }
+                }
+
                 Section {
                     Toggle(isOn: $config.netReadout) {
                         Text(verbatim: "显示网络读数")
@@ -145,6 +203,21 @@ struct CloseCrabSettingsView: View {
                         Button { dismiss() } label: { Text(verbatim: "完成") }
                     }
                 }
+        }
+    }
+
+    /// 背景那一段的说明。`auto` 要额外说清「现在是哪一段、什么时候换」——
+    /// 不说的话用户看到的是一张跟自己选的选项对不上号的图。
+    private var backdropFooter: String {
+        let base = "背景图不只是好看：Liquid Glass 折射的是它背后的东西，背后是一块纯色的话，所有玻璃都只是半透明灰块。"
+        switch config.backdrop {
+        case .auto:
+            let now = Calendar.current.component(.hour, from: Date())
+            return base + "\n现在跟着时间走，这会儿是「\(CCSky.phase(hour: now).label)」。切换点是 05:00 / 08:00 / 16:30 / 19:30 —— 固定时钟，不算真实日出，那样要定位权限。"
+        case .off:
+            return base + "\n现在关着，退回原来那层极光。省一点内存，但玻璃会明显平一些。"
+        default:
+            return base + "\n现在锁定在「\(config.backdrop.label)」，不随时间变。"
         }
     }
 

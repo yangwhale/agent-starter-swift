@@ -33,6 +33,11 @@ nonisolated enum CCStore {
         static let onlineRooms = "cc.onlineRooms"
         static let netReadout = "cc.netReadout"
         static let voiceProcessing = "cc.voiceProcessing"
+        static let backdrop = "cc.backdrop"
+        static let appearance = "cc.appearance"
+        /// **存的是「关掉了吗」，不是「开着吗」** —— 见 `CCStore.haptics` 的注释。
+        static let hapticsOff = "cc.haptics.off"
+        static let handwritten = "cc.handwritten"
     }
 
     private static let keychainService = "com.higcp.closecrab.voice"
@@ -149,6 +154,50 @@ nonisolated enum CCStore {
     static var netReadout: Bool {
         get { UserDefaults.standard.bool(forKey: Key.netReadout) }
         set { UserDefaults.standard.set(newValue, forKey: Key.netReadout) }
+    }
+
+    // MARK: - 外观
+
+    /// 背景用哪张图。默认 `.auto`（跟着时钟走四段天色）。
+    ///
+    /// 存 rawValue 字符串而不是下标：加一张图、调一次顺序都不会让老用户
+    /// 存的值指到别的地方去。读不出来就退回默认，不崩。
+    static var backdrop: CCBackdropChoice {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.backdrop),
+                  let value = CCBackdropChoice(rawValue: raw)
+            else { return .auto }
+            return value
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.backdrop) }
+    }
+
+    /// 深浅色。默认跟随系统。
+    static var appearance: CCAppearance {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.appearance),
+                  let value = CCAppearance(rawValue: raw)
+            else { return .system }
+            return value
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.appearance) }
+    }
+
+    /// 手势要不要震动。**默认开。**
+    ///
+    /// `UserDefaults.bool` 在没存过时返回 `false`，所以不能直接读 ——
+    /// 那样默认值就成了「关」。存一个反过来的键（"关掉了吗"）是最省事的写法：
+    /// 没存过 ＝ 没关过 ＝ 开着。
+    static var haptics: Bool {
+        get { !UserDefaults.standard.bool(forKey: Key.hapticsOff) }
+        set { UserDefaults.standard.set(!newValue, forKey: Key.hapticsOff) }
+    }
+
+    /// 房间名和首字母用不用手写体。**默认关** ——
+    /// 这是个审美选择，不是功能，不该替人做主。
+    static var handwritten: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.handwritten) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.handwritten) }
     }
 
     // MARK: - 共享密钥（Keychain）

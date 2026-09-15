@@ -48,10 +48,10 @@ struct CCRootView: View {
         }
         .environmentObject(rooms)
         .environment(\.namespace, namespace)
-        // 极光垫在最底下。它是 Liquid Glass 的折射源 —— 没有它,
-        // 上面所有玻璃都只是半透明灰块。详见 CCAuroraBackground。
+        // 背景垫在最底下。它是 Liquid Glass 的折射源 —— 没有它,
+        // 上面所有玻璃都只是半透明灰块。详见 CCBackdrop。
         .background {
-            CCAuroraBackground(tint: rooms.active.map { CCIdentityColor.color(for: $0.name) })
+            CCBackdrop(tint: rooms.active.map { CCIdentityColor.color(for: $0.name) })
         }
     }
 
@@ -112,6 +112,14 @@ private struct CCShell: View {
         .environmentObject(active.micPolicy)
         .animation(.default, value: active.session.isConnected)
         .animation(.default, value: chat)
+        // 预热 Taptic Engine。不热身的话第一下手势会明显迟半拍 ——
+        // 而第一下恰恰是「这 app 有没有震动」的全部印象。
+        //
+        // 用 `onAppear` 不用 `task`：要叫的是个**同步**的 MainActor 方法。
+        // `task` 的闭包是 `@Sendable` 的，在里面直接同步调 MainActor 方法
+        // 在 Swift 6 下未必过得了；`onAppear` 收的是普通同步闭包，
+        // 在这个工程（默认 MainActor 隔离）下必然继承主 actor。
+        .onAppear { CCHaptics.warmUp() }
         #if os(iOS)
         .sensoryFeedback(.impact, trigger: active.session.isConnected)
         #endif
@@ -174,7 +182,10 @@ private struct CCShell: View {
                     Image(systemName: "line.3.horizontal")
                         .font(.system(size: 15, weight: .medium))
                     Text(verbatim: rooms.activeName)
-                        .font(.system(size: 15, weight: .medium))
+                        // 手写体开着时这里也换 —— 房间名在界面上出现三处
+                        // （房间条、方块底下、抽屉里），前两处是同一个东西的
+                        // 两个位置，字不一样会看着像两个 app 拼起来的。
+                        .font(CCType.roomBar(15, hand: config.handwritten))
                 }
                 .foregroundStyle(.fg0)
                 .padding(.horizontal, 4 * .grid)

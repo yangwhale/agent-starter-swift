@@ -8,5 +8,12 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- 手写体。Xcode 的资源拷贝会把 Resources/Fonts/ 里的文件打平到包根目录，
+	     所以这里写文件名不写路径。万一某个 Xcode 版本保留了子目录，
+	     CCHandFont.bootstrap() 会在运行时自己找到并注册，不会静默失效。 -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>PatrickHand-Regular.ttf</string>
+	</array>
 </dict>
 </plist>

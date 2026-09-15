@@ -22,20 +22,36 @@ struct CCAuroraBackground: View {
     /// 换助理不只是内容换了,环境的光也变了。
     var tint: Color?
 
+    /// 画不画最底下那层 `Color.bg1`。
+    ///
+    /// **`CCBackdrop` 在它下面垫了一张图时必须传 `false`** ——
+    /// `bg1` 是不透明的,画了就等于把图整个盖掉,而症状是「背景图设了没反应」。
+    var showsBase: Bool = true
+
+    /// 整体强度,0–1。有背景图时压到 0.4 出头:
+    /// 两层都开满会互相打架,出来一片浑浊的紫。
+    var intensity: Double = 1
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var drift = false
 
     var body: some View {
         ZStack {
-            Color.bg1
+            if showsBase { Color.bg1 }
 
-            blob(.auroraViolet, size: 1.15, x: -0.38, y: -0.34, phase: 0)
-            blob(.auroraTeal, size: 0.95, x: 0.42, y: -0.08, phase: 1)
-            blob(.auroraMagenta, size: 1.05, x: -0.18, y: 0.40, phase: 2)
+            Group {
+                blob(.auroraViolet, size: 1.15, x: -0.38, y: -0.34, phase: 0)
+                blob(.auroraTeal, size: 0.95, x: 0.42, y: -0.08, phase: 1)
+                blob(.auroraMagenta, size: 1.05, x: -0.18, y: 0.40, phase: 2)
+            }
+            .opacity(intensity)
 
             if let tint {
                 // 当前 bot 的身份色渗进环境里。压得很低(0.16)——
                 // 它是「氛围」不是「主题皮肤」,浓了就变成花屏。
+                //
+                // 身份色**不跟着 intensity 一起压**:它承担的是「现在在跟谁说话」
+                // 这条信息,不是装饰。有图的时候环境更花,反而更需要它站得住。
                 RadialGradient(
                     colors: [tint.opacity(0.16), .clear],
                     center: .init(x: 0.5, y: 0.32),
