@@ -336,6 +336,14 @@ private struct CCShell: View {
     /// 接缝处就会出现一道边 —— 而那道边正好在最显眼的位置上。
     /// 所以 `CCTileNeckView.fill` 的类型从 `Color` 放宽成 `AnyShapeStyle`，
     /// 就是为了让它能收下同一个材质。
+    /// ## 为什么还要再压一次透明度
+    ///
+    /// `.ultraThinMaterial` 已经是系统最薄的材质了，但它仍然会往里掺一层
+    /// 自适应底色 —— 浅色模式下那就是一大块乳白，背景图透过来只剩个色调。
+    /// 系统材质没有比它更薄的档，所以只能自己再乘一个透明度。
+    ///
+    /// 0.62 是在「还能当文字衬底」和「能看出背后是什么」之间取的。
+    /// 真机上觉得字糊就往上调，觉得还是太闷就往下调，**只有这一个数**。
     private static let cardStroke = Color.separator1
-    private static let cardFill = AnyShapeStyle(.ultraThinMaterial)
+    private static let cardFill = AnyShapeStyle(.ultraThinMaterial.opacity(0.62))
 }

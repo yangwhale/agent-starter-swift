@@ -57,7 +57,12 @@ struct ControlBar: View {
             // 一整条就是一块玻璃，按钮本身不再各带背景 —— 这是系统标签栏
             // 和 App Store 底栏的做法。原来那套「描边 + 实心底 + 投影」
             // 是 Liquid Glass 之前的语言，摆在 iOS 26 上一眼是上个时代的。
-            .glassEffect(.regular, in: .cc(CC.Radius.bar))
+            // `.clear` 不是 `.regular`：后者会往玻璃里掺一层自适应的底色，
+            // 保证任何背景下文字都读得出来 —— 代价是背后那张图基本透不过来，
+            // 看着就是一条浅灰长条。`.clear` 是 Apple 专门给「背后是图片/视频」
+            // 的场景准备的变体，几乎只剩折射和边缘高光。
+            // 我们现在背后是整张背景图，正是它的适用场景。
+            .glassEffect(.clear, in: .cc(CC.Radius.bar))
         #endif
     }
 

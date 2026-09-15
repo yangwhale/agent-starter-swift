@@ -75,13 +75,19 @@ struct CCTalkBar: View {
     /// 之前这里是一圈虚线框。虚线在 iOS 上有固定语义 —— 空占位、拖放目标、
     /// 未完成 —— 唯独不表示「可以按」。一个最主要的操作长得像占位符，
     /// 是这版界面最刺眼的一处。
+    /// 待机那一档用 `.clear`，两个「开着麦」的状态仍然用 `.regular`。
+    ///
+    /// `.clear` 几乎只剩折射和边缘高光，背后的图能透过来 —— 这是这一条
+    /// 大部分时间的样子，也是 Chris 说「玻璃效果不明显」指的那块。
+    /// 但染色必须有底：`.clear.tint(.green)` 在亮背景上会淡到看不出，
+    /// 而「麦还开着」是个漏了会尴尬的状态，不能为了好看牺牲它。
     private var glass: Glass {
         if mic.isHolding {
             .regular.tint(.green).interactive()
         } else if isAlwaysOn {
             .regular.tint(.green.opacity(0.5)).interactive()
         } else {
-            .regular.interactive()
+            .clear.interactive()
         }
     }
 

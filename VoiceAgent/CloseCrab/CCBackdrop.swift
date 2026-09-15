@@ -113,9 +113,12 @@ struct CCBackdrop: View {
     /// 这一点在设置页的说明里也写了，免得又被当成「设了没反应」。
     private var scrim: some View {
         LinearGradient(
+            // 第三版。第一版 0.84/0.68/0.88 等于没加图，第二版 0.66/0.38/0.70
+            // 还是闷。现在窗口自己也透了（`CCShell.cardFill` 乘了 0.62），
+            // 文字的衬底有人负责，这一层可以再让一步。
             colors: scheme == .dark
-                ? [.black.opacity(0.40), .black.opacity(0.10), .black.opacity(0.52)]
-                : [.white.opacity(0.66), .white.opacity(0.38), .white.opacity(0.70)],
+                ? [.black.opacity(0.34), .black.opacity(0.06), .black.opacity(0.46)]
+                : [.white.opacity(0.56), .white.opacity(0.24), .white.opacity(0.62)],
             startPoint: .top,
             endPoint: .bottom
         )
