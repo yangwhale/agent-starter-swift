@@ -159,11 +159,36 @@ extension Color {
     }
 
     /// 明暗两份手写色。语义色都在 Assets 里,这个只给上面那几团光用。
+    ///
+    /// ## 两个 UIColor 必须在闭包外面就算好
+    ///
+    /// 动态 provider 闭包是 **UIKit 在需要解析颜色时才回调**的，而 SwiftUI 的
+    /// `AsyncRenderer` 会在**后台线程**上跑 `ShapeStyleResolver.updateValue()`。
+    ///
+    /// 工程开了 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`，闭包不标注就被隐式推成
+    /// `@MainActor`；等 UIKit 在非主线程调它，`swift_task_checkIsolatedSwift` 发现
+    /// 「声称 MainActor 却不在主队列」，直接 `EXC_BREAKPOINT`：
+    ///
+    ///     0  _dispatch_assert_queue_fail
+    ///     3  _swift_task_checkIsolatedSwift
+    ///     5  closure #1 in Color.init(light:dark:)     ← 这里
+    ///     7  -[UIDynamicProviderColor _resolvedColorWithTraitCollection:]
+    ///    22  ViewGraph.updateOutputsAsync(at:)
+    ///
+    /// 编译期抓不到 —— 隔离推断在编译期，违反发生在 UIKit 的回调时机。
+    /// （09-15 18:19 实际崩过一次，`ccSpeaking` 让方块每帧重算颜色之后必现。）
+    ///
+    /// 把转换提到闭包外，闭包就只剩一次三元选择，不碰任何需要隔离的东西，
+    /// UIKit 在哪个线程回调都无所谓。顺带也不用每帧重做 `Color` → `UIColor` 转换。
     init(light: Color, dark: Color) {
         #if canImport(UIKit)
-            self.init(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light) })
+            let l = UIColor(light)
+            let d = UIColor(dark)
+            self.init(uiColor: UIColor { $0.userInterfaceStyle == .dark ? d : l })
         #else
-            self.init(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(dark) : NSColor(light) })
+            let l = NSColor(light)
+            let d = NSColor(dark)
+            self.init(nsColor: NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? d : l })
         #endif
     }
 }
