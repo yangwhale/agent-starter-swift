@@ -295,20 +295,43 @@ private struct CCShell: View {
 
     // MARK: -
 
+    /// 错误条。
+    ///
+    /// ## 两个坑，14:22 那张截图上同时中了
+    ///
+    /// **一、它盖在柱状图正中间。** 原来整组挂在 `ZStack` 里不给对齐，
+    /// 默认居中 —— 而屏幕正中间正好是可视化那块。一条「连接超时」把
+    /// 唯一在动的东西整个遮住，人会以为界面死了。挪到顶上去。
+    ///
+    /// **二、连接恢复了它还赖着不走。** `session.error` 是粘性的，只有点叉才消。
+    /// 于是一次瞬时的连接超时（同时连四个房间，其中一个慢了）会在屏幕上
+    /// 留一条红色的「Connection failed」，而那个房间其实早就连上了 ——
+    /// 截图里 jarvis 的方块是亮的、状态写着「在听,说吧」，红条却还在。
+    ///
+    /// 修法是：**连上了就自动把连接类的错误清掉**。判据用「现在连着」
+    /// 而不是「过了多久」—— 后者只是把问题推迟，前者是问题本身没了。
+    ///
+    /// 媒体错误（麦克风拿不到）不自动清：那个不会自己好。
     @ViewBuilder
     private func errors() -> some View {
         #if !os(visionOS)
-            if let error = active.session.error {
-                ErrorView(error: error) { active.session.dismissError() }
-            }
+            VStack(spacing: CC.Space.tight) {
+                if let error = active.session.error, !active.session.isConnected {
+                    ErrorView(error: error, room: active.name) { active.session.dismissError() }
+                }
 
-            if let agentError = active.session.agent.error {
-                ErrorView(error: agentError) { Task { await active.session.end() }}
-            }
+                if let agentError = active.session.agent.error, !active.session.isConnected {
+                    ErrorView(error: agentError, room: active.name) { Task { await active.session.end() }}
+                }
 
-            if let mediaError = active.localMedia.error {
-                ErrorView(error: mediaError) { active.localMedia.dismissError() }
+                if let mediaError = active.localMedia.error {
+                    ErrorView(error: mediaError) { active.localMedia.dismissError() }
+                }
             }
+            .frame(maxHeight: .infinity, alignment: .top)
+            // 连上那一刻红条要滑走，不要「啪」地消失 —— 突然消失会让人
+            // 怀疑自己看错了，滑走才读得出「刚才那个问题解决了」。
+            .animation(CC.Motion.snap, value: active.session.isConnected)
         #endif
     }
 
