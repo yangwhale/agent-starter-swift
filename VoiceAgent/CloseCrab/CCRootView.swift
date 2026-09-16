@@ -222,6 +222,9 @@ private struct CCShell: View {
                 RoundedRectangle(cornerRadius: CC.Radius.card, style: .continuous)
                     .strokeBorder(Self.cardStroke, lineWidth: 1.5)
             )
+            // iPad 上限宽居中，iPhone 上比屏还宽所以是空操作。见 CC.Size.contentMax。
+            .frame(maxWidth: CC.Size.contentMax)
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, CC.Space.screen)
             .padding(.bottom, CC.Space.snug)
     }
@@ -289,6 +292,8 @@ private struct CCShell: View {
                 }
             }
         }
+        .frame(maxWidth: CC.Size.contentMax)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, CC.Space.screen)
         .padding(.bottom, CC.Space.tight)
     }
