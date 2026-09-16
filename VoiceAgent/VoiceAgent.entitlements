@@ -6,5 +6,23 @@
 	<array>
 		<string>group.com.higcp.closecrab.voice</string>
 	</array>
+	<!--
+	  下面两条是**给 macOS 用的**，iOS 会直接忽略。
+
+	  工程开了 ENABLE_APP_SANDBOX = YES。macOS 沙箱里的 app 默认既不能连外网、
+	  也拿不到麦克风 —— 而这两样正好是这个 app 的全部。缺了它们编译过、
+	  签名过，**跑起来是个连不上也听不见的空壳**，而且不会有像样的报错：
+	  网络那条表现成连接超时，麦克风那条表现成一直静音。
+	  两个症状都指不到「少了个 entitlement」。
+
+	  iOS 侧不受影响：iOS 本来就是全局沙箱、用的是另一套权限模型
+	  （麦克风走 NSMicrophoneUsageDescription，已在
+	  INFOPLIST_KEY_NSMicrophoneUsageDescription 配了），
+	  `com.apple.security.*` 这一族在 iOS 上是无效键，不参与签名校验。
+	-->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
 </dict>
 </plist>
