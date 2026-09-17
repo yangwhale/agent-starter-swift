@@ -65,7 +65,7 @@ struct CCRootView: View {
                 hotkey.bind(
                     micPolicy: { [weak rooms] in rooms?.active?.micPolicy },
                     isMicOn: { [weak rooms] in
-                        rooms?.active?.session.localMedia.isMicrophoneEnabled ?? false
+                        rooms?.active?.localMedia.isMicrophoneEnabled ?? false
                     }
                 )
                 hotkey.setKey(CloseCrabConfig.shared.pushToTalkKey)

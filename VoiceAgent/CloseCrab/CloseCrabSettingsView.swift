@@ -44,7 +44,7 @@ struct CloseCrabSettingsView: View {
                             let hotkey = macHotkey
                             Text(verbatim: hotkey.statusText)
                                 .font(.footnote)
-                                .foregroundStyle(hotkey.isTrusted ? .secondary : .orange)
+                                .foregroundStyle(hotkey.isTrusted ? Color.secondary : Color.orange)
                             if !hotkey.isTrusted {
                                 Button("去系统设置里授权…") {
                                     hotkey.requestTrust()
