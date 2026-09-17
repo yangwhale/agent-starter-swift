@@ -70,6 +70,19 @@ struct CCRosterRow: View {
         .accessibilityLabel(Text(verbatim: "房间成员"))
     }
 
+    /// `cc.avatar.state` 是**房间级**的一条信息，但它挂在写它的那个参与者身上。
+    ///
+    /// ⚠️ 写它的是谁**会变**：曾经是语音助手，2026-09-18 起是 bot 的播报旁路。
+    /// 所以不要去某个固定角色身上找 —— 那次改归属之后，「数字人」牌子上的
+    /// 状态就一直是空的（我去数字人自己身上找了，而它从来不写这个键）。
+    /// 全房间扫一遍，谁写了就用谁的。
+    private func avatarState() -> String? {
+        for p in session.room.remoteParticipants.values {
+            if let v = p.attributes[CCAvatarAttr.state], !v.isEmpty { return v }
+        }
+        return session.room.localParticipant.attributes[CCAvatarAttr.state]
+    }
+
     private func roster() -> [CCRosterMember] {
         var out: [CCRosterMember] = []
         let local = session.room.localParticipant
@@ -77,8 +90,9 @@ struct CCRosterRow: View {
             id: local.identity?.stringValue ?? "me",
             role: .me, title: "我", speaking: local.isSpeaking, detail: nil))
         // 排序按角色，不按加入顺序 —— 顺序稳定，眼睛才不用每次重新找。
+        let state = avatarState()
         out.append(contentsOf: session.room.remoteParticipants.values
-            .map(CCRosterMember.init(participant:))
+            .map { CCRosterMember(participant: $0, avatarState: state) }
             .sorted { $0.role.rank < $1.role.rank })
         return out
     }
@@ -139,7 +153,7 @@ struct CCRosterMember: Identifiable {
         self.detail = detail
     }
 
-    init(participant: Participant) {
+    init(participant: Participant, avatarState: String? = nil) {
         let attrs = participant.attributes
         let ident = participant.identity?.stringValue ?? "?"
 
@@ -166,7 +180,8 @@ struct CCRosterMember: Identifiable {
 
         var detail: String?
         if role == .avatar {
-            detail = attrs[CCAvatarAttr.state]
+            // 状态是房间级的，由调用方扫出来传进来 —— 数字人自己不写这个键。
+            detail = avatarState
         } else if role == .assistant {
             detail = attrs["lk.agent.state"]
         }
