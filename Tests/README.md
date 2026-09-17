@@ -74,6 +74,33 @@ Python 判 `.pyc` 新旧只看源文件的 **(秒级 mtime, 字节数)**。
 它们防的是**死循环**和**到点不换** —— 这两种 bug 在单点测试里永远测不出来，
 而前者会把电烧光。
 
+## ⚠️ 默认隔离开着时，「能编过」要看是从哪个上下文编的
+
+工程设了 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`，**所有类型默认
+MainActor-isolated —— 包括 Foundation-only 文件里的裸 `enum`**。
+而 `main.swift` 的顶层代码本身也在 MainActor 上，所以测试里的每一条断言
+都是在隔离内读的：**少标 `nonisolated` 这类错，在这个测试台上永远不会现形。**
+
+2026-09-17 实际踩到：三个属性常量要给一个 `nonisolated` 的 delegate 回调读
+（`RoomDelegate` 是 `@objc` + `Sendable`，回调不能是 MainActor 的）。
+本地 docker 两次全绿，CI 两次报同一条
+`can not be referenced from a nonisolated context`。
+
+⇒ **只要被测符号会被 `nonisolated` 的代码读到，测试里就必须显式造一个
+`nonisolated` 函数去读一次。** 这是**编译期断言** —— 编过就算过，
+运行时那句 `check` 只是占位：
+
+```swift
+nonisolated func readKeysFromNonisolatedContext() -> [String] {
+    [CCAvatarAttr.want, CCAvatarAttr.visible, CCAvatarAttr.state]
+}
+check("三个键能从 nonisolated 上下文读（编译过就算过）",
+      readKeysFromNonisolatedContext().count == 3)
+```
+
+这类断言同样要做变异：拿掉一个 `nonisolated`，确认 docker 里复现出
+跟 CI 逐字相同的报错。不验的话你只知道它现在能编，不知道错了会不会拦。
+
 ## 写不进这里的部分
 
 View 层（`CCBackdrop` 的图层顺序、`CCRoomTileRow` 的手势、`CCHaptics` 的实际震动）
