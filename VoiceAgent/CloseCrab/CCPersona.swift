@@ -90,9 +90,14 @@ final class CCPersona: ObservableObject {
     func upload(room: String, data: Data, contentType: String, note: String = "") {
         guard !uploading.contains(room) else { return }
         uploading.insert(room)
+        // 这个类本身是 @MainActor，`Task` 继承它的隔离 —— 所以这里**不需要**
+        // 再套一层 `MainActor.run`。套了反而会报
+        // 「result of call to 'run(resultType:body:)' is unused」：
+        // 闭包最后一句 `Set.remove` 有返回值，`run` 的泛型就被推成 `String?`，
+        // 于是整个 run 变成一个结果没人要的表达式。
         Task { [weak self] in
             await self?.put(room: room, data: data, contentType: contentType, note: note)
-            await MainActor.run { self?.uploading.remove(room) }
+            self?.uploading.remove(room)
         }
     }
 
