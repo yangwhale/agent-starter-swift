@@ -11,7 +11,14 @@
 | `CCRoomSelection.swift` | `CCRoomSelectionTests.swift` | 26 | 名单规范化的两条不变量、顺序稳定性、去重、幂等、勾选 toggle 四种情形、方块那圈颜色的优先级、多房间槽位增删计划 |
 | `CCLook.swift` | `CCLookTests.swift` | 45 | 四段天色的八个边界、越界输入折回、「还有多久换」含跨夜、背景选项解析、rawValue 往返无损 |
 | `CCMotionPolicy.swift` | `CCMotionPolicyTests.swift` | 56 | 「减弱动态效果」的 2×2 真值表、开关关闭时 decorative 不参与决策、开关打开时两档必须有区分度、幂等 |
+| `CCVisibilityPolicy.swift` | `CCVisibilityPolicyTests.swift` | 93 | 「关要慢、开要快」的不对称、宽限期边界、回前台清零不累计、inactive→background 不重置、deadline 排定时器（含已隐藏返回 nil、晚醒不为负）|
+| `CCAvatarState.swift` | `CCAvatarStateTests.swift` | 78 | 四个状态的解析（大小写/空白/未知值）、`unknown` 与 `off` 不能合并、「报错」和「显示画面」都必须同时看用户自己的开关、rawValue 与服务端逐字对齐 |
 
+> `CCVisibilityPolicy` 那条不对称最值得留意：**两个方向的代价完全不一样。**
+> 误判成「看不见」会让正在看的人画面断掉并重起（首帧 1.26 秒 + 重抢槽位），
+> 误判成「看得见」只是多渲染几秒。写成对称的（两边都等、或两边都立刻）
+> 编译一样过、日常用一样顺 —— 只有「扫一眼通知再回来」时才现形。
+>
 > `CCMotionPolicy` 被抽出来的理由值得单独说一句：它**只在用户打开了辅助功能
 > 开关时才生效**。开发、演示、给人看 demo 永远走不到那条分支 —— 写反了
 > 不会有任何人发现，直到一个真正需要它的人装上 app。
@@ -42,7 +49,22 @@ docker run --rm -v /tmp/swtest:/w -w /w swift:6.2-noble \
 测试全绿只说明「现在没红」，不说明「错了会红」。加完规则要手动改坏源码、
 确认测试真的会炸。`CCLook` 现有 10 条变异（区间开闭、边界值挪位、比较符方向、
 跨夜漏加、负数不折回、auto 不看时钟、off 也给图、秒数不参与、两档标签撞名），
-**10 杀 0 漏**。
+**10 杀 0 漏**。`CCVisibilityPolicy` 11 杀 0 漏，`CCAvatarState` 9 杀 0 漏。
+
+### 变异测试自己也会骗人：两个真踩过的坑
+
+**① 测试从源码里读阈值，会跟着变异一起缩放。**
+`CCVisibilityPolicy` 的断言全拿 `backgroundGrace` 当基准，所以把这个常量
+改成 0（等于没有去抖）时**整套测试照样全绿**。补法是单独钉住区间，
+而且钉**需求**不钉数字：「长过一次扫视（≥3 秒）」「短过白烧 GPU 的忍耐
+上限（≤30 秒）」—— 改成 5 或 15 都不该红。
+
+**② Python 那侧：等长的变异 + 同一秒内还原 = 跑的是旧字节码。**
+Python 判 `.pyc` 新旧只看源文件的 **(秒级 mtime, 字节数)**。
+`visible` → `visable` 字节数一样，还原又在同一秒内，两个判据都没变 ⇒
+执行的是**带变异的缓存**。现象可以是「源码 grep 干净但测试红」，
+更糟的是反过来 —— 变异被上一轮缓存掩盖成「杀掉了」。
+⇒ **每次改写和还原都要清 `__pycache__`**，否则整套结论不可信。
 
 特别值得留的是这两条断言：
 

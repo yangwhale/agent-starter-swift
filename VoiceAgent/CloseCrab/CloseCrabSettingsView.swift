@@ -8,6 +8,9 @@ struct CloseCrabSettingsView: View {
     @ObservedObject private var config = CloseCrabConfig.shared
     @ObservedObject private var directory = CCRoomDirectory.shared
     @Environment(\.dismiss) private var dismiss
+    /// 数字人那一路。**读单例不用 `@EnvironmentObject`** —— 后者忘了注入是
+    /// 运行时崩溃而不是编译错误，而下面那个 `#Preview` 必然注入不了。
+    @ObservedObject private var avatar = CCAvatarLink.shared
 
     #if os(macOS)
         /// 读单例。**这里用单例是对的**：底下那个全局事件监听本来就只该有一个，
@@ -113,6 +116,31 @@ struct CloseCrabSettingsView: View {
                         #if os(iOS)
                             Text(verbatim: "震动：切房间轻轻一下，静音重一点，长按换图标是软的一下；双击一个还没连上的方块会给一记「不行」。")
                         #endif
+                    }
+                }
+
+                Section {
+                    Toggle(isOn: $config.liveAvatar) {
+                        Text(verbatim: "数字人画面")
+                    }
+                } header: {
+                    Text(verbatim: "数字人")
+                } footer: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(verbatim: "开着的时候，回答会配一张会说话的脸。这只是「我想要」——真正开不开由服务端定，它还要看服务通不通、并发满没满。")
+                        // ⭐ 后台这件事必须说清楚。用户会发现「切出去画面就没了」，
+                        //    不解释的话那看起来像 bug。
+                        Text(verbatim: "切到后台或锁屏时会自动停掉画面，只留声音 —— iOS 本来就没法在锁屏上放实时视频，继续渲染只是白占服务端一路算力。回到前台会自己接回来。")
+                        if avatar.serverState.shouldSurfaceProblem(userWants: config.liveAvatar) {
+                            Text(verbatim: avatar.serverState.problemText)
+                                .foregroundStyle(.orange)
+                        }
+                        // ⚠️ 上报失败是**静默**的：服务端只是永远读不到属性，
+                        //    现象就是「开关拨了没反应」。所以必须摆出来。
+                        if let err = avatar.lastPublishError {
+                            Text(verbatim: "开关没能报给服务端：\(err)")
+                                .foregroundStyle(.orange)
+                        }
                     }
                 }
 

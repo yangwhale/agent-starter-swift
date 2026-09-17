@@ -5,7 +5,12 @@ import SwiftUI
 struct VoiceAgentApp: App {
     /// 多房间连接层。连接、本地媒体、音频选项、麦克风策略现在**每个房间各一份**，
     /// 由 `CCRoomSlot` 持有 —— 上游 starter 在这里各建一个，那是单房间时代的写法。
-    private let rooms = CCRooms()
+    private let rooms: CCRooms
+
+    /// 数字人开关的客户端这一半：上报「想要吗 / 看得见吗」，收服务端的结论。
+    /// 在这一层接线是因为它要跟着 `scenePhase` 走 —— 而 scenePhase 的
+    /// 权威来源就在这里，往下传只会让每个 View 各读一份、各判一次。
+    @StateObject private var avatar = CCAvatarLink.shared
 
     /// 深浅色三档。要订阅 —— 在设置里拨了开关得立刻翻过来。
     ///
@@ -14,7 +19,15 @@ struct VoiceAgentApp: App {
     /// 包的是单例，`wrappedValue` 那个 autoclosure 只求值一次也无所谓。
     @StateObject private var config = CloseCrabConfig.shared
 
+    /// app 在前台还是后台。**这是 `cc.client.visible` 的唯一来源** ——
+    /// 别在下层 View 里再读一遍 scenePhase 自己判，两份判断迟早会错开。
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
+        let rooms = CCRooms()
+        self.rooms = rooms
+        CCAvatarLink.shared.attach(rooms: rooms)
+
         // 手写体自己注册一次兜底。**Font.custom 找不到字体时不报错、直接退回
         // 系统字体**，所以漏打包只会表现成「开关拨了没反应」，没有任何日志。
         // 这一步顺便把结果记下来给设置页显示。
@@ -40,6 +53,9 @@ struct VoiceAgentApp: App {
                 // 文字这一路留着 —— 它同时是**字幕**：控制栏上那个聊天按钮打开的
                 // 就是转写记录，出问题时想知道「它到底听成了什么」全靠它。
                 .environment(\.textEnabled, true)
+                // 进后台不等于立刻不可见 —— 去抖在 `CCVisibilityPolicy` 里，
+                // 「关要慢、开要快」。这里只负责把原始相位喂进去。
+                .onChange(of: scenePhase) { _, phase in avatar.note(phase: phase) }
         }
         #if os(macOS)
         .defaultSize(width: 900, height: 900)

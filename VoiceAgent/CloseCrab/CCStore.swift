@@ -39,6 +39,7 @@ nonisolated enum CCStore {
         /// **存的是「关掉了吗」，不是「开着吗」** —— 见 `CCStore.haptics` 的注释。
         static let hapticsOff = "cc.haptics.off"
         static let handwritten = "cc.handwritten"
+        static let liveAvatar = "cc.liveAvatar"
     }
 
     private static let keychainService = "com.higcp.closecrab.voice"
@@ -209,6 +210,21 @@ nonisolated enum CCStore {
     static var handwritten: Bool {
         get { UserDefaults.standard.bool(forKey: Key.handwritten) }
         set { UserDefaults.standard.set(newValue, forKey: Key.handwritten) }
+    }
+
+    /// 要不要数字人画面。**默认关。**
+    ///
+    /// 默认关有两个理由，缺一个都不够：
+    ///
+    /// 1. 服务端一共 8 路 GPU 槽位。默认开的话，每个装了 app 的人一进房就
+    ///    抢一路，而多数时候他只是想听个声。
+    /// 2. 这是个「多给一点」的功能，不是修好一个缺陷。默认开等于替人做主。
+    ///
+    /// 这个值会经 `cc.avatar.want` 属性发给服务端，由它合成最终决定 ——
+    /// 见 `CCAvatarLink`。
+    static var liveAvatar: Bool {
+        get { UserDefaults.standard.bool(forKey: Key.liveAvatar) }
+        set { UserDefaults.standard.set(newValue, forKey: Key.liveAvatar) }
     }
 
     // MARK: - 共享密钥（Keychain）

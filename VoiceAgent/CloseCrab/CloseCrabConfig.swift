@@ -44,6 +44,11 @@ final class CloseCrabConfig: ObservableObject {
     /// 房间名用手写体。见 `CCHandFont`。
     @Published var handwritten: Bool { didSet { CCStore.handwritten = handwritten } }
 
+    /// 要不要数字人画面。**这只是「我想要」，不是「一定有」** ——
+    /// 最终开不开由服务端合成（还要看 app 在不在前台、网关有没有空槽），
+    /// 结果经 `cc.avatar.state` 回来。见 `CCAvatarLink`。
+    @Published var liveAvatar: Bool { didSet { CCStore.liveAvatar = liveAvatar } }
+
     private init() {
         baseURL = CCStore.baseURL
         signalURL = CCStore.signalURL
@@ -57,6 +62,7 @@ final class CloseCrabConfig: ObservableObject {
         appearance = CCStore.appearance
         haptics = CCStore.haptics
         handwritten = CCStore.handwritten
+        liveAvatar = CCStore.liveAvatar
     }
 
     /// 把内存里的勾选拉回跟磁盘一致。递归只会发生一次：
