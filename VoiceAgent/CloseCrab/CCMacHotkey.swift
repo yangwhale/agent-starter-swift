@@ -101,11 +101,32 @@
         private func micPolicy() -> CCMicPolicy? { micPolicyProvider?() }
         private func isMicOn() -> Bool { isMicOnProvider?() ?? false }
 
-        deinit {
-            // deinit 不在 MainActor 上，不能碰 @MainActor 成员；
-            // 监听句柄是 Sendable 的引用，就地摘掉即可。
+        /// 摘掉全部监听与通知订阅。
+        ///
+        /// ## 为什么不是 `deinit`
+        ///
+        /// 原来这里是个 `deinit`，注释还信誓旦旦写着「监听句柄是 Sendable 的
+        /// 引用，就地摘掉即可」—— **那句是错的**，`Any?` 不是 Sendable，
+        /// Swift 6 直接拒编：
+        /// `cannot access property 'globalMonitor' with a non-Sendable type
+        /// 'Any?' from nonisolated deinit`。
+        ///
+        /// 而且那个 `deinit` 本来就是死代码：这个类是**单例**
+        /// （`static let shared`），进程活着它就活着，deinit 永远不会跑。
+        /// 与其留一段编不过又不会执行的清理，不如给一个真能调的。
+        ///
+        /// ⚠️ 谁把这个类改成非单例，记得在销毁前调它 —— 否则每建一个实例
+        /// 就多挂一套全局监听，同一次按键会被处理多遍。
+        func stop() {
             if let g = globalMonitor { NSEvent.removeMonitor(g) }
             if let l = localMonitor { NSEvent.removeMonitor(l) }
+            globalMonitor = nil
+            localMonitor = nil
+            isGlobalActive = false
+            let nc = NotificationCenter.default
+            for o in observers { nc.removeObserver(o) }
+            NSWorkspace.shared.notificationCenter.removeObserver(self)
+            observers.removeAll()
         }
 
         // MARK: - 授权
