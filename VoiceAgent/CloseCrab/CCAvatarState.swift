@@ -81,12 +81,6 @@ public enum CCAvatarServerState: String, Sendable {
         userWants && self == .unavailable
     }
 
-    /// 这个状态下，界面上该不该腾出位置显示画面。
-    ///
-    /// 同样要求用户自己开着 —— 否则屋里别人开了，你这边会凭空冒出一块画面。
-    public func shouldShowVideo(userWants: Bool) -> Bool {
-        userWants && self == .on
-    }
 
     /// 给用户看的一句话。**只在 `shouldSurfaceProblem` 为真时才用得上**，
     /// 其余状态不该出现在界面上。

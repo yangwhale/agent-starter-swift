@@ -75,17 +75,6 @@ let surfacing = [S.on, .off, .hidden, .unavailable, .unknown]
 check("⭐ 只有 unavailable 这一种会报", surfacing == [.unavailable],
       "\(surfacing)")
 
-// MARK: - 该不该腾位置显示画面
-
-// ⭐ 同样要看自己的开关。不看的话，屋里别人开了数字人，
-//    你这边会凭空冒出一块画面 —— 而你明明关着。
-for state in [S.on, .off, .hidden, .unavailable, .unknown] {
-    check("⭐ 开关关着时 \(state) 都不显示画面", !state.shouldShowVideo(userWants: false))
-}
-let showing = [S.on, .off, .hidden, .unavailable, .unknown]
-    .filter { $0.shouldShowVideo(userWants: true) }
-check("⭐ 开着时只有 on 显示画面", showing == [.on], "\(showing)")
-
 // MARK: - 属性键名：改一个字母两边就断，而且都不报错
 
 // 对面是 closecrab/voice/avatar_policy.py 的 ATTR_WANT / ATTR_VISIBLE / ATTR_STATE。
