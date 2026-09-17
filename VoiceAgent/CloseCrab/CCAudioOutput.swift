@@ -1,6 +1,12 @@
 import AVFoundation
 import SwiftUI
-#if os(iOS) || os(visionOS) || os(tvOS)
+
+// ⚠️ **平台列表里不能有 visionOS。** 这一整块依赖 `AVRoutePickerView`，
+// 而它在 visionOS 上是 unavailable —— 原来写成
+// `os(iOS) || os(visionOS) || os(tvOS)`，visionOS 构建直接报
+// `'AVRoutePickerView' is unavailable in visionOS`。
+// visionOS 的音频路由由系统自己管，本来也不需要我们出这个按钮。
+#if os(iOS) || os(tvOS)
     import AVKit
 #endif
 
@@ -60,7 +66,7 @@ enum CCAudioOutput {
 /// `AVRoutePickerView` 本身就是一个按钮，样式基本改不动（只能调 tint）。
 /// 想要跟控制栏其余按钮长一样，唯一的办法是自己画一个好看的，
 /// 然后把它铺在上面负责接点击 —— 这是 iOS 上的标准做法，不是 hack。
-#if os(iOS) || os(visionOS) || os(tvOS)
+#if os(iOS) || os(tvOS)
     private struct RoutePickerOverlay: UIViewRepresentable {
         func makeUIView(context _: Context) -> AVRoutePickerView {
             let view = AVRoutePickerView()
@@ -86,7 +92,7 @@ struct CCAudioOutputButton: View {
 
     var body: some View {
         content
-        #if os(iOS) || os(visionOS) || os(tvOS)
+        #if os(iOS) || os(tvOS)
         // 路由变了要立刻换图标。**不能只在出现时读一次** ——
         // 摘下 AirPods 的那一刻按钮还画着耳机，是那种「看着没坏」的坏。
         .onReceive(NotificationCenter.default.publisher(
@@ -99,7 +105,7 @@ struct CCAudioOutputButton: View {
 
     @ViewBuilder
     private var content: some View {
-        #if os(iOS) || os(visionOS) || os(tvOS)
+        #if os(iOS) || os(tvOS)
             ZStack {
                 label
                 RoutePickerOverlay()

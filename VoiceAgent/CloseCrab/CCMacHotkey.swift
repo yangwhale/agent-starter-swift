@@ -56,10 +56,26 @@
             }
         }
 
-        private func isTriggerPressed(_ event: NSEvent) -> Bool {
+        private func isTriggerPressed(_ flags: NSEvent.ModifierFlags) -> Bool {
             guard let flag = machine.key.flag else { return false }
-            return Self.pressed(flag, in: event.modifierFlags)
+            return Self.pressed(flag, in: flags)
         }
+
+        /// 事件监听的共同落点。**收标量，不收 `NSEvent`。**
+        ///
+        /// ⚠️ 这不是洁癖，是 Swift 6 的硬要求：`NSEvent` 明确标了
+        /// `Sendable` 不可用，带着它从监听回调跨进 `MainActor` 是编译错误
+        /// （`conformance of 'NSEvent' to 'Sendable' is unavailable`）。
+        /// 所以在回调里就把 keyCode 和修饰位原始值取出来，只让标量过界。
+        ///
+        /// 顺带也让这一层跟 `CCPushToTalkMachine` 对齐了 —— 那个状态机本来
+        /// 就只收标量，为的是能在没有 AppKit 的机器上离线测。
+        private func handleFlagsChanged(keyCode: UInt16, rawFlags: UInt) {
+            let flags = NSEvent.ModifierFlags(rawValue: rawFlags)
+            apply(machine.onFlagsChanged(keyCode: keyCode,
+                                         optionPressed: isTriggerPressed(flags)))
+        }
+
         private var globalMonitor: Any?
         private var localMonitor: Any?
         private var observers: [NSObjectProtocol] = []
@@ -99,11 +115,23 @@
             isTrusted = AXIsProcessTrusted()
         }
 
+        /// `kAXTrustedCheckOptionPrompt` 的字面值。
+        ///
+        /// ⚠️ **不能直接引用那个常量。** 它在 C 头文件里是个 `var`，
+        /// Swift 6 严格并发据此判定「引用了共享可变状态」，直接编译失败：
+        /// `reference to var 'kAXTrustedCheckOptionPrompt' is not
+        /// concurrency-safe because it involves shared mutable state`。
+        ///
+        /// 它的字符串值是**文档化且稳定**的，所以直接写字面量 —— 这也是
+        /// Swift 6 迁移里这一类 C 全局常量的通行解法，比 `nonisolated(unsafe)`
+        /// 更诚实：我们要的本来就只是那个字符串。
+        private static let axPromptOptionKey = "AXTrustedCheckOptionPrompt"
+
         /// 弹系统授权提示。用户点了「去授权」才调 —— 不要在启动时自动弹，
         /// 那是最招人烦的行为，而且用户多半会直接关掉。
         func requestTrust() {
-            let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue()
-            isTrusted = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+            isTrusted = AXIsProcessTrustedWithOptions(
+                [Self.axPromptOptionKey: true] as CFDictionary)
             // 授权是在系统设置里点的，进程内拿不到回调 ——
             // 只能等 app 重新激活时再查一次（见 start() 里的通知订阅）。
         }
@@ -143,12 +171,11 @@
             guard isTrusted, globalMonitor == nil else { return }
             globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) {
                 [weak self] event in
+                // 标量先取出来，再进 MainActor —— 理由见 handleFlagsChanged。
+                let code = event.keyCode
+                let raw = event.modifierFlags.rawValue
                 MainActor.assumeIsolated {
-                    guard let self else { return }
-                    self.apply(self.machine.onFlagsChanged(
-                        keyCode: event.keyCode,
-                        optionPressed: self.isTriggerPressed(event)
-                    ))
+                    self?.handleFlagsChanged(keyCode: code, rawFlags: raw)
                 }
             }
             isGlobalActive = globalMonitor != nil && machine.key != .off
@@ -159,12 +186,10 @@
             guard localMonitor == nil else { return }
             localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) {
                 [weak self] event in
+                let code = event.keyCode
+                let raw = event.modifierFlags.rawValue
                 MainActor.assumeIsolated {
-                    guard let self else { return event }
-                    self.apply(self.machine.onFlagsChanged(
-                        keyCode: event.keyCode,
-                        optionPressed: self.isTriggerPressed(event)
-                    ))
+                    self?.handleFlagsChanged(keyCode: code, rawFlags: raw)
                 }
                 return event    // 不吞事件，别人还要用
             }
