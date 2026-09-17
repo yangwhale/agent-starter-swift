@@ -23,6 +23,9 @@ struct AppView: View {
         Group {
             if session.isConnected {
                 interactions()
+                    // 房间成员条挂在**这一页**的顶上，不提到 chrome 里 ——
+                    // 每页的成员不一样，跟着页面走才对得上。
+                    .overlay(alignment: .top) { CCRosterRow() }
             } else {
                 notConnected()
             }
