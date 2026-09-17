@@ -49,7 +49,7 @@ struct CCTileNeckView: View {
     /// 跟窗口用**同一个**填充。
     ///
     /// 类型是 `AnyShapeStyle` 不是 `Color`：窗口现在用的是
-    /// `.ultraThinMaterial`（这样背景图能透出来），颈部必须能收下同一个东西。
+    /// 系统材质（这样背景图能透出来），颈部必须能收下同一个东西。
     /// 两边差一点点，接缝处就会出现一道边 —— 而那道边正好在最显眼的位置。
     let fill: AnyShapeStyle
 

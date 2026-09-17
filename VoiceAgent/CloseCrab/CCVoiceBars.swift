@@ -252,7 +252,7 @@ struct CCVoiceBars: View {
                 // 辉光救不了这个：辉光是加亮，亮背景上加亮＝更看不见。
                 // 需要的是一道往下沉的暗边，把柱子从背景里抠出来。
                 .shadow(color: .black.opacity(scheme == .dark ? 0.18 : 0.34),
-                        y: 1, radius: 3)
+                        radius: 3, y: 1)
                 .shadow(color: tint.opacity(0.55), radius: 18 * glow)
                 .shadow(color: tint.opacity(0.28), radius: 40 * glow)
 
