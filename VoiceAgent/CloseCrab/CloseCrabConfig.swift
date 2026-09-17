@@ -34,6 +34,9 @@ final class CloseCrabConfig: ObservableObject {
 
     /// 背景图。见 `CCBackdrop`。
     @Published var backdrop: CCBackdropChoice { didSet { CCStore.backdrop = backdrop } }
+
+    /// macOS 按住说话的触发键。写死一个键等于替用户做了个他没同意的决定。
+    @Published var pushToTalkKey: CCPushToTalkKey { didSet { CCStore.pushToTalkKey = pushToTalkKey } }
     /// 深浅色三档。见 `CCAppearance`。
     @Published var appearance: CCAppearance { didSet { CCStore.appearance = appearance } }
     /// 手势震动。见 `CCHaptics`。
@@ -50,6 +53,7 @@ final class CloseCrabConfig: ObservableObject {
         netReadout = CCStore.netReadout
         voiceProcessing = CCStore.voiceProcessing
         backdrop = CCStore.backdrop
+        pushToTalkKey = CCStore.pushToTalkKey
         appearance = CCStore.appearance
         haptics = CCStore.haptics
         handwritten = CCStore.handwritten

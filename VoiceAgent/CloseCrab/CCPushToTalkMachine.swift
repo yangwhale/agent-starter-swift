@@ -15,16 +15,90 @@ import Foundation
 ///
 /// 这些都是纯状态机问题，抽出来就能离线测。AppKit 那层只负责把事件喂进来。
 ///
-/// ## 触发方式
+/// ## 触发键可配
 ///
-/// 默认用**右 Option 单独按住**（keyCode 61）。理由：
-/// - 不跟任何系统/应用快捷键冲突（右 Option 单独按下在 macOS 里没有默认行为）
-/// - 修饰键没有"按键重复"，天然适合按住类交互
-/// - 单手可达，不用记组合
+/// 默认右 Option，但**必须可配** —— 每个人的键盘习惯不一样，
+/// 写死一个键等于替用户做了个他没同意的决定。见 `CCPushToTalkKey`。
+
+/// 能用来做按住说话的修饰键。
+///
+/// 只收**修饰键**，不收普通字母键：修饰键没有"按键重复"，天然适合按住类交互；
+/// 普通键按住时系统会连发，还会跟输入法、快捷键打架。
+public nonisolated enum CCPushToTalkKey: String, CaseIterable, Sendable, Identifiable {
+    case rightOption, leftOption
+    case rightCommand, rightControl, rightShift
+    case fn
+    case off
+
+    public var id: String { rawValue }
+
+    /// macOS 的物理 keyCode。左右同名键的 code 不同 —— 这正是能区分左右的原因。
+    public var keyCode: UInt16? {
+        switch self {
+        case .rightOption: 61
+        case .leftOption: 58
+        case .rightCommand: 54
+        case .rightControl: 62
+        case .rightShift: 60
+        case .fn: 63
+        case .off: nil
+        }
+    }
+
+    /// 这个键对应哪一位修饰位。AppKit 那层据此判断"它现在是按下的吗"。
+    public var flag: CCModifierFlag? {
+        switch self {
+        case .rightOption, .leftOption: .option
+        case .rightCommand: .command
+        case .rightControl: .control
+        case .rightShift: .shift
+        case .fn: .function
+        case .off: nil
+        }
+    }
+
+    public var label: String {
+        switch self {
+        case .rightOption: "右 Option ⌥"
+        case .leftOption: "左 Option ⌥"
+        case .rightCommand: "右 Command ⌘"
+        case .rightControl: "右 Control ⌃"
+        case .rightShift: "右 Shift ⇧"
+        case .fn: "Fn / 地球键"
+        case .off: "关闭（只用窗口内空格）"
+        }
+    }
+
+    /// ⚠️ 左侧那几个键参与大量组合（⌥← ⌘C ⌃A …），选了容易误触发。
+    /// 界面上要把这句提示出来，别让人选完才发现。
+    public var warning: String? {
+        switch self {
+        case .leftOption: "左 Option 参与很多组合键（⌥← 等），容易误触发"
+        case .rightCommand: "⌘ 组合极多，只在确定不冲突时用"
+        case .fn: "部分键盘的 Fn 不产生事件，选了可能完全没反应"
+        default: nil
+        }
+    }
+}
+
+/// 修饰位。**不直接用 `NSEvent.ModifierFlags`** —— 那是 AppKit 的类型，
+/// 带进来这个文件就没法在 Linux 上测了。AppKit 那层负责翻译。
+public nonisolated enum CCModifierFlag: Sendable {
+    case option, command, control, shift, function
+}
+
 public nonisolated struct CCPushToTalkMachine: Sendable {
-    /// 右 Option 的 keyCode。左 Option 是 58，我们只认右边 ——
-    /// 左 Option 参与太多组合键（⌥←、⌥删除…），拿它做 PTT 会误触发。
+    /// 兼容旧调用点。新代码用 `CCPushToTalkKey.rightOption.keyCode`。
     public static let rightOptionKeyCode: UInt16 = 61
+
+    /// 当前触发键。改了要立刻收尾 —— 否则按着旧键的手会永远等不到抬起。
+    public var key: CCPushToTalkKey = .rightOption {
+        didSet {
+            guard key != oldValue else { return }
+            isHolding = false
+            lastOptionDown = false
+        }
+    }
 
     public enum Action: Equatable, Sendable {
         case begin
@@ -47,7 +121,7 @@ public nonisolated struct CCPushToTalkMachine: Sendable {
     ///   - keyCode: 事件的 keyCode。只有右 Option 会被理会。
     ///   - optionPressed: 事件修饰位里 Option 是否处于按下状态。
     public mutating func onFlagsChanged(keyCode: UInt16, optionPressed: Bool) -> Action {
-        guard keyCode == Self.rightOptionKeyCode else { return .ignore }
+        guard let want = key.keyCode, keyCode == want else { return .ignore }
         defer { lastOptionDown = optionPressed }
 
         if optionPressed, !lastOptionDown, !isHolding {

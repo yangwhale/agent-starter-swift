@@ -29,21 +29,61 @@
         @Published private(set) var isGlobalActive = false
 
         private var machine = CCPushToTalkMachine()
+
+        /// 换触发键。配置页拨了就调，**不用重挂监听** ——
+        /// 监听收的是所有 `.flagsChanged`，认哪个键是状态机的事。
+        func setKey(_ key: CCPushToTalkKey) {
+            let wasHolding = machine.isHolding
+            machine.key = key
+            // 换键时状态机自己会清 isHolding，但**麦克风得有人去关** ——
+            // 不然按着旧键的那只手松开时没人收尾，麦克风就一直开着。
+            if wasHolding { micPolicy()?.endHold() }
+            isGlobalActive = globalMonitor != nil && key != .off
+        }
+
+        /// 把我们的修饰位枚举翻成 AppKit 的。
+        ///
+        /// 这一层翻译的存在意义：`CCPushToTalkMachine` 里不能出现
+        /// `NSEvent.ModifierFlags`，否则那个文件就没法在 Linux 上测了。
+        private static func pressed(_ flag: CCModifierFlag,
+                                    in flags: NSEvent.ModifierFlags) -> Bool {
+            switch flag {
+            case .option: flags.contains(.option)
+            case .command: flags.contains(.command)
+            case .control: flags.contains(.control)
+            case .shift: flags.contains(.shift)
+            case .function: flags.contains(.function)
+            }
+        }
+
+        private func isTriggerPressed(_ event: NSEvent) -> Bool {
+            guard let flag = machine.key.flag else { return false }
+            return Self.pressed(flag, in: event.modifierFlags)
+        }
         private var globalMonitor: Any?
         private var localMonitor: Any?
         private var observers: [NSObjectProtocol] = []
 
-        /// 拿到当前活动房间的麦克风策略。房间会切，所以是闭包不是引用。
-        private let micPolicy: @MainActor () -> CCMicPolicy?
-        /// 当前麦克风是不是已经手动常开 —— `beginHold` 要据此判断是否该介入。
-        private let isMicOn: @MainActor () -> Bool
+        /// **单例**。底下那个全局事件监听只该有一个 ——
+        /// 两个实例会各自 `addGlobalMonitorForEvents`，同一次按键触发两遍。
+        static let shared = CCMacHotkey()
 
-        init(micPolicy: @escaping @MainActor () -> CCMicPolicy?,
-             isMicOn: @escaping @MainActor () -> Bool) {
-            self.micPolicy = micPolicy
-            self.isMicOn = isMicOn
-            refreshTrust()
+        /// 拿到当前活动房间的麦克风策略。房间会切，所以是闭包不是引用。
+        private var micPolicyProvider: (@MainActor () -> CCMicPolicy?)?
+        /// 当前麦克风是不是已经手动常开 —— `beginHold` 要据此判断是否该介入。
+        private var isMicOnProvider: (@MainActor () -> Bool)?
+
+        private init() { refreshTrust() }
+
+        /// 根视图启动时把房间层接上。分两步是因为单例先于房间层存在。
+        func bind(micPolicy: @escaping @MainActor () -> CCMicPolicy?,
+                  isMicOn: @escaping @MainActor () -> Bool) {
+            micPolicyProvider = micPolicy
+            isMicOnProvider = isMicOn
         }
+
+        private func micPolicy() -> CCMicPolicy? { micPolicyProvider?() }
+        private func isMicOn() -> Bool { isMicOnProvider?() ?? false }
 
         deinit {
             // deinit 不在 MainActor 上，不能碰 @MainActor 成员；
@@ -107,11 +147,11 @@
                     guard let self else { return }
                     self.apply(self.machine.onFlagsChanged(
                         keyCode: event.keyCode,
-                        optionPressed: event.modifierFlags.contains(.option)
+                        optionPressed: self.isTriggerPressed(event)
                     ))
                 }
             }
-            isGlobalActive = globalMonitor != nil
+            isGlobalActive = globalMonitor != nil && machine.key != .off
         }
 
         /// 窗口聚焦时也要能用 —— 全局监听**不会**投递给自己这个 app 的事件。
@@ -123,7 +163,7 @@
                     guard let self else { return event }
                     self.apply(self.machine.onFlagsChanged(
                         keyCode: event.keyCode,
-                        optionPressed: event.modifierFlags.contains(.option)
+                        optionPressed: self.isTriggerPressed(event)
                     ))
                 }
                 return event    // 不吞事件，别人还要用
@@ -154,10 +194,13 @@
         /// **必须显示**：没授权时全局热键静默不工作，用户只会觉得"坏了"，
         /// 而真相只是没点那个系统开关。静默失败比报错难查十倍。
         var statusText: String {
+            if machine.key == .off { return "全局按键已关闭 —— 窗口内按住空格说话" }
             if !isTrusted { return "未授权 —— 全局按键不可用，窗口内可用空格" }
             if !isGlobalActive { return "已授权但监听没挂上（重启 app 试试）" }
-            return "全局按键已就绪：按住右 Option 说话"
+            return "已就绪：按住\(machine.key.label)说话"
         }
+
+        var currentKey: CCPushToTalkKey { machine.key }
 
         /// 打开系统设置里对应那一页。自己跳过去，别让用户翻五层菜单。
         func openAccessibilitySettings() {

@@ -34,6 +34,7 @@ nonisolated enum CCStore {
         static let netReadout = "cc.netReadout"
         static let voiceProcessing = "cc.voiceProcessing"
         static let backdrop = "cc.backdrop"
+        static let pushToTalkKey = "cc.pttKey"
         static let appearance = "cc.appearance"
         /// **存的是「关掉了吗」，不是「开着吗」** —— 见 `CCStore.haptics` 的注释。
         static let hapticsOff = "cc.haptics.off"
@@ -162,6 +163,16 @@ nonisolated enum CCStore {
     ///
     /// 存 rawValue 字符串而不是下标：加一张图、调一次顺序都不会让老用户
     /// 存的值指到别的地方去。读不出来就退回默认，不崩。
+    /// macOS 按住说话的触发键。iOS 上没有键盘热键这回事，存了也不读。
+    static var pushToTalkKey: CCPushToTalkKey {
+        get {
+            guard let raw = UserDefaults.standard.string(forKey: Key.pushToTalkKey),
+                  let v = CCPushToTalkKey(rawValue: raw) else { return .rightOption }
+            return v
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.pushToTalkKey) }
+    }
+
     static var backdrop: CCBackdropChoice {
         get {
             guard let raw = UserDefaults.standard.string(forKey: Key.backdrop),

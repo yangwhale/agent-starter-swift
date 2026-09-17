@@ -9,11 +9,57 @@ struct CloseCrabSettingsView: View {
     @ObservedObject private var directory = CCRoomDirectory.shared
     @Environment(\.dismiss) private var dismiss
 
+    #if os(macOS)
+        /// 读单例。**这里用单例是对的**：底下那个全局事件监听本来就只该有一个，
+        /// 两个实例会重复注册、同一次按键触发两遍。
+        /// 而设置页是 sheet（关掉就没了），从它去持有生命周期更长的东西才是错的。
+        @ObservedObject private var macHotkey = CCMacHotkey.shared
+    #endif
+
     var body: some View {
         NavigationStack {
             Form {
                 // 外观放最上面：这是唯一一组「想起来就会去调一下」的设置。
                 // 下面那几段（服务器、密钥、信令）是装一次就再也不碰的东西。
+                #if os(macOS)
+                    Section {
+                        Picker(selection: $config.pushToTalkKey) {
+                            ForEach(CCPushToTalkKey.allCases) { key in
+                                Text(verbatim: key.label).tag(key)
+                            }
+                        } label: {
+                            Text(verbatim: "按住说话")
+                        }
+
+                        if let warning = config.pushToTalkKey.warning {
+                            Label(warning, systemImage: "exclamationmark.triangle")
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
+
+                        // ⚠️ 这一段不能省。没授权时全局按键**静默不工作** ——
+                        // 用户只会觉得"坏了"，而真相只是没点那个系统开关。
+                        // 静默失败比报错难查十倍，所以状态必须摆在明面上。
+                        do {
+                            let hotkey = macHotkey
+                            Text(verbatim: hotkey.statusText)
+                                .font(.footnote)
+                                .foregroundStyle(hotkey.isTrusted ? .secondary : .orange)
+                            if !hotkey.isTrusted {
+                                Button("去系统设置里授权…") {
+                                    hotkey.requestTrust()
+                                    hotkey.openAccessibilitySettings()
+                                }
+                            }
+                        }
+                    } header: {
+                        Text(verbatim: "键盘")
+                    } footer: {
+                        Text(verbatim: "全局按键要「辅助功能」权限；没授权也能用 —— "
+                            + "窗口在前台时按住空格即可。")
+                    }
+                #endif
+
                 Section {
                     Picker(selection: $config.backdrop) {
                         ForEach(CCBackdropChoice.allCases) { choice in
