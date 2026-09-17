@@ -86,6 +86,13 @@ struct CCBackdrop: View {
                 .scaledToFill()
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
+                // 对比小米之家那套之后加的。我们的问题不是「浅」，是**没颜色** ——
+                // 云图本来是蓝天白云，盖上白雾之后渲染出来一片灰白。
+                // 降白雾只能少洗一点，洗掉的色相补不回来，得在这一层主动加回去。
+                // saturation 先于 scrim 生效（修饰器自下而上作用于这个 Image），
+                // 所以这里加的饱和度是"原图的"，不是被雾洗过之后的。
+                .saturation(scheme == .dark ? 1.18 : 1.32)
+                .contrast(scheme == .dark ? 1.06 : 1.12)
         }
     }
 
@@ -122,9 +129,14 @@ struct CCBackdrop: View {
             //   浅色 —— **减白**。浅色发淡不是因为黑得不够，是白刷得太多
             // 面板那边同步提到 `.regularMaterial` 0.88，文字的衬底由它负责，
             // 所以这层不用再替可读性买单。
+            // 浅色这一档**不用纯白**。纯白是去饱和剂：刷多少就吃掉多少色相，
+            // 而我们的图恰恰靠蓝色撑住"天"的观感（小米那张之所以好看，
+            // 核心就是天是蓝的）。改成带一点蓝的冷调，压亮度但不杀颜色。
             colors: scheme == .dark
                 ? [.black.opacity(0.46), .black.opacity(0.18), .black.opacity(0.58)]
-                : [.white.opacity(0.34), .white.opacity(0.10), .white.opacity(0.42)],
+                : [Color(red: 0.78, green: 0.85, blue: 0.95).opacity(0.30),
+                   Color(red: 0.86, green: 0.91, blue: 0.98).opacity(0.08),
+                   Color(red: 0.74, green: 0.82, blue: 0.94).opacity(0.38)],
             startPoint: .top,
             endPoint: .bottom
         )

@@ -378,5 +378,14 @@ private struct CCShell: View {
     /// 参照小米那套的做法：**玻璃要有实体感，靠的是材质厚度而不是低透明度**。
     /// 换成 `.regularMaterial` 并把透明度提到 0.88：背景仍然透得出来（折射源还在），
     /// 但面板本身是一块看得见的东西，文字也不用再跟背景抢对比。
-    private static let cardFill = AnyShapeStyle(.regularMaterial.opacity(0.88))
+    /// 第四版。对比小米之家那套之后定的。
+    ///
+    /// 他们的卡片**基本是实心的** —— 背景透不过来，卡片是"贴在"背景上的实体，
+    /// 不是"融进"背景。我们之前 0.62 的 `.ultraThinMaterial` 走到了另一个极端：
+    /// 面板几乎不存在，只剩一圈淡描边勾着轮廓，文字直接压在云上。
+    ///
+    /// 换 `.thickMaterial` 且**不再乘透明度**。它仍然会模糊和采样环境色
+    /// （Liquid Glass 的折射还在），但面板本身是一块看得见、立得住的东西。
+    /// 透明度这个旋钮到此为止 —— 玻璃的实体感靠材质厚度，不靠把它调淡。
+    private static let cardFill = AnyShapeStyle(.thickMaterial)
 }

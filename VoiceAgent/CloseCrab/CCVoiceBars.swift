@@ -217,6 +217,7 @@ extension CCVoiceMeter {
 
 /// 金属柱状图。
 struct CCVoiceBars: View {
+    @Environment(\.colorScheme) private var scheme
     /// 房间里**所有**会出声的 bot 音轨 —— 语音助手的 ＋ 本体旁路的。
     /// 只给一条的话，bot 查完东西播报结论时柱子不会动（那是另一条轨）。
     let tracks: [any AudioTrack]
@@ -243,6 +244,15 @@ struct CCVoiceBars: View {
                        height: maxHeight)
                 // 辉光跟着遮罩的 alpha 走，所以是从每根柱子的实际形状散出来的，
                 // 不是一个方块的外发光。
+                // 先落一道**暗向**的接触阴影，再叠辉光。
+                //
+                // 之前只有 tint 辉光：柱子本身是白色金属渐变，浅色模式下
+                // 压在亮背景（云图）上等于白压白，五根柱子直接消失 ——
+                // 而且因为它还在动，你甚至不会觉得是"坏了"，只会觉得"没东西"。
+                // 辉光救不了这个：辉光是加亮，亮背景上加亮＝更看不见。
+                // 需要的是一道往下沉的暗边，把柱子从背景里抠出来。
+                .shadow(color: .black.opacity(scheme == .dark ? 0.18 : 0.34),
+                        y: 1, radius: 3)
                 .shadow(color: tint.opacity(0.55), radius: 18 * glow)
                 .shadow(color: tint.opacity(0.28), radius: 40 * glow)
 
