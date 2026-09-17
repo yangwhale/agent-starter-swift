@@ -34,6 +34,31 @@ import SwiftUI
 struct CCRootView: View {
     @ObservedObject var rooms: CCRooms
 
+    #if os(macOS)
+        /// Mac 的按住说话：右 Option 全局热键 ＋ 窗口内空格。
+        ///
+        /// 挂在根视图而不是 `App`：它要拿**当前活动房间**的麦克风策略，
+        /// 而"当前房间"是会变的 —— 放这一层才跟得上切换。
+        ///
+        /// 用 `@StateObject` 不是 `@ObservedObject`：后者会让事件监听
+        /// 在每次视图重建时重挂一遍，最后挂一堆重复的监听器。
+        @StateObject private var hotkey: CCMacHotkey
+    #endif
+
+    init(rooms: CCRooms) {
+        self.rooms = rooms
+        #if os(macOS)
+            // `StateObject(wrappedValue:)` 的 autoclosure 只求值一次，
+            // 所以这里捕获 `rooms` 是安全的（不会每次重建都新建一个）。
+            _hotkey = StateObject(wrappedValue: CCMacHotkey(
+                micPolicy: { [weak rooms] in rooms?.active?.micPolicy },
+                isMicOn: { [weak rooms] in
+                    rooms?.active?.session.localMedia.isMicrophoneEnabled ?? false
+                }
+            ))
+        #endif
+    }
+
     /// 放在最外层而不是每页一个：`matchedGeometryEffect` 的两端如果落在
     /// 不同 namespace 里会直接崩（`namespace!` 强解包）。
     @Namespace private var namespace
@@ -53,6 +78,15 @@ struct CCRootView: View {
         .background {
             CCBackdrop(tint: rooms.active.map { CCIdentityColor.color(for: $0.name) })
         }
+        #if os(macOS)
+            .onAppear { hotkey.start() }
+            // 窗口聚焦时的空格路径。全局热键要辅助功能授权，**这条不需要** ——
+            // 没授权时它是唯一能用的按住说话方式，所以两条都得有。
+            .onKeyPress(keys: [.space], phases: [.down, .up]) { press in
+                hotkey.space(down: press.phase == .down, isTextInputActive: false)
+                return .handled
+            }
+        #endif
     }
 
     /// 一个房间都没有。正常情况见不到 —— 名单空了才会（服务端 ALLOWED_ROOMS 没配）。

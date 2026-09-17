@@ -22,7 +22,11 @@ struct VoiceAgentApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        // 带 id：macOS 上窗口被关掉之后，菜单栏那条 `openWindow(id:)`
+        // 才叫得回来（匿名 WindowGroup 叫不回）。
+        // 全平台统一给 id —— `#if` 不能把 `WindowGroup {` 的花括号劈成两半，
+        // 那不是合法 Swift，而两边写两份又要维护两遍。
+        WindowGroup(id: CCWindowID.main) {
             CCRootView(rooms: rooms)
                 // 挂在 WindowGroup 的根上而不是 CCRootView 内部：
                 // sheet 是另起一棵视图树的，挂在里层的话设置页、房间抽屉、
@@ -39,11 +43,31 @@ struct VoiceAgentApp: App {
         }
         #if os(macOS)
         .defaultSize(width: 900, height: 900)
+        // 内容有最大宽度（`CC.Size.contentMax`），窗口拉太宽会变成
+        // 中间一条、两边全是背景图。给个下限免得被压扁，上限交给用户。
+        .windowResizability(.contentMinSize)
+        .commands {
+            // ⌘1…⌘9 直切房间。横滑那个手势是给触摸做的，
+            // Mac 上触控板能用但鼠标用户没有入口。
+            // 包一层 View 才订阅得到 —— 直接在这里读 `rooms.slots`，
+            // 菜单只会在 App 构建那一刻取一次值，房间列表加载完不会刷新。
+            CommandMenu("房间") { CCRoomCommands(rooms: rooms) }
+        }
         #endif
         #if os(visionOS)
         .windowStyle(.plain)
         .windowResizability(.contentMinSize)
         .defaultSize(width: 1500, height: 500)
+        #endif
+
+        #if os(macOS)
+            // 菜单栏常驻。Mac 的模型是「它一直在那儿」，不是「打开→用→退出」——
+            // 窗口该能关掉而助手还活着。详见 CCMenuBar.swift。
+            MenuBarExtra {
+                CCMenuBarContent(rooms: rooms)
+            } label: {
+                CCMenuBarLabel(rooms: rooms)
+            }
         #endif
     }
 }
