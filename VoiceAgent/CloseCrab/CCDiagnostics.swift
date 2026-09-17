@@ -50,8 +50,11 @@ final class CCDiagnostics: ObservableObject {
 
     func start(remote remoteTrack: AudioTrack?, local localTrack: AudioTrack?) {
         stop()
-        self.remote = remoteTrack as? Track
-        self.local = localTrack as? Track
+        // ⚠️ 不要写 `as? Track`：`AudioTrack` 本身就是 `Track & AudioTrackProtocol`，
+        // 向下转换是多余的，编译器会报 conditional downcast ... is equivalent to
+        // an implicit conversion。直接赋值即可（可选性自动带过去）。
+        self.remote = remoteTrack
+        self.local = localTrack
         for t in [self.remote, self.local].compactMap({ $0 }) {
             Task { await t.set(reportStatistics: true) }
         }

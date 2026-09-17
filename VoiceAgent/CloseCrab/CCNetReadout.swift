@@ -49,7 +49,8 @@ final class CCNetStats: ObservableObject {
     /// 开始盯一条远端音轨。换房间时重新调一次。
     func watch(_ track: AudioTrack?) {
         stop()
-        guard let t = track as? Track else { return }
+        // `AudioTrack` 已经是 `Track` 的子类型，`as? Track` 是多余的向下转换。
+        guard let t = track else { return }
         self.track = t
         Task { await t.set(reportStatistics: true) }
         // 一秒一次。再密没意义 —— WebRTC 的统计本身就是约 1s 一个快照，

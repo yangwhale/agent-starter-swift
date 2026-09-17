@@ -130,11 +130,15 @@ private struct CCRoomTile: View {
     ///
     /// `isActive ? [.isButton, .isSelected] : .isButton` 两边一个是数组字面量
     /// 一个是单值，要靠 `OptionSet` 的字面量推断去统一 —— 在 Xcode 里多半能过，
-    /// 但这是**离线检查不出来、只有真机编译才知道**的那类写法。
-    /// 显式 `insert` 没有推断，不用赌。
+    /// 但这是**离线检查不出来、只有真机编译才知道**的那类写法。写开就不用赌。
+    ///
+    /// ⚠️ 用 `formUnion` 不用 `insert`：`OptionSet.insert` 返回
+    /// `(inserted:memberAfterInsert:)` 且**不是** `@discardableResult`，
+    /// 丢掉返回值会报 `result of call to 'insert' is unused`。
+    /// 这里本来也不关心「之前在不在」，`formUnion` 才是这个意图。
     private var tileTraits: AccessibilityTraits {
         var traits: AccessibilityTraits = .isButton
-        if isActive { traits.insert(.isSelected) }
+        if isActive { traits.formUnion(.isSelected) }
         return traits
     }
 
