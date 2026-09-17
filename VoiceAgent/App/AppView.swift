@@ -40,19 +40,11 @@ struct AppView: View {
     private func interactions() -> some View {
         #if os(visionOS)
             VisionInteractionView(chat: chat, keyboardFocus: $keyboardFocus)
-                .overlay(alignment: .bottom) {
-                    agentListening()
-                        .padding(16 * .grid)
-                }
         #else
             if chat {
                 TextInteractionView(keyboardFocus: $keyboardFocus)
             } else {
                 VoiceInteractionView()
-                    .overlay(alignment: .bottom) {
-                        agentListening()
-                            .padding()
-                    }
             }
         #endif
     }
@@ -76,27 +68,5 @@ struct AppView: View {
                 .multilineTextAlignment(.center)
         }
         .padding(6 * .grid)
-    }
-
-    private func agentListening() -> some View {
-        ZStack {
-            if session.messages.isEmpty,
-               !localMedia.isCameraEnabled,
-               !localMedia.isScreenShareEnabled
-            {
-                Group {
-                    if session.agent.isConnected {
-                        Text(verbatim: "在听着呢")
-                    } else {
-                        Text(verbatim: "正在接通助理…")
-                    }
-                }
-                .font(.system(size: 15))
-                .shimmering()
-                .transition(.blurReplace)
-            }
-        }
-        .ccAnimation(.default, value: session.messages.isEmpty)
-        .ccAnimation(.default, value: session.agent.isConnected)
     }
 }

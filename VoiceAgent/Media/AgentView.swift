@@ -35,17 +35,12 @@ struct AgentView: View {
                         videoTransition = true
                     }
             } else if session.isConnected {
-                VStack(spacing: CC.Space.loose) {
-                    voiceBars
-                    // 可视化能表达「设备活着」,但表达不了「轮到你说了」。
-                    // 语音交互最大的困惑就是这个,用一个词解决的成本远低于用动画。
-                    Text(verbatim: stateHint)
-                        .font(CC.Font.label)
-                        .foregroundStyle(.fg2)
-                        .contentTransition(.numericText())
-                        .ccAnimation(CC.Motion.fade, value: stateHint)
-                }
-                .transition(.opacity)
+                // 这里原来在柱子底下写一行「在听,说吧 / 它在说 / 在想…」。
+                // 2026-09-18 Chris 让去掉 —— 同样的信息现在在顶部那排
+                // `CCRosterRow` 的助手牌子上（而且那儿还顺带告诉你
+                // 房间里还有谁），底下再写一遍是重复。
+                voiceBars
+                    .transition(.opacity)
             }
         }
         .ccAnimation(.snappy, value: session.agent.audioTrack?.id)
@@ -72,13 +67,4 @@ struct AgentView: View {
         )
     }
 
-    private var stateHint: String {
-        switch session.agent.agentState {
-        case .speaking: "它在说"
-        case .thinking: "在想…"
-        case .listening: "在听,说吧"
-        case .initializing: "接通中…"
-        default: session.agent.isConnected ? "在听,说吧" : "助理还没上线"
-        }
-    }
 }
