@@ -182,21 +182,30 @@ extension CCVoiceMeter {
         let count = Int(buffer.frameLength)
         guard count > 0 else { return nil }
 
+        // **所有声道一起算。** SDK 2.17 起订阅端会协商 Opus stereo
+        // （2.16 一律降混成单声道），所以自定义 renderer 拿到的可能是双声道。
+        // 只读 channel[0] 的话，如果人声偏在右声道，柱子就是一排不动的 ——
+        // 而且不会有任何报错。
+        let channels = max(Int(buffer.format.channelCount), 1)
         var sum: Float = 0
         if let floats = buffer.floatChannelData {
-            let channel = floats[0]
-            for i in 0 ..< count { sum += channel[i] * channel[i] }
+            for c in 0 ..< channels {
+                let channel = floats[c]
+                for i in 0 ..< count { sum += channel[i] * channel[i] }
+            }
         } else if let ints = buffer.int16ChannelData {
-            let channel = ints[0]
-            for i in 0 ..< count {
-                let v = Float(channel[i]) / 32768
-                sum += v * v
+            for c in 0 ..< channels {
+                let channel = ints[c]
+                for i in 0 ..< count {
+                    let v = Float(channel[i]) / 32768
+                    sum += v * v
+                }
             }
         } else {
             return nil
         }
 
-        let rms = (sum / Float(count)).squareRoot()
+        let rms = (sum / Float(count * channels)).squareRoot()
         // -50dB ~ 0dB 映射到 0 ~ 1。人声正常说话大概落在 -30 ~ -10dB，
         // 取 -50 做地板是为了让轻声也能看出动静，同时把底噪压在 0 附近。
         let db = 20 * log10(max(rms, 1e-6))
