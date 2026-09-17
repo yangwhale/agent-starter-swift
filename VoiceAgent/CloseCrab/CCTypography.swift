@@ -126,10 +126,33 @@ nonisolated enum CCType {
     /// 1.22 是按 Patrick Hand 的 x-height 比例估的，真机上可以再调。
     static let handScale: CGFloat = 1.22
 
-    /// 方块底下那行房间名。
+    // MARK: - ⚠️ 为什么全都用 fixedSize
+    //
+    // 这三个函数收到的 `size` **必须是调用方已经按动态字号缩放好的值**，
+    // 所以这里一律用 `fixedSize:` 关掉字体自己那层缩放。
+    //
+    // ## 不关会怎样：手写体开关顺带改变了「跟不跟系统字号」
+    //
+    // Apple 文档写得很清楚，这两个是**不同行为**：
+    //
+    //   Font.custom(_:size:)          "scales with the body text style"  ← 自动跟
+    //   Font.system(size:weight:design:)                                 ← 固定，不跟
+    //
+    // 原来两个分支直接这么用，于是同一个界面：
+    //   - 关手写体 → 用户把系统字号调大，我们纹丝不动（该跟的没跟）
+    //   - 开手写体 → 字跟着放大，但方块是写死的 54pt、名字那行还
+    //                `lineLimit(1)` ＋ 固定宽度 → 辅助功能字号下直接截成「J…」
+    //
+    // **两头都错，而且方向相反** —— 一个开关不该顺带改变无障碍行为。
+    //
+    // 关掉自动缩放之后两个分支行为一致，缩放交给调用点的 `@ScaledMetric`
+    // 统一驱动：**字和承载它的方块用同一个系数长**，就不会有人被挤出去。
+    // 方块行本来就在横向 ScrollView 里，长出去可以滚，不用设上限。
+
+    /// 方块底下那行房间名。`size` 须为已缩放值。
     static func roomName(_ size: CGFloat, hand: Bool) -> Font {
         hand
-            ? .custom(CCHandFont.postScriptName, size: size * handScale)
+            ? .custom(CCHandFont.postScriptName, fixedSize: size * handScale)
             : .system(size: size, weight: .medium, design: .rounded)
     }
 
@@ -139,14 +162,14 @@ nonisolated enum CCType {
     /// 后者自带笔锋和不对称，六个并排时一眼能分开。
     static func roomInitial(_ size: CGFloat, hand: Bool) -> Font {
         hand
-            ? .custom(CCHandFont.postScriptName, size: size * handScale)
+            ? .custom(CCHandFont.postScriptName, fixedSize: size * handScale)
             : .system(size: size, weight: .semibold)
     }
 
-    /// 左上角房间条上那个名字。
+    /// 左上角房间条上那个名字。`size` 须为已缩放值。
     static func roomBar(_ size: CGFloat, hand: Bool) -> Font {
         hand
-            ? .custom(CCHandFont.postScriptName, size: size * handScale)
+            ? .custom(CCHandFont.postScriptName, fixedSize: size * handScale)
             : .system(size: size, weight: .medium)
     }
 }

@@ -106,6 +106,62 @@ enum CC {
     }
 }
 
+// MARK: - 减弱动态效果
+
+/// 「减弱动态效果」打开时用什么替代。
+///
+/// ## 为什么不是「把动画关掉」
+///
+/// 这个开关针对的是**前庭反应** —— 位移、缩放、回弹、旋转会让一部分人
+/// 头晕甚至恶心。**淡入淡出不在其列**：Apple 自己的做法也是把位移类效果
+/// 换成交叉淡化，而不是让界面瞬间跳变。
+///
+/// 全关掉反而更糟 —— 状态切换变成硬跳，看着像界面卡了一下。
+///
+/// 所以分两档：
+/// - `ccAnimation` —— 弹簧、位移、缩放这类，减弱时**退化成淡出**
+/// - `ccDecorativeAnimation` —— 无限循环的纯装饰（转圈、流光），减弱时**彻底停**
+///
+/// ⚠️ **判断标准是「这个动画有没有在传递信息」。** 转圈只说明"在忙"，
+/// 停掉不丢信息；而音量柱的抖动本身就是信息，停掉等于把内容删了 ——
+/// 那一类要单独想，不能顺手套这两个之一（见 `CCVoiceBars` 里的说明）。
+private struct CCReduceMotion<V: Equatable>: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let animation: Animation?
+    let value: V
+    /// 减弱时是彻底不动（装饰性），还是退化成淡出（状态切换）。
+    let decorative: Bool
+
+    func body(content: Content) -> some View {
+        // 判定本身在 `CCMotionPolicy` 里（只依赖 Foundation，能离线测）。
+        // 这里只负责把判定结果翻成一条 `Animation?` —— 这一层薄到没有出错空间，
+        // 而那个 2×2 真值表是**写反了也看不出来**的，必须有测试钉着。
+        let resolved: Animation? = switch CCMotionPolicy.resolve(
+            reduceMotion: reduceMotion, decorative: decorative
+        ) {
+        case .still: nil
+        case .fade: CC.Motion.fade
+        case .asRequested: animation
+        }
+        return content.animation(resolved, value: value)
+    }
+}
+
+extension View {
+    /// 状态切换类动画。**新代码一律用这个，不要直接写 `.animation(_:value:)`。**
+    ///
+    /// 减弱动态效果打开时自动退化成淡出 —— 不用每个视图各自去读环境值，
+    /// 也就不会再出现「加了个动画忘了 gate」这种只有特定用户才撞得到的漏网。
+    func ccAnimation<V: Equatable>(_ animation: Animation?, value: V) -> some View {
+        modifier(CCReduceMotion(animation: animation, value: value, decorative: false))
+    }
+
+    /// 纯装饰的循环动画（流光之类）。减弱动态效果时**完全静止**。
+    func ccDecorativeAnimation<V: Equatable>(_ animation: Animation?, value: V) -> some View {
+        modifier(CCReduceMotion(animation: animation, value: value, decorative: true))
+    }
+}
+
 extension Shape where Self == RoundedRectangle {
     /// `.rect(cornerRadius:)` 的默认曲线不是 continuous，这里统一补上。
     static func cc(_ radius: CGFloat) -> RoundedRectangle {

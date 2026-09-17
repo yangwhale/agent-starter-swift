@@ -28,7 +28,7 @@ struct AgentView: View {
                                 .frame(width: videoTransition ? targetSize : 6 * .grid)
                                 .position(x: 0.5 * proxy.size.width, y: 0.5 * proxy.size.height)
                                 .scaleEffect(2)
-                                .animation(.smooth(duration: 1.5), value: videoTransition)
+                                .ccAnimation(.smooth(duration: 1.5), value: videoTransition)
                         }
                     )
                     .onAppear {
@@ -43,12 +43,12 @@ struct AgentView: View {
                         .font(CC.Font.label)
                         .foregroundStyle(.fg2)
                         .contentTransition(.numericText())
-                        .animation(CC.Motion.fade, value: stateHint)
+                        .ccAnimation(CC.Motion.fade, value: stateHint)
                 }
                 .transition(.opacity)
             }
         }
-        .animation(.snappy, value: session.agent.audioTrack?.id)
+        .ccAnimation(.snappy, value: session.agent.audioTrack?.id)
         .matchedGeometryEffect(id: "agent", in: namespace!)
     }
 

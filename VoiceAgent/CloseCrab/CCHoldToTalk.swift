@@ -52,8 +52,8 @@ struct CCTalkBar: View {
         .glassEffect(glass, in: .cc(CC.Radius.bar))
         .overlay(alignment: .leading) { holdingPulse }
         .contentShape(.cc(CC.Radius.bar))
-        .animation(CC.Motion.fade, value: mic.isHolding)
-        .animation(CC.Motion.fade, value: isAlwaysOn)
+        .ccAnimation(CC.Motion.fade, value: mic.isHolding)
+        .ccAnimation(CC.Motion.fade, value: isAlwaysOn)
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in mic.beginHold(isMicrophoneEnabled: localMedia.isMicrophoneEnabled) }

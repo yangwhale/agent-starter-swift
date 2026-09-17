@@ -64,7 +64,7 @@ struct ControlBarButtonStyle: ButtonStyle {
             }
             // 按下去缩一点。原来只改透明度，在玻璃上几乎看不出来。
             .scaleEffect(configuration.isPressed ? 0.9 : 1)
-            .animation(CC.Motion.press, value: configuration.isPressed)
+            .ccAnimation(CC.Motion.press, value: configuration.isPressed)
     }
 }
 
@@ -96,7 +96,7 @@ struct Shimmering: ViewModifier {
                     startPoint: isShimmering ? UnitPoint(x: 1, y: 0) : UnitPoint(x: -1, y: 0),
                     endPoint: isShimmering ? UnitPoint(x: 2, y: 0) : UnitPoint(x: 0, y: 0)
                 )
-                .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: isShimmering)
+                .ccDecorativeAnimation(.linear(duration: 2).repeatForever(autoreverses: false), value: isShimmering)
             )
             .onAppear {
                 isShimmering = true

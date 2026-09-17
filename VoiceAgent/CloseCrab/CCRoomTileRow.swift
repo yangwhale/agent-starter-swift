@@ -30,6 +30,7 @@ import SwiftUI
 /// 也当成单击派发，结果「切房间 + 静音」一起发生。代价是单击晚约 0.25 秒。
 struct CCRoomTileRow: View {
     @EnvironmentObject private var rooms: CCRooms
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var iconEditing: CCRoomRef?
 
     var body: some View {
@@ -62,7 +63,9 @@ struct CCRoomTileRow: View {
             // 横滑切到一个滚出屏幕的房间时，方块行得自己跟过去 ——
             // 否则颈部会指向一个看不见的地方，看着像断了。
             .onChange(of: rooms.activeName) { _, name in
-                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                // 减弱动态效果时直接跳过去 —— 这是一整排内容横向滑动，
+                // 正是那个开关要挡的东西。跳过去信息不丢：目标方块照样居中。
+                withAnimation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.82)) {
                     scroller.scrollTo(name, anchor: .center)
                 }
             }
@@ -97,11 +100,43 @@ private struct CCRoomTile: View {
     /// `CCType` 是纯函数，它不知道谁该重绘。
     @ObservedObject private var config = CloseCrabConfig.shared
 
+    /// 方块边长，跟随动态字号。
+    ///
+    /// **这是整个方块唯一的缩放源** —— 字号、角标位置、角标字号全部按它派生
+    /// （见下面那几个计算属性）。理由见 `CCType` 里那段：字和承载它的几何
+    /// 必须一起长，否则大字号下名字会被固定宽度截掉。
+    ///
+    /// 基准取 `.caption` 而不是 `.body`：方块底下那行名字是全 app 最小的字，
+    /// 按最小的那一档缩放，整排在辅助功能字号下才不至于失控。
+    /// 方块行本身在横向 `ScrollView` 里，长出屏幕可以滚，所以不设上限 ——
+    /// **完整支持动态字号，而不是卡一个天花板了事。**
+    @ScaledMetric(relativeTo: .caption) private var side: CGFloat = CC.Size.tile
+
+    /// 下面几个都是「占方块边长的几分之几」，写成比例而不是写死点数，
+    /// 这样 `side` 一变它们自动跟上，不会出现字长了角标还钉在原地的情况。
+    private var nameSize: CGFloat { side * 11 / CC.Size.tile }
+    private var initialSize: CGFloat { side * 20 / CC.Size.tile }
+    private var emojiSize: CGFloat { side * 26 / CC.Size.tile }
+    private var badgeSize: CGFloat { side * 9 / CC.Size.tile }
+    private var badgeInset: CGFloat { side * 23 / CC.Size.tile }
+
     let isActive: Bool
     let isConnecting: Bool
     let onTap: () -> Void
     let onDoubleTap: () -> Void
     let onLongPress: () -> Void
+
+    /// 写成计算属性而不是在调用处用三目。
+    ///
+    /// `isActive ? [.isButton, .isSelected] : .isButton` 两边一个是数组字面量
+    /// 一个是单值，要靠 `OptionSet` 的字面量推断去统一 —— 在 Xcode 里多半能过，
+    /// 但这是**离线检查不出来、只有真机编译才知道**的那类写法。
+    /// 显式 `insert` 没有推断，不用赌。
+    private var tileTraits: AccessibilityTraits {
+        var traits: AccessibilityTraits = .isButton
+        if isActive { traits.insert(.isSelected) }
+        return traits
+    }
 
     private var ring: CCTileRing {
         CCTileRing.derive(
@@ -131,12 +166,12 @@ private struct CCRoomTile: View {
                 if isActive {
                     RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
                         .fill(.clear)
-                        .frame(width: CC.Size.tile, height: CC.Size.tile)
+                        .frame(width: side, height: side)
                         .glassEffect(.regular.interactive(), in: .cc(CC.Radius.tile))
                 } else {
                     RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
                         .fill(identity.opacity(0.14))
-                        .frame(width: CC.Size.tile, height: CC.Size.tile)
+                        .frame(width: side, height: side)
                         .glassEffect(.identity.interactive(), in: .cc(CC.Radius.tile))
                 }
 
@@ -144,7 +179,7 @@ private struct CCRoomTile: View {
 
                 RoundedRectangle(cornerRadius: CC.Radius.tile, style: .continuous)
                     .strokeBorder(ringColor, style: ringStroke)
-                    .frame(width: CC.Size.tile, height: CC.Size.tile)
+                    .frame(width: side, height: side)
                     .shadow(color: ring == .speaking ? .ccSpeaking.opacity(0.9) : .clear, radius: 10)
                     .shadow(color: ring == .speaking ? .ccSpeaking.opacity(0.5) : .clear, radius: 22)
 
@@ -157,12 +192,12 @@ private struct CCRoomTile: View {
                     // 一个灰点，跟没有区别。换成喇叭加斜杠，形状自己就说清楚了，
                     // 颜色只是加强。
                     Image(systemName: "speaker.slash.fill")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: badgeSize, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(4)
                         .background(Circle().fill(.fgSerious))
                         .overlay(Circle().strokeBorder(.bg1, lineWidth: 2))
-                        .offset(x: -23, y: -23)
+                        .offset(x: -badgeInset, y: -badgeInset)
                 }
 
                 if isConnecting {
@@ -174,20 +209,26 @@ private struct CCRoomTile: View {
 
                 if isActive {
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.system(size: badgeSize, weight: .bold))
                         .foregroundStyle(.white)
                         .padding(5)
                         .background(Circle().fill(.fgAccent))
-                        .offset(x: 23, y: -23)
+                        .offset(x: badgeInset, y: -badgeInset)
                 }
             }
-            .frame(width: CC.Size.tile + 4, height: CC.Size.tile + 4)
+            .frame(width: side + 4, height: side + 4)
 
             Text(verbatim: slot.name)
-                .font(CCType.roomName(11, hand: config.handwritten))
+                .font(CCType.roomName(nameSize, hand: config.handwritten))
                 .foregroundStyle(isActive ? .fg0 : .fg3)
                 .lineLimit(1)
-                .frame(width: CC.Size.tile + 8)
+                // 名字长短不可控（`xiaoaitongxue` 十三个字母），而这一格
+                // 是按方块宽度定死的。没有这一条，长名字在任何字号下
+                // 都会被截成「xiaoait…」—— 六个方块里有两个看不出是谁。
+                //
+                // 0.7 是下限不是常态：短名字一点都不会缩。
+                .minimumScaleFactor(0.7)
+                .frame(width: side + 8)
 
             // 选中态改成身份色的一小条。原来是整圈 3pt 描边，
             // 六个并排时整排像一串警告牌。
@@ -197,10 +238,30 @@ private struct CCRoomTile: View {
         }
         .opacity(ring == .pending ? 0.45 : 1)
         .scaleEffect(ring == .speaking ? 1.05 : 1)
-        .animation(CC.Motion.snap, value: ring)
+        .ccAnimation(CC.Motion.snap, value: ring)
         .contentShape(Rectangle())
         .gesture(gestures)
+        // ## 为什么要显式合成一个元素
+        //
+        // 这个方块在视觉上是**一个按钮**，但在无障碍树里它是一堆东西：
+        // 底板、描边、角标、波形、名字、选中条。不合成的话 VoiceOver
+        // 要划六下才走完一个房间，而且念出来的是一串没有主语的碎片。
+        //
+        // `children: .ignore` 把里面全部忽略掉，只留我们自己写的那句话 ——
+        // 也顺带让下面 `accessibilityLabel` 真的落在一个元素上。
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: "\(slot.name)，\(ringDescription)"))
+        .accessibilityAddTraits(tileTraits)
+        // ⚠️ **双击和长按对 VoiceOver 用户等于不存在** —— 那两个手势被
+        // VoiceOver 自己接管了，传不到我们的 `gestures` 上。
+        // 不补这两条命名动作，静音和换图标这两个功能对他们就是缺失的，
+        // 而界面上看不出任何异样。
+        .accessibilityAction(named: Text(verbatim: slot.isMuted ? "取消静音" : "静音")) {
+            onDoubleTap()
+        }
+        .accessibilityAction(named: Text(verbatim: "更换图标")) {
+            onLongPress()
+        }
     }
 
     /// 方块中间：说话时是波形，其余时候是图标。
@@ -235,8 +296,8 @@ private struct CCRoomTile: View {
                 // 六个并排时一眼能分开，SF 的 J 不行。
                 .font(
                     icons.hasCustomIcon(slot.name)
-                        ? .system(size: 26, weight: .semibold)
-                        : CCType.roomInitial(20, hand: config.handwritten)
+                        ? .system(size: emojiSize, weight: .semibold)
+                        : CCType.roomInitial(initialSize, hand: config.handwritten)
                 )
                 .foregroundStyle(.fg1)
                 .transition(.opacity)

@@ -146,8 +146,8 @@ private struct CCShell: View {
         .environmentObject(active.localMedia)
         .environmentObject(active.audioOptions)
         .environmentObject(active.micPolicy)
-        .animation(.default, value: active.session.isConnected)
-        .animation(.default, value: chat)
+        .ccAnimation(.default, value: active.session.isConnected)
+        .ccAnimation(.default, value: chat)
         // 预热 Taptic Engine。不热身的话第一下手势会明显迟半拍 ——
         // 而第一下恰恰是「这 app 有没有震动」的全部印象。
         //
@@ -372,7 +372,7 @@ private struct CCShell: View {
             .frame(maxHeight: .infinity, alignment: .top)
             // 连上那一刻红条要滑走，不要「啪」地消失 —— 突然消失会让人
             // 怀疑自己看错了，滑走才读得出「刚才那个问题解决了」。
-            .animation(CC.Motion.snap, value: active.session.isConnected)
+            .ccAnimation(CC.Motion.snap, value: active.session.isConnected)
         #endif
     }
 

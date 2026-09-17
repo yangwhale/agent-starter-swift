@@ -59,7 +59,7 @@ struct CCAuroraBackground: View {
                     endRadius: 420
                 )
                 .blendMode(.plusLighter)
-                .animation(.easeInOut(duration: 1.2), value: tint)
+                .ccAnimation(.easeInOut(duration: 1.2), value: tint)
             }
 
             // 噪点。**不是为了做旧** —— 大面积渐变在 8bit 屏上会出色带(banding),

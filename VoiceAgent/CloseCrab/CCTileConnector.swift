@@ -53,6 +53,10 @@ struct CCTileNeckView: View {
     /// 两边差一点点，接缝处就会出现一道边 —— 而那道边正好在最显眼的位置。
     let fill: AnyShapeStyle
 
+    // 纯装饰：它表达的「这个方块和下面那块窗口是一体的」在无障碍树里
+    // 由「已选中」这个 trait 说清楚了（见 `CCRoomTileRow`）。
+    // 不显式隐藏的话，VoiceOver 会在两个真控件中间念出一个没名字的图形，
+    // 用户不知道划到了什么，只能再划一下 —— **沉默的噪音比缺失更烦人。**
     var body: some View {
         GeometryReader { proxy in
             if let anchor = anchors[activeName] {
@@ -70,9 +74,10 @@ struct CCTileNeckView: View {
                     )
                     // 切换时颈部滑过去。用 spring 而不是 linear：
                     // 它模拟的是「整块东西被拖过去」，需要一点惯性感。
-                    .animation(.spring(response: 0.32, dampingFraction: 0.82), value: activeName)
+                    .ccAnimation(.spring(response: 0.32, dampingFraction: 0.82), value: activeName)
             }
         }
+        .accessibilityHidden(true)
     }
 }
 

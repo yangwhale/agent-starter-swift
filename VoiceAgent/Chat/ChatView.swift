@@ -7,7 +7,7 @@ struct ChatView: View {
     var body: some View {
         ChatScrollView(messageBuilder: message)
             .padding(.horizontal)
-            .animation(.default, value: session.messages)
+            .ccAnimation(.default, value: session.messages)
     }
 
     private func message(_ message: ReceivedMessage) -> some View {

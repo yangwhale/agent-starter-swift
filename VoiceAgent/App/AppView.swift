@@ -28,9 +28,9 @@ struct AppView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.default, value: session.isConnected)
-        .animation(.default, value: localMedia.isCameraEnabled)
-        .animation(.default, value: localMedia.isScreenShareEnabled)
+        .ccAnimation(.default, value: session.isConnected)
+        .ccAnimation(.default, value: localMedia.isCameraEnabled)
+        .ccAnimation(.default, value: localMedia.isScreenShareEnabled)
     }
 
     @ViewBuilder
@@ -93,7 +93,7 @@ struct AppView: View {
                 .transition(.blurReplace)
             }
         }
-        .animation(.default, value: session.messages.isEmpty)
-        .animation(.default, value: session.agent.isConnected)
+        .ccAnimation(.default, value: session.messages.isEmpty)
+        .ccAnimation(.default, value: session.agent.isConnected)
     }
 }

@@ -269,6 +269,18 @@ struct CCVoiceBars: View {
         .onChange(of: trackKey, initial: true) { _, _ in meter.attach(tracks) }
         .onChange(of: isSpeaking, initial: true) { _, speaking in meter.setSpeaking(speaking) }
         .onDisappear { meter.detach() }
+        // ## 对 VoiceOver 隐藏，但信息没丢
+        //
+        // 柱子是**自绘图形**，无障碍树里它没有名字 —— 不处理的话
+        // VoiceOver 划到这儿只会停在一块沉默的东西上。
+        //
+        // 而它传递的「在不在说话」两处都已经有文字承载：
+        // 大的那个底下就是 `AgentView` 的状态提示（"它在说" / "在听,说吧"），
+        // 方块上那个由 `CCRoomTileRow` 的标签念出圈的状态。
+        // **重复念一遍不是更无障碍，是更吵。**
+        //
+        // ⚠️ 哪天这两处文字被拿掉了，这一行要跟着改成真标签，不能就这么留着。
+        .accessibilityHidden(true)
     }
 
     /// 挂了哪几条轨的指纹。排序过 —— 参与者字典的遍历顺序不保证稳定，
@@ -288,6 +300,17 @@ struct CCVoiceBars: View {
         .frame(height: maxHeight)
         // 泵是 30fps，动画只需要把两帧之间抹平，时长跟泵的间隔对齐。
         // 给长了会拖尾，给 spring 会因为每帧都在改目标值而抖。
+        //
+        // ⚠️ **这一处是故意不走 `ccAnimation` 的**，别顺手改。
+        //
+        // 「减弱动态效果」针对的是前庭反应，而柱子的起伏**本身就是内容** ——
+        // 说没说话、说得急还是缓，全在这上面。停掉等于把信息删了，
+        // 不是「少一个动效」。
+        //
+        // 而且去掉这 33ms 插值只会**更差**：泵是 30fps，不抹平两帧之间，
+        // 柱子变成一格一格硬跳，视觉上比平滑起伏更刺激。
+        // 真要照顾这类用户，正确方向是给一个「不显示波形」的开关，
+        // 而不是把动画拆掉留一个抽搐的波形。
         .animation(.linear(duration: 0.033), value: meter.levels)
     }
 
@@ -321,7 +344,7 @@ struct CCVoiceBars: View {
             )
             .blendMode(.plusLighter)
         }
-        .animation(.easeInOut(duration: 0.5), value: tint)
+        .ccAnimation(.easeInOut(duration: 0.5), value: tint)
     }
 
     /// 排障那一行。**这行是这次改动里最该留的东西。**
