@@ -86,6 +86,19 @@ let showing = [S.on, .off, .hidden, .unavailable, .unknown]
     .filter { $0.shouldShowVideo(userWants: true) }
 check("⭐ 开着时只有 on 显示画面", showing == [.on], "\(showing)")
 
+// MARK: - 属性键名：改一个字母两边就断，而且都不报错
+
+// 对面是 closecrab/voice/avatar_policy.py 的 ATTR_WANT / ATTR_VISIBLE / ATTR_STATE。
+// 服务端读不到只会按缺省当「没要」—— 现象是「开关拨了没反应」，两边日志都干净。
+check("⭐ 三个键跟服务端逐字对齐",
+      CCAvatarAttr.want == "cc.avatar.want"
+          && CCAvatarAttr.visible == "cc.client.visible"
+          && CCAvatarAttr.state == "cc.avatar.state",
+      "\(CCAvatarAttr.want) \(CCAvatarAttr.visible) \(CCAvatarAttr.state)")
+check("三个键都带 cc. 前缀（别跟 LiveKit 自己的 lk.* 撞）",
+      [CCAvatarAttr.want, CCAvatarAttr.visible, CCAvatarAttr.state]
+          .allSatisfy { $0.hasPrefix("cc.") })
+
 // MARK: - rawValue 必须跟服务端那四个字符串一模一样
 
 // 改一个字母，两边就对不上，而且**两边都不报错** —— 客户端只是永远

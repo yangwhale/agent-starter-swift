@@ -34,10 +34,6 @@ final class CCAvatarLink: ObservableObject {
     /// 注入不了。
     static let shared = CCAvatarLink()
 
-    static let attrWant = "cc.avatar.want"
-    static let attrVisible = "cc.client.visible"
-    static let attrState = "cc.avatar.state"
-
     /// 服务端最近一次回报。**是全房共享的那一份**，不是「我的」——
     /// 要判断该不该给用户看，走 `CCAvatarServerState` 上那两个方法。
     @Published private(set) var serverState: CCAvatarServerState = .unknown
@@ -143,8 +139,8 @@ final class CCAvatarLink: ObservableObject {
 
     private func publish() {
         let attrs = [
-            Self.attrWant: config.liveAvatar ? "true" : "false",
-            Self.attrVisible: policy.isVisible ? "true" : "false",
+            CCAvatarAttr.want: config.liveAvatar ? "true" : "false",
+            CCAvatarAttr.visible: policy.isVisible ? "true" : "false",
         ]
         guard let rooms else { return }
 
@@ -170,7 +166,7 @@ final class CCAvatarLink: ObservableObject {
                     self.sentTo[name] = attrs
                     self.lastPublishError = nil
                 } catch {
-                    // 不重试、也不回滚 lastSent：下一次开关或前后台变化会带上最新值。
+                    // 不重试：这个房间没记账，下一次重算会自动再试一遍。
                     //
                     // ⚠️ **但必须留一个用户看得见的地方。** 最要紧的那种失败
                     //    （token 少了 `canUpdateOwnMetadata`）是**持续性**的，
@@ -204,7 +200,7 @@ private final class CCAvatarDelegate: NSObject, RoomDelegate, @unchecked Sendabl
     nonisolated func room(_ room: Room,
                           participant: Participant,
                           didUpdateAttributes attributes: [String: String]) {
-        guard let raw = attributes[CCAvatarLink.attrState] else { return }
+        guard let raw = attributes[CCAvatarAttr.state] else { return }
         onState(raw)
     }
 }

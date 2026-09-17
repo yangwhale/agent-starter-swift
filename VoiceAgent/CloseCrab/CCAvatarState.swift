@@ -1,5 +1,26 @@
 import Foundation
 
+/// 跟服务端约定的三个属性键。**改一个字母两边就对不上，而且两边都不报错** ——
+/// 服务端读不到只会按缺省当「没要」，现象是「开关拨了没反应」。
+/// 对面在 `closecrab/voice/avatar_policy.py` 的 `ATTR_*`。
+///
+/// 放在这个 Foundation-only 文件里有两个理由：
+///
+/// 1. 它是**线上契约**，该跟判定逻辑待在一起，而不是藏在某个 SwiftUI 对象里。
+/// 2. ⚠️ **`static let` 会继承所在类型的 actor 隔离。** 原先放在
+///    `@MainActor final class CCAvatarLink` 里，三个纯字符串就成了
+///    MainActor-isolated，而收状态的那个 delegate 回调是 `nonisolated` 的 ——
+///    编译直接报 "can not be referenced from a nonisolated context"。
+///    隔离按**声明位置**算，不看内容有没有可变状态。
+public enum CCAvatarAttr {
+    /// 客户端写：用户那个开关。
+    public static let want = "cc.avatar.want"
+    /// 客户端写：现在看得见吗（已在客户端侧去抖）。
+    public static let visible = "cc.client.visible"
+    /// **服务端写**，回报最终状态。全房共享一份，不是「你的」状态。
+    public static let state = "cc.avatar.state"
+}
+
 /// 服务端回报的数字人状态。只依赖 Foundation，所以能离线测。
 ///
 /// ## 这是「网关这一路的状态」，不是「你的状态」
