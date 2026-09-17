@@ -113,12 +113,18 @@ struct CCBackdrop: View {
     /// 这一点在设置页的说明里也写了，免得又被当成「设了没反应」。
     private var scrim: some View {
         LinearGradient(
-            // 第三版。第一版 0.84/0.68/0.88 等于没加图，第二版 0.66/0.38/0.70
-            // 还是闷。现在窗口自己也透了（`CCShell.cardFill` 乘了 0.62），
-            // 文字的衬底有人负责，这一层可以再让一步。
+            // 第四版。第一版 0.84/0.68/0.88 等于没加图，第二版 0.66/0.38/0.70 还是闷，
+            // 第三版（深 0.34/0.06/0.46，浅 0.56/0.24/0.62）反过来又太淡：
+            // 深色模式背景发灰立不住，浅色模式那层白把图刷没了。
+            //
+            // 这一版两个方向都往「更深」走，但手法不同：
+            //   深色 —— 加黑，让背景沉下去，玻璃才浮得起来
+            //   浅色 —— **减白**。浅色发淡不是因为黑得不够，是白刷得太多
+            // 面板那边同步提到 `.regularMaterial` 0.88，文字的衬底由它负责，
+            // 所以这层不用再替可读性买单。
             colors: scheme == .dark
-                ? [.black.opacity(0.34), .black.opacity(0.06), .black.opacity(0.46)]
-                : [.white.opacity(0.56), .white.opacity(0.24), .white.opacity(0.62)],
+                ? [.black.opacity(0.46), .black.opacity(0.18), .black.opacity(0.58)]
+                : [.white.opacity(0.34), .white.opacity(0.10), .white.opacity(0.42)],
             startPoint: .top,
             endPoint: .bottom
         )

@@ -373,5 +373,10 @@ private struct CCShell: View {
     /// 0.62 是在「还能当文字衬底」和「能看出背后是什么」之间取的。
     /// 真机上觉得字糊就往上调，觉得还是太闷就往下调，**只有这一个数**。
     private static let cardStroke = Color.separator1
-    private static let cardFill = AnyShapeStyle(.ultraThinMaterial.opacity(0.62))
+    /// 第三版。0.62 的 `.ultraThinMaterial` 透过头了 —— 背景图直接糊在文字后面，
+    /// 玻璃看着不像一块材质，像一层没擦干净的膜。
+    /// 参照小米那套的做法：**玻璃要有实体感，靠的是材质厚度而不是低透明度**。
+    /// 换成 `.regularMaterial` 并把透明度提到 0.88：背景仍然透得出来（折射源还在），
+    /// 但面板本身是一块看得见的东西，文字也不用再跟背景抢对比。
+    private static let cardFill = AnyShapeStyle(.regularMaterial.opacity(0.88))
 }
