@@ -7,18 +7,29 @@ import Foundation
 /// 放在这个 Foundation-only 文件里有两个理由：
 ///
 /// 1. 它是**线上契约**，该跟判定逻辑待在一起，而不是藏在某个 SwiftUI 对象里。
-/// 2. ⚠️ **`static let` 会继承所在类型的 actor 隔离。** 原先放在
-///    `@MainActor final class CCAvatarLink` 里，三个纯字符串就成了
-///    MainActor-isolated，而收状态的那个 delegate 回调是 `nonisolated` 的 ——
-///    编译直接报 "can not be referenced from a nonisolated context"。
-///    隔离按**声明位置**算，不看内容有没有可变状态。
+/// 2. 它得能从 `nonisolated` 的地方读 —— 收状态那个 delegate 回调必须是
+///    `nonisolated`（`RoomDelegate` 是 `@objc` + `Sendable`）。
+///
+/// ## ⚠️ 每个 `static let` 都要单独标 `nonisolated`
+///
+/// 这个工程开了 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`，
+/// **所有类型默认都是 MainActor-isolated，包括这个裸 enum**。
+/// 不标的话，三个纯字符串常量照样被隔离，`nonisolated` 的回调里读不到：
+///
+///     main actor-isolated static property 'state'
+///     can not be referenced from a nonisolated context
+///
+/// 隔离按**声明位置**算，跟内容有没有可变状态无关 —— 这一条很反直觉：
+/// 一个 `let String` 读一下怎么会不安全？但编译器不看这个。
+///
+/// 第一次搬家时以为「搬出 @MainActor 类」就够了 —— 不够，默认隔离照样罩着。
 public enum CCAvatarAttr {
     /// 客户端写：用户那个开关。
-    public static let want = "cc.avatar.want"
+    public nonisolated static let want = "cc.avatar.want"
     /// 客户端写：现在看得见吗（已在客户端侧去抖）。
-    public static let visible = "cc.client.visible"
+    public nonisolated static let visible = "cc.client.visible"
     /// **服务端写**，回报最终状态。全房共享一份，不是「你的」状态。
-    public static let state = "cc.avatar.state"
+    public nonisolated static let state = "cc.avatar.state"
 }
 
 /// 服务端回报的数字人状态。只依赖 Foundation，所以能离线测。

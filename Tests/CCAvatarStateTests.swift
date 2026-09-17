@@ -99,6 +99,22 @@ check("三个键都带 cc. 前缀（别跟 LiveKit 自己的 lk.* 撞）",
       [CCAvatarAttr.want, CCAvatarAttr.visible, CCAvatarAttr.state]
           .allSatisfy { $0.hasPrefix("cc.") })
 
+// ⭐ **从 `nonisolated` 上下文读一次。这一条不是运行时断言，是编译期断言。**
+//
+// 工程开了 SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor，所有类型默认带隔离，
+// 而收服务端状态的那个 delegate 回调必须是 nonisolated（RoomDelegate 是
+// @objc + Sendable）。三个键少标一个 `nonisolated`，真机编译就报
+// "can not be referenced from a nonisolated context"。
+//
+// 2026-09-17 这条错被 CI 抓到两次而离线测试全绿 —— 因为 **main.swift 的
+// 顶层代码本身就是 MainActor**，上面那些断言全在隔离内读，天然读得到。
+// 所以必须显式造一个 nonisolated 的读取点，否则这个测试台对这类错是瞎的。
+nonisolated func readKeysFromNonisolatedContext() -> [String] {
+    [CCAvatarAttr.want, CCAvatarAttr.visible, CCAvatarAttr.state]
+}
+check("⭐ 三个键能从 nonisolated 上下文读（编译过就算过）",
+      readKeysFromNonisolatedContext().count == 3)
+
 // MARK: - rawValue 必须跟服务端那四个字符串一模一样
 
 // 改一个字母，两边就对不上，而且**两边都不报错** —— 客户端只是永远
