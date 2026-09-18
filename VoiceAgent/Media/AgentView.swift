@@ -24,9 +24,11 @@ struct AgentView: View {
     /// 会让 body 重算，画面就永远收不回去（`lastSpokeAt` 此时已经不再变了）。
     @State private var now = Date.now
 
-    /// 换气用的宽限期。句与句之间 `isSpeaking` 会短暂落下去，
-    /// 照着它立刻收画面的话，一段话里画面会一闪一闪。
-    private static let hideGrace: TimeInterval = 0.9
+    /// 换气宽限。两个作用：
+    /// 1. 句与句之间 `isSpeaking` 会短暂落下去，照着它立刻收画面会一闪一闪。
+    /// 2. **要比收起动画长一点** —— 否则刚开始收就被下一句拽回来，
+    ///    画面在「收一半」和「展开」之间来回抖。
+    private static let hideGrace: TimeInterval = 1.4
     /// 采样间隔。跟 `CCRosterRow` 同一个量级，别更密 —— 这两处会同时重算。
     private static let tick: TimeInterval = 0.2
 
@@ -63,7 +65,11 @@ struct AgentView: View {
                     .transition(.opacity)
             }
         }
-        .ccAnimation(.smooth(duration: 0.45), value: showAvatar)
+        // ⚠️ 时长从 `CCLineReveal.duration` 取，**别在这儿另写一个数** ——
+        //    两处不一致的话进场退场节奏对不上，而那种不对劲很难指认。
+        //    曲线用 linear：三段时序已经在 `CCLineReveal` 里编排好了，
+        //    外面再叠一条缓动会把「先快后慢」压平，又变回看不出过程。
+        .ccAnimation(.linear(duration: CCLineReveal.duration), value: showAvatar)
         .ccAnimation(.snappy, value: session.agent.audioTrack?.id)
         .matchedGeometryEffect(id: "agent", in: namespace!)
         .overlay { sampler }
