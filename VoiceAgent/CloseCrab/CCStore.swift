@@ -39,7 +39,10 @@ nonisolated enum CCStore {
         /// **存的是「关掉了吗」，不是「开着吗」** —— 见 `CCStore.haptics` 的注释。
         static let hapticsOff = "cc.haptics.off"
         static let handwritten = "cc.handwritten"
-        static let liveAvatar = "cc.liveAvatar"
+        /// **只读的迁移种子**，见 `avatarWants(room:)`。2026-09-18 起没人再写它。
+        static let legacyLiveAvatar = "cc.liveAvatar"
+        /// 每个房间一条，键是 `cc.avatar.roles.<房间名>`。
+        static func avatarRoles(room: String) -> String { "cc.avatar.roles.\(room)" }
     }
 
     private static let keychainService = "com.higcp.closecrab.voice"
@@ -212,19 +215,37 @@ nonisolated enum CCStore {
         set { UserDefaults.standard.set(newValue, forKey: Key.handwritten) }
     }
 
-    /// 要不要数字人画面。**默认关。**
+    /// 这个房间里，用户想让哪几个角色有脸。**默认一个都不开。**
     ///
     /// 默认关有两个理由，缺一个都不够：
     ///
-    /// 1. 服务端一共 8 路 GPU 槽位。默认开的话，每个装了 app 的人一进房就
-    ///    抢一路，而多数时候他只是想听个声。
+    /// 1. 服务端 GPU 槽位有限。默认开的话，每个装了 app 的人一进房就抢一路，
+    ///    而多数时候他只是想听个声。
     /// 2. 这是个「多给一点」的功能，不是修好一个缺陷。默认开等于替人做主。
     ///
-    /// 这个值会经 `cc.avatar.want` 属性发给服务端，由它合成最终决定 ——
-    /// 见 `CCAvatarLink`。
-    static var liveAvatar: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.liveAvatar) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.liveAvatar) }
+    /// 结果会经 `cc.avatar.principal` / `cc.avatar.assistant` 发给服务端，
+    /// 由它按资源合成最终决定 —— 见 `CCAvatarLink` 和服务端 `policy.py`。
+    ///
+    /// ## 迁移：老的全局开关
+    ///
+    /// 2026-09-18 之前是设置页里一个全局 `cc.liveAvatar`。**没存过这个房间的
+    /// 新键、而老开关是开着的**，就当成「这个房间要本体」—— 老开关本来就只能
+    /// 驱动本体那一路。不这么做的话，升级完 app 的人会发现功能凭空没了，
+    /// 而新开关藏在一个他还不知道的双击手势后面。
+    ///
+    /// ⚠️ 判据是 `string(forKey:) == nil`（从来没存过），**不能用「空集合」**：
+    /// 用户主动关掉之后存的就是空串，拿空集合当「没存过」的话，
+    /// 他每次重启 app 都会看到 Avatar 自己又开回来。
+    static func avatarWants(room: String) -> CCAvatarWants {
+        let raw = UserDefaults.standard.string(forKey: Key.avatarRoles(room: room))
+        if raw == nil, UserDefaults.standard.bool(forKey: Key.legacyLiveAvatar) {
+            return CCAvatarWants([.principal])
+        }
+        return CCAvatarWants.parse(raw)
+    }
+
+    static func setAvatarWants(_ wants: CCAvatarWants, room: String) {
+        UserDefaults.standard.set(wants.storageValue, forKey: Key.avatarRoles(room: room))
     }
 
     // MARK: - 共享密钥（Keychain）

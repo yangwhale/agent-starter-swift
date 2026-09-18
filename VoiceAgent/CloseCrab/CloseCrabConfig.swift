@@ -44,10 +44,10 @@ final class CloseCrabConfig: ObservableObject {
     /// 房间名用手写体。见 `CCHandFont`。
     @Published var handwritten: Bool { didSet { CCStore.handwritten = handwritten } }
 
-    /// 要不要数字人画面。**这只是「我想要」，不是「一定有」** ——
-    /// 最终开不开由服务端合成（还要看 app 在不在前台、网关有没有空槽），
-    /// 结果经 `cc.avatar.state` 回来。见 `CCAvatarLink`。
-    @Published var liveAvatar: Bool { didSet { CCStore.liveAvatar = liveAvatar } }
+    // ⚠️ Avatar 开关**不在这里** —— 它是**每个房间、每个角色**一个，
+    //    住在 `CCAvatarLink.wants(room:)`，界面在房间里那排牌子上（双击）。
+    //    放全局曾经是对的（当时只有一个「要不要脸」），加了角色之后就不对了：
+    //    一个全局布尔表达不了「给谁」，而房间里有两路声音。
 
     private init() {
         baseURL = CCStore.baseURL
@@ -62,7 +62,6 @@ final class CloseCrabConfig: ObservableObject {
         appearance = CCStore.appearance
         haptics = CCStore.haptics
         handwritten = CCStore.handwritten
-        liveAvatar = CCStore.liveAvatar
     }
 
     /// 把内存里的勾选拉回跟磁盘一致。递归只会发生一次：

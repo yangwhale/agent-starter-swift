@@ -2,14 +2,22 @@ import Combine
 import LiveKit
 import SwiftUI
 
-/// 数字人开关的客户端这一半：**报两件事实，收一个结论**。
+/// Avatar 开关的客户端这一半：**报事实，收结论**。
 ///
-///     报出去   cc.avatar.want      用户那个开关
-///     报出去   cc.client.visible   现在看得见吗（`CCVisibilityPolicy` 去过抖）
-///     收回来   cc.avatar.state     服务端合成的结论
+///     报出去   cc.avatar.principal   本人（Bunny）那一路要不要脸
+///     报出去   cc.avatar.assistant   语音助手那一路要不要脸
+///     报出去   cc.avatar.want        老键，只镜像 principal（见 `CCAvatarWants`）
+///     报出去   cc.client.visible     现在看得见吗（`CCVisibilityPolicy` 去过抖）
+///     收回来   cc.avatar.state       服务端合成的结论
 ///
-/// 客户端**不做最终决定** —— 服务端还要看网关通不通、8 路槽位还剩几路。
-/// 判定本身在服务端 `avatar_policy.py`，那边穷举测过。
+/// 客户端**不做最终决定** —— 服务端还要看网关通不通、还剩几路 GPU。
+/// 判定本身在服务端 `closecrab_avatar/policy.py`，那边穷举测过。
+///
+/// ## ⭐ 开关是「每房间、每角色」的
+///
+/// 2026-09-18 之前是设置页里一个全局布尔。加了角色之后它表达不了「给谁」，
+/// 于是挪到房间里那排牌子上（双击本人 / 双击语音助手），存储也跟着按房间分。
+/// 意图归客户端、分配归服务端，理由写在 `CCAvatarRoles.swift` 上。
 ///
 /// ## 为什么可见性值得单独报
 ///
@@ -38,10 +46,13 @@ final class CCAvatarLink: ObservableObject {
     /// 要判断该不该给用户看，走 `CCAvatarServerState` 上那两个方法。
     @Published private(set) var serverState: CCAvatarServerState = .unknown
 
-    /// 上报失败的原因，给设置页显示。`nil` = 没出过错。
+    /// 上报失败的原因，给界面显示。`nil` = 没出过错。
     @Published private(set) var lastPublishError: String?
 
-    private let config = CloseCrabConfig.shared
+    /// 已经被翻动过的房间。**只有 `toggle()` 会写它** ——
+    /// 没在这里的房间走 `CCStore` 现读，见 `wants(room:)`。
+    @Published private(set) var touched: [String: CCAvatarWants] = [:]
+
     /// 由 `VoiceAgentApp` 在启动时 `attach` 进来。没接上之前所有上报都是空转 ——
     /// 不是错误，只是还没到时候。
     private weak var rooms: CCRooms?
@@ -72,13 +83,28 @@ final class CCAvatarLink: ObservableObject {
             }
         }
         delegate = forwarder
+    }
 
-        // 开关一拨就重报。盯 objectWillChange 而不是具体字段，跟 CCRooms 同一个理由；
-        // 同样要跳一个 runloop tick，因为它是**值改变之前**发的。
-        config.objectWillChange
-            .sink { [weak self] _ in Task { @MainActor in self?.publish() } }
-            .store(in: &bag)
+    // MARK: - 开关
 
+    /// 这个房间现在开着哪几个角色。
+    ///
+    /// ⚠️ **这是个纯读，不写任何东西。** 它会在 SwiftUI 的 body 里被调到
+    /// （牌子要画那个小屏幕标记），在读的过程中改 `@Published` 会触发
+    /// 「Modifying state during view update」——那是运行时警告加未定义刷新行为。
+    /// 所以没被翻动过的房间就地从 `CCStore` 读，不回填缓存。
+    func wants(room: String) -> CCAvatarWants {
+        touched[room] ?? CCStore.avatarWants(room: room)
+    }
+
+    /// 双击一个角色的牌子。互斥语义在 `CCAvatarWants.toggled` 里，这里只管
+    /// **存盘 + 上报**两件副作用。
+    func toggle(room: String, role: CCPersonaRole) {
+        guard !room.isEmpty else { return }
+        let next = wants(room: room).toggled(role)
+        CCStore.setAvatarWants(next, room: room)
+        touched[room] = next
+        publish()
     }
 
     /// 接上房间层。**只该调一次**（`VoiceAgentApp.init`）。
@@ -138,11 +164,8 @@ final class CCAvatarLink: ObservableObject {
     }
 
     private func publish() {
-        let attrs = [
-            CCAvatarAttr.want: config.liveAvatar ? "true" : "false",
-            CCAvatarAttr.visible: policy.isVisible ? "true" : "false",
-        ]
         guard let rooms else { return }
+        let visible = policy.isVisible ? "true" : "false"
 
         // 断开的房间先忘掉，它重连之后要重新收一次。
         // 顺带把已经不存在的槽位清掉，不然这个字典会一直长。
@@ -150,6 +173,11 @@ final class CCAvatarLink: ObservableObject {
         sentTo = sentTo.filter { live.contains($0.key) }
 
         for slot in rooms.slots where slot.session.isConnected {
+            // ⚠️ 属性**按房间各算各的** —— 开关是每个房间一份。
+            //    算在循环外的话，切到另一个房间会把上一个房间的开关发过去，
+            //    而那看起来完全正常：属性写成功了，只是值是别人的。
+            var attrs = wants(room: slot.name).attributes()
+            attrs[CCAvatarAttr.visible] = visible
             guard sentTo[slot.name] != attrs else { continue }
             // 先把要用的东西取出来再进 Task —— 闭包里别再碰 `slot`，
             // 那是个 @MainActor 类，在异步上下文里访问它的属性要额外 await。
@@ -157,8 +185,10 @@ final class CCAvatarLink: ObservableObject {
             let name = slot.name
             Task {
                 do {
-                    // 每次把**两个键一起**写。属性是按键合并的，
-                    // 所以这不会碰掉 LiveKit 自己的 lk.* 键。
+                    // 每次把**全部键一起**写，关掉的那个显式写 `false`。
+                    // 属性是按键合并的：不写 ≠ 清掉，而是「保持上次的值」——
+                    // 所以漏写一个关掉的角色，服务端那边它会一直是开着的。
+                    // 合并这个性质在另一个方向上是好事：不会碰掉 LiveKit 自己的 lk.* 键。
                     try await room.localParticipant.set(attributes: attrs)
                     // ⚠️ **写成功之后才记账。** 先记的话，一次失败就会被当成
                     //    「已经发过了」，下次内容没变直接跳过 —— 那个房间从此

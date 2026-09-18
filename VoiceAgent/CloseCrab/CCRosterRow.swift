@@ -22,6 +22,21 @@ import SwiftUI
 /// 同理，助手那行原来写的 `listening / speaking` 也去掉了：右边那个绿点
 /// 已经说清楚了。
 ///
+/// ## 牌子上的三个手势
+///
+///     单击   看这个角色的形象图（放大）
+///     双击   开 / 关这个角色的 Avatar —— 开着的名字后面有个小屏幕标记
+///     长按   换一张形象图
+///
+/// Chris 2026-09-18：「那个 Avatar 的开关，你把它给我从系统配置里边拿出来，
+/// 放到每一个这个房间里。双击 bunny 可以打开 Avatar，然后在 Bunny 头上放一个
+/// 标记的图标……双击语音助手的时候，这个 Avatar 就会变成语音助手开，
+/// 顺便把那个巴尼就拿走。」
+///
+/// 开关长在它作用的对象上，不用离开正在看的画面去设置页里改一个只对眼前这个
+/// 房间有意义的东西。互斥（开一个关另一个）是**客户端的产品选择**，
+/// 协议本身允许两个都开 —— 见 `CCAvatarRoles.swift`。
+///
 /// ## 角色怎么认（顺序不能反）
 ///
 ///   `lk.avatar_provider`   Avatar（它同时也带 publish_on_behalf，**所以要先判它**）
@@ -40,6 +55,8 @@ import SwiftUI
 struct CCRosterRow: View {
     @EnvironmentObject private var session: Session
     @StateObject private var persona = CCPersona.shared
+    /// Avatar 开关住在这儿（每房间、每角色），顺带拿服务端回报来给标记上色。
+    @ObservedObject private var link = CCAvatarLink.shared
     /// 正在放大看谁的形象。nil = 没在看。
     @State private var previewing: CCPersonaRole?
 
@@ -49,7 +66,7 @@ struct CCRosterRow: View {
         TimelineView(.periodic(from: .now, by: 0.35)) { _ in
             HStack(spacing: 6) {
                 ForEach(roster()) { m in
-                    CCRosterChip(member: m, room: roomName, persona: persona,
+                    CCRosterChip(member: m, room: roomName, persona: persona, link: link,
                                  onTapPersona: { previewing = m.role.personaRole })
                 }
             }
@@ -118,11 +135,15 @@ enum CCRosterRole {
         }
     }
 
-    /// 这个牌子对应哪张脸 —— 有的才能长按换图。
+    /// 这个牌子对应哪个角色 —— 有的才能长按换图、双击开 Avatar。
     ///
     /// Chris 2026-09-18：「长按语音助手和长按 Bunny 都能上传一个照片。」
-    /// **「Avatar」那块不给** —— 它是渲染出来的结果，不是输入；
-    /// 挂在它身上会让人以为改的是「当前这段视频」。
+    /// 「双击 bunny 可以打开 Avatar……双击语音助手的时候，这个 Avatar 就会
+    /// 变成语音助手开。」
+    ///
+    /// **「Avatar」那块牌子自己不给** —— 它是渲染出来的**结果**，不是输入。
+    /// 手势挂在它身上会让人以为改的是「当前这段视频」；而且它开着才在，
+    /// 关掉之后那块牌子就没了，用来关它的手势会跟着一起消失。
     var personaRole: CCPersonaRole? {
         switch self {
         case .assistant: .assistant
@@ -207,6 +228,7 @@ private struct CCRosterChip: View {
     let member: CCRosterMember
     let room: String
     @ObservedObject var persona: CCPersona
+    @ObservedObject var link: CCAvatarLink
     let onTapPersona: () -> Void
 
     /// 这个牌子有没有自己的一张脸。没有的（我 / Avatar / 访客）就还画图标。
@@ -216,6 +238,26 @@ private struct CCRosterChip: View {
     }
     private var busy: Bool {
         personaRole.map { persona.uploading.contains($0.key(room: room)) } ?? false
+    }
+
+    /// 这个角色的 Avatar 开关拨着没有。
+    private var avatarOn: Bool {
+        personaRole.map { link.wants(room: room).contains($0) } ?? false
+    }
+
+    /// 开着、但这一路其实没起来。
+    ///
+    /// 两种都算：服务端明说 `unavailable`，或者**我们的开关根本没报上去**
+    /// （token 少权限那种持续性失败）。后者更阴 —— 两边都不报错，
+    /// 服务端只是永远读不到属性，现象就是「双击了没反应」。
+    ///
+    /// ⚠️ `serverState` 目前是**全房一份**，还分不到角色。所以两个角色都开着时
+    /// 这个橙色会同时出现在两块牌子上。等服务端按角色回报再收窄；
+    /// 现在宁可多报一个，也好过让一路静默地不工作。
+    private var avatarTrouble: Bool {
+        guard avatarOn else { return false }
+        return link.serverState.shouldSurfaceProblem(userWants: true)
+            || link.lastPublishError != nil
     }
 
     var body: some View {
@@ -242,13 +284,27 @@ private struct CCRosterChip: View {
                 }
                 .frame(width: 26, height: 26)
                 .clipShape(RoundedRectangle(cornerRadius: 5))
-                .onTapGesture(perform: onTapPersona)
             } else {
                 Image(systemName: member.role.symbol)
                     .font(.system(size: 12, weight: .semibold))
             }
             Text(verbatim: member.title)
                 .font(.system(size: 12, weight: .medium))
+            // ⭐ Avatar 开着的标记。Chris 2026-09-18：「在 Bunny 头上放一个
+            //    标记的图标，像是什么小屏幕之类的这种。」
+            //
+            //    放在名字**后面**而不是压在缩略图角上：牌子只有 34pt 高，
+            //    角标要么被胶囊边缘切掉，要么得溢出去压住隔壁那块牌子。
+            //
+            //    ⚠️ 这个标记也是**唯一**能看出开关状态的地方 —— 双击是个
+            //    没有视觉提示的手势，标记要是不明显，用户按完只能靠等画面
+            //    来确认，而画面要好几秒才出来。
+            if avatarOn {
+                Image(systemName: "display")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(avatarTrouble ? .orange : .green)
+                    .transition(.scale.combined(with: .opacity))
+            }
             // 说话时那个点。**不做呼吸动画** —— 一排小点各自呼吸很吵，
             // 而这条信息只有「有/无」两态，闪不闪不增加信息。
             Circle()
@@ -261,25 +317,39 @@ private struct CCRosterChip: View {
         .frame(height: 34)
         .background(Capsule().fill(.fg1.opacity(member.speaking ? 0.16 : 0.08)))
         .ccAnimation(.default, value: member.speaking)
-        .modifier(CCPersonaPicker(room: room, role: personaRole, persona: persona))
+        .ccAnimation(.snappy, value: avatarOn)
+        .modifier(CCChipGestures(room: room, role: personaRole,
+                                 persona: persona, link: link,
+                                 onPreview: onTapPersona))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim:
-            "\(member.title)\(member.speaking ? "，正在说话" : "")"))
+        .accessibilityLabel(Text(verbatim: [
+            member.title,
+            member.speaking ? "正在说话" : nil,
+            avatarOn ? (avatarTrouble ? "Avatar 已开但没起来" : "Avatar 已开") : nil,
+        ].compactMap { $0 }.joined(separator: "，")))
         .accessibilityHint(Text(verbatim:
-            personaRole == nil ? "" : "轻点头像放大，长按换一张"))
+            personaRole == nil ? "" : "轻点头像放大，双击开关 Avatar，长按换一张"))
     }
 }
 
-// MARK: - 换图 / 放大看
+// MARK: - 牌子上的三个手势
 
-/// 长按换图。单独抽成 modifier 是因为 `PhotosPicker` 只有 iOS 有，
-/// 而 macOS / visionOS 那两个 target 也要能编过。
-private struct CCPersonaPicker: ViewModifier {
+/// 一块牌子上的全部手势：**单击看大图、双击开关 Avatar、长按换图**。
+///
+/// 三个收在一个 modifier 里，是因为它们共享同一条前提 —— `role == nil`
+/// （我 / Avatar / 访客那几块牌子）就**一个都不挂**。分散在各处写的话，
+/// 迟早有一个漏掉那层判断，变成一个按了没反应的手势，而那比没有更让人困惑。
+///
+/// 长按那部分单独 `#if os(iOS)`：`PhotosPicker` 只有 iOS 有，
+/// 而 macOS / visionOS 那两个 target 也要能编过。两个 tap 是全平台的。
+private struct CCChipGestures: ViewModifier {
     let room: String
-    /// nil = 这个牌子没有自己的脸（我 / Avatar / 访客），**整个手势都不挂**。
-    /// 挂一个按了没反应的长按，比没有更让人困惑。
+    /// nil = 这个牌子没有自己的角色，整组手势都不挂。
     let role: CCPersonaRole?
     @ObservedObject var persona: CCPersona
+    @ObservedObject var link: CCAvatarLink
+    let onPreview: () -> Void
+
     #if os(iOS)
         @State private var pick: PhotosPickerItem?
         @State private var showing = false
@@ -288,17 +358,24 @@ private struct CCPersonaPicker: ViewModifier {
     // ⚠️ 两个分支返回的类型不一样（挂了手势的 vs 原样），必须 @ViewBuilder。
     @ViewBuilder
     func body(content: Content) -> some View {
-        #if os(iOS)
-            if let role { picker(content, role: role) } else { content }
-        #else
-            content
-        #endif
+        if let role { attach(content, role: role) } else { content }
     }
 
-    #if os(iOS)
     @ViewBuilder
-    private func picker(_ content: Content, role: CCPersonaRole) -> some View {
-            content
+    private func attach(_ content: Content, role: CCPersonaRole) -> some View {
+        // ⚠️⚠️ **双击必须声明在单击前面。** SwiftUI 按声明顺序定优先级，
+        //      反过来写的话单击会先吃掉第一下，双击永远等不到第二下 ——
+        //      表现是「双击 Bunny 弹出了两次大图，Avatar 没开」。
+        //      这个顺序没有编译期保护，改这段时先回来看这一行。
+        let tapped = content
+            .onTapGesture(count: 2) {
+                CCHaptics.toggleAvatar()
+                link.toggle(room: room, role: role)
+            }
+            .onTapGesture(count: 1, perform: onPreview)
+
+        #if os(iOS)
+            tapped
                 .onLongPressGesture(minimumDuration: 0.4) {
                     CCHaptics.reveal()
                     showing = true
@@ -321,8 +398,10 @@ private struct CCPersonaPicker: ViewModifier {
                     }
                     pick = nil
                 }
+        #else
+            tapped
+        #endif
     }
-    #endif
 }
 
 // MARK: - 放大看
@@ -334,7 +413,7 @@ private struct CCPersonaPreview: View {
     @Environment(\.dismiss) private var dismiss
 
     private var key: String { role.key(room: room) }
-    private var who: String { role == .assistant ? "语音助手" : "本人" }
+    private var who: String { role.title }
 
     var body: some View {
         VStack(spacing: 4 * .grid) {

@@ -49,6 +49,18 @@ enum CCHaptics {
         #endif
     }
 
+    /// 双击一块牌子，给这个角色开 / 关 Avatar。跟静音同一档 ——
+    /// 它改的也是「看不看得见」这种有后果的状态，而且**后果要几秒才看得见**
+    /// （服务端要分配、要建会话、要出第一帧）。这段空窗里手上这一记
+    /// 是唯一的「收到了」。
+    static func toggleAvatar() {
+        #if os(iOS)
+            guard enabled else { return }
+            medium.impactOccurred()
+            medium.prepare()
+        #endif
+    }
+
     /// 长按弹出图标选择器。软的一下，表示「有东西要出来了」而不是「完成了」。
     static func reveal() {
         #if os(iOS)

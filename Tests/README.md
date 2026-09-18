@@ -12,7 +12,8 @@
 | `CCLook.swift` | `CCLookTests.swift` | 45 | 四段天色的八个边界、越界输入折回、「还有多久换」含跨夜、背景选项解析、rawValue 往返无损 |
 | `CCMotionPolicy.swift` | `CCMotionPolicyTests.swift` | 56 | 「减弱动态效果」的 2×2 真值表、开关关闭时 decorative 不参与决策、开关打开时两档必须有区分度、幂等 |
 | `CCVisibilityPolicy.swift` | `CCVisibilityPolicyTests.swift` | 93 | 「关要慢、开要快」的不对称、宽限期边界、回前台清零不累计、inactive→background 不重置、deadline 排定时器（含已隐藏返回 nil、晚醒不为负）|
-| `CCAvatarState.swift` | `CCAvatarStateTests.swift` | 78 | 四个状态的解析（大小写/空白/未知值）、`unknown` 与 `off` 不能合并、「报错」和「显示画面」都必须同时看用户自己的开关、rawValue 与服务端逐字对齐 |
+| `CCAvatarState.swift` | `CCAvatarStateTests.swift` | 75 | 四个状态的解析（大小写/空白/未知值）、`unknown` 与 `off` 不能合并、「报错」和「显示画面」都必须同时看用户自己的开关、rawValue 与服务端逐字对齐 |
+| `CCAvatarRoles.swift` | `CCAvatarRolesTests.swift` | 48 | 双击的互斥语义（含「抢过来再双击是全关不是弹回」）、**关掉的角色必须显式写 `false`**、老键只镜像 principal、存盘规范形与解析容错、角色 rawValue 与服务端 `policy.py` 逐字对齐 |
 
 > `CCVisibilityPolicy` 那条不对称最值得留意：**两个方向的代价完全不一样。**
 > 误判成「看不见」会让正在看的人画面断掉并重起（首帧 1.26 秒 + 重抢槽位），
@@ -49,9 +50,11 @@ docker run --rm -v /tmp/swtest:/w -w /w swift:6.2-noble \
 测试全绿只说明「现在没红」，不说明「错了会红」。加完规则要手动改坏源码、
 确认测试真的会炸。`CCLook` 现有 10 条变异（区间开闭、边界值挪位、比较符方向、
 跨夜漏加、负数不折回、auto 不看时钟、off 也给图、秒数不参与、两档标签撞名），
-**10 杀 0 漏**。`CCVisibilityPolicy` 11 杀 0 漏，`CCAvatarState` 9 杀 0 漏。
+**10 杀 0 漏**。`CCVisibilityPolicy` 11 杀 0 漏，`CCAvatarState` 9 杀 0 漏，
+`CCAvatarRoles` 9 杀 0 漏（互斥失效、漏写 `false`、老键镜像错、存盘顺序反、
+解析不去空白、属性键少个点、缓存键不带角色、双击关不掉、空集合存占位串）。
 
-### 变异测试自己也会骗人：两个真踩过的坑
+### 变异测试自己也会骗人：三个真踩过的坑
 
 **① 测试从源码里读阈值，会跟着变异一起缩放。**
 `CCVisibilityPolicy` 的断言全拿 `backgroundGrace` 当基准，所以把这个常量
@@ -65,6 +68,23 @@ Python 判 `.pyc` 新旧只看源文件的 **(秒级 mtime, 字节数)**。
 执行的是**带变异的缓存**。现象可以是「源码 grep 干净但测试红」，
 更糟的是反过来 —— 变异被上一轮缓存掩盖成「杀掉了」。
 ⇒ **每次改写和还原都要清 `__pycache__`**，否则整套结论不可信。
+
+**③ 「全杀」也可能是测试台自己没了。**
+2026-09-18 跑 `CCAvatarRoles` 的变异时，清理用的 `rm -rf m*` 把变异体目录
+`m0…m8` **和 `main.swift` 一起删了**。于是每个变异体都在
+`error: error opening input file 'main.swift'` 上失败，脚本把编译失败
+一律记成「编译期拦住」，最后打印 **9 杀 0 漏** —— 一个满分，而实际上
+一条断言都没跑过。
+
+两条防法，都很便宜：
+
+- **每轮先跑一遍未变异的基线并要求它全绿。** 基线绿 ⇒ 测试台完好；
+  这一步能把上面那种整体性故障一次性挡掉。
+- **「编译失败 ＝ 杀掉」这条要留个心眼。** 它对「改坏了类型」是对的，
+  对「文件找不到」「模块缺失」这类**跟变异无关**的失败是错的。
+  真要严谨就把 swiftc 的 stderr 打出来看一眼是不是类型错。
+
+更一般的那条：**满分本身就是个该起疑的信号。**
 
 特别值得留的是这两条断言：
 

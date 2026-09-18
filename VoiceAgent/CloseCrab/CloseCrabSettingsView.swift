@@ -119,30 +119,14 @@ struct CloseCrabSettingsView: View {
                     }
                 }
 
-                Section {
-                    Toggle(isOn: $config.liveAvatar) {
-                        Text(verbatim: "Avatar 画面")
-                    }
-                } header: {
-                    Text(verbatim: "Avatar")
-                } footer: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(verbatim: "开着的时候，回答会配一张会说话的脸。这只是「我想要」——真正开不开由服务端定，它还要看服务通不通、并发满没满。")
-                        // ⭐ 后台这件事必须说清楚。用户会发现「切出去画面就没了」，
-                        //    不解释的话那看起来像 bug。
-                        Text(verbatim: "切到后台或锁屏时会自动停掉画面，只留声音 —— iOS 本来就没法在锁屏上放实时视频，继续渲染只是白占服务端一路算力。回到前台会自己接回来。")
-                        if avatar.serverState.shouldSurfaceProblem(userWants: config.liveAvatar) {
-                            Text(verbatim: avatar.serverState.problemText)
-                                .foregroundStyle(.orange)
-                        }
-                        // ⚠️ 上报失败是**静默**的：服务端只是永远读不到属性，
-                        //    现象就是「开关拨了没反应」。所以必须摆出来。
-                        if let err = avatar.lastPublishError {
-                            Text(verbatim: "开关没能报给服务端：\(err)")
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                }
+                // ⚠️ Avatar 开关**不在设置页里了**（2026-09-18）。
+                //    它现在是「每个房间、每个角色」一个，界面在房间顶上那排
+                //    牌子上：双击本人 / 双击语音助手。理由见 `CCAvatarRoles.swift`
+                //    ——一个全局布尔表达不了「给谁」，而房间里有两路声音。
+                //
+                //    只留下面这条上报失败：那是**静默**的（服务端读不到属性，
+                //    现象就是「双击了没反应」），牌子上那个标记只能说明
+                //    本地状态，说明不了报上去没有。
 
                 Section {
                     Toggle(isOn: $config.netReadout) {
@@ -151,7 +135,14 @@ struct CloseCrabSettingsView: View {
                 } header: {
                     Text(verbatim: "排障")
                 } footer: {
-                    Text(verbatim: "在控制栏上方显示抖动缓冲深度和丢包率。信号差时用来分辨是「缓冲没涨上去」还是「整段断流」—— 这两种听起来一模一样，但处理方式完全相反。平时建议关掉。")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(verbatim: "在控制栏上方显示抖动缓冲深度和丢包率。信号差时用来分辨是「缓冲没涨上去」还是「整段断流」—— 这两种听起来一模一样，但处理方式完全相反。平时建议关掉。")
+                        Text(verbatim: "Avatar 开关在房间里那排牌子上：双击「本人」或「语音助手」开关，开着的那个名字后面会有一个小屏幕标记。")
+                        if let err = avatar.lastPublishError {
+                            Text(verbatim: "Avatar 开关没能报给服务端：\(err)")
+                                .foregroundStyle(.orange)
+                        }
+                    }
                 }
 
                 Section {

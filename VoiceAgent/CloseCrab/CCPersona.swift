@@ -1,6 +1,13 @@
 import Foundation
 import SwiftUI
 
+// 角色枚举 `CCPersonaRole` 搬到了 `CCAvatarRoles.swift` —— 它同时也是
+// **Avatar 开关**的角色（每个角色一个 `cc.avatar.*` 属性），而那套判定要能
+// 在这台没有 Xcode 的机器上离线测，所以必须待在只依赖 Foundation 的文件里。
+//
+// 顺带修掉一个笔误：原来 `@MainActor` 和这个类的文档注释一起落在了枚举头上，
+// 类本身反而没标（靠工程的默认隔离兜着）。
+
 /// 数字人**现在用哪张脸** —— 取、换、缓存。
 ///
 /// ## 这张图从哪来
@@ -16,22 +23,6 @@ import SwiftUI
 /// 用时间戳缓存的话，换了脸却在有效期内的那几分钟里你看到的还是旧的 ——
 /// 而你刚刚才换过，只会以为上传失败又传一遍。
 @MainActor
-/// 一个房间里**不止一张脸**：语音助手一张、本人一张。
-///
-/// Chris 2026-09-18：「将来我让语音助手说话，或者是让 Bunny 说话，我有可能
-/// 选择切换……所以每人选一个照片，不同的形象。」
-enum CCPersonaRole: String, CaseIterable {
-    /// 本人（bot 自己的播报那一路）。**老数据默认算这个** —— 加角色之前
-    /// 存的图在语义上就是本人，服务端那边也是这么回落的。
-    case principal
-    /// 语音助手。
-    case assistant
-
-    /// 缓存用的键。**必须把角色拼进去** —— 只用房间名的话两张脸会互相覆盖，
-    /// 而且不报错：用户给助手换了图，兔子也跟着变了。
-    func key(room: String) -> String { "\(room)|\(rawValue)" }
-}
-
 final class CCPersona: ObservableObject {
     static let shared = CCPersona()
 
