@@ -16,6 +16,22 @@ import SwiftUI
 /// 用时间戳缓存的话，换了脸却在有效期内的那几分钟里你看到的还是旧的 ——
 /// 而你刚刚才换过，只会以为上传失败又传一遍。
 @MainActor
+/// 一个房间里**不止一张脸**：语音助手一张、本人一张。
+///
+/// Chris 2026-09-18：「将来我让语音助手说话，或者是让 Bunny 说话，我有可能
+/// 选择切换……所以每人选一个照片，不同的形象。」
+enum CCPersonaRole: String, CaseIterable {
+    /// 本人（bot 自己的播报那一路）。**老数据默认算这个** —— 加角色之前
+    /// 存的图在语义上就是本人，服务端那边也是这么回落的。
+    case principal
+    /// 语音助手。
+    case assistant
+
+    /// 缓存用的键。**必须把角色拼进去** —— 只用房间名的话两张脸会互相覆盖，
+    /// 而且不报错：用户给助手换了图，兔子也跟着变了。
+    func key(room: String) -> String { "\(room)|\(rawValue)" }
+}
+
 final class CCPersona: ObservableObject {
     static let shared = CCPersona()
 
@@ -39,18 +55,27 @@ final class CCPersona: ObservableObject {
     ///
     /// - Parameter force: 刚上传完用 `true` 跳过版本比对 —— 那一刻本地版本
     ///   还是旧的，不强制的话会认为「没变」而不刷新。
-    func ensure(room: String, force: Bool = false) {
-        guard !room.isEmpty, !inflight.contains(room) else { return }
-        inflight.insert(room)
+    func ensure(room: String, role: CCPersonaRole = .principal, force: Bool = false) {
+        let key = role.key(room: room)
+        guard !room.isEmpty, !inflight.contains(key) else { return }
+        inflight.insert(key)
         Task { [weak self] in
-            defer { Task { @MainActor in self?.inflight.remove(room) } }
-            await self?.load(room: room, force: force)
+            defer { Task { @MainActor in self?.inflight.remove(key) } }
+            await self?.load(room: room, role: role, force: force)
         }
     }
 
-    private func load(room: String, force: Bool) async {
+    /// 把这个房间要用到的几张脸一次性都拉了。
+    func ensureAll(room: String, force: Bool = false) {
+        for r in CCPersonaRole.allCases { ensure(room: room, role: r, force: force) }
+    }
+
+    private func load(room: String, role: CCPersonaRole, force: Bool) async {
+        let key = role.key(room: room)
         do {
-            let url = try CCEndpoint.url(path: "/api/avatar/persona/\(room)/image")
+            let url = try CCEndpoint.url(
+                path: "/api/avatar/persona/\(room)/image",
+                query: [URLQueryItem(name: "role", value: role.rawValue)])
             var req = URLRequest(url: url)
             for (k, v) in CCEndpoint.signedHeaders(scope: "persona:\(room)") {
                 req.setValue(v, forHTTPHeaderField: k)
@@ -59,53 +84,59 @@ final class CCPersona: ObservableObject {
             guard let http = resp as? HTTPURLResponse else { return }
             if http.statusCode == 404 {
                 // 没设过 —— 这是正常状态，不是错误。清掉旧的，别留着上一张。
-                images[room] = nil
-                versions[room] = nil
-                lastError[room] = nil
+                images[key] = nil
+                versions[key] = nil
+                lastError[key] = nil
                 return
             }
             guard http.statusCode == 200 else {
-                lastError[room] = "取形象图失败（\(http.statusCode)）"
+                lastError[key] = "取形象图失败（\(http.statusCode)）"
                 return
             }
             let etag = (http.value(forHTTPHeaderField: "ETag") ?? "")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-            if !force, !etag.isEmpty, versions[room] == etag { return }
+            if !force, !etag.isEmpty, versions[key] == etag { return }
 
             guard let img = CCPersona.decode(data) else {
-                lastError[room] = "服务端给的不是能显示的图片"
+                lastError[key] = "服务端给的不是能显示的图片"
                 return
             }
-            images[room] = img
-            versions[room] = etag
-            lastError[room] = nil
+            images[key] = img
+            versions[key] = etag
+            lastError[key] = nil
         } catch {
-            lastError[room] = error.localizedDescription
+            lastError[key] = error.localizedDescription
         }
     }
 
     // MARK: - 换
 
     /// 传一张新的。成功后立刻重新取一遍（`force: true`）。
-    func upload(room: String, data: Data, contentType: String, note: String = "") {
-        guard !uploading.contains(room) else { return }
-        uploading.insert(room)
+    func upload(room: String, role: CCPersonaRole = .principal,
+                data: Data, contentType: String, note: String = "") {
+        let key = role.key(room: room)
+        guard !uploading.contains(key) else { return }
+        uploading.insert(key)
         // 这个类本身是 @MainActor，`Task` 继承它的隔离 —— 所以这里**不需要**
         // 再套一层 `MainActor.run`。套了反而会报
         // 「result of call to 'run(resultType:body:)' is unused」：
         // 闭包最后一句 `Set.remove` 有返回值，`run` 的泛型就被推成 `String?`，
         // 于是整个 run 变成一个结果没人要的表达式。
         Task { [weak self] in
-            await self?.put(room: room, data: data, contentType: contentType, note: note)
-            self?.uploading.remove(room)
+            await self?.put(room: room, role: role, data: data,
+                            contentType: contentType, note: note)
+            self?.uploading.remove(key)
         }
     }
 
-    private func put(room: String, data: Data, contentType: String, note: String) async {
+    private func put(room: String, role: CCPersonaRole, data: Data,
+                     contentType: String, note: String) async {
+        let key = role.key(room: room)
         do {
             let url = try CCEndpoint.url(
                 path: "/api/avatar/persona/\(room)",
-                query: note.isEmpty ? [] : [URLQueryItem(name: "note", value: note)])
+                query: [URLQueryItem(name: "role", value: role.rawValue)]
+                    + (note.isEmpty ? [] : [URLQueryItem(name: "note", value: note)]))
             var req = URLRequest(url: url)
             req.httpMethod = "PUT"
             req.setValue(contentType, forHTTPHeaderField: "Content-Type")
@@ -115,12 +146,12 @@ final class CCPersona: ObservableObject {
             req.httpBody = data
             let (body, resp) = try await URLSession.shared.data(for: req)
             try CCEndpoint.checkStatus(resp, body: body, what: "上传形象图")
-            lastError[room] = nil
+            lastError[key] = nil
             // 换完立刻刷。**不能等下次自然刷新** —— 用户刚按完，
             // 屏幕上还是旧图的话他会以为没成功。
-            ensure(room: room, force: true)
+            ensure(room: room, role: role, force: true)
         } catch {
-            lastError[room] = error.localizedDescription
+            lastError[key] = error.localizedDescription
         }
     }
 

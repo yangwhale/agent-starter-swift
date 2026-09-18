@@ -44,7 +44,8 @@ import SwiftUI
 struct CCRosterRow: View {
     @EnvironmentObject private var session: Session
     @StateObject private var persona = CCPersona.shared
-    @State private var previewing = false
+    /// 正在放大看谁的形象。nil = 没在看。
+    @State private var previewing: CCPersonaRole?
 
     private var roomName: String { session.room.name ?? "" }
 
@@ -52,19 +53,18 @@ struct CCRosterRow: View {
         TimelineView(.periodic(from: .now, by: 0.35)) { _ in
             HStack(spacing: 6) {
                 ForEach(roster()) { m in
-                    CCRosterChip(member: m)
+                    CCRosterChip(member: m, room: roomName, persona: persona,
+                                 onTapPersona: { previewing = m.role.personaRole })
                 }
-                CCPersonaChip(room: roomName, persona: persona,
-                              onTap: { previewing = true })
             }
             .padding(.horizontal, 2 * .grid)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(height: 44)
-        .onAppear { persona.ensure(room: roomName) }
-        .onChange(of: roomName) { _, r in persona.ensure(room: r) }
-        .sheet(isPresented: $previewing) {
-            CCPersonaPreview(room: roomName, persona: persona)
+        .onAppear { persona.ensureAll(room: roomName) }
+        .onChange(of: roomName) { _, r in persona.ensureAll(room: r) }
+        .sheet(item: $previewing) { role in
+            CCPersonaPreview(room: roomName, role: role, persona: persona)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: "房间成员"))
@@ -130,9 +130,22 @@ enum CCRosterRole {
         case .me: "我"
         case .assistant: "语音助手"
         case .avatar: "数字人"
-        case .broadcast: "播报"
-        case .agent: "Agent"
+        case .broadcast: "本人"          // 会被 bot 名字盖掉，见 CCRosterMember
+        case .agent: "助手"
         case .guest: "访客"
+        }
+    }
+
+    /// 这个牌子对应哪张脸 —— 有的才能长按换图。
+    ///
+    /// Chris 2026-09-18：「长按语音助手和长按 Bunny 都能上传一个照片。」
+    /// **「数字人」那块不给** —— 它是渲染出来的结果，不是输入；
+    /// 挂在它身上会让人以为改的是「当前这段视频」。
+    var personaRole: CCPersonaRole? {
+        switch self {
+        case .assistant: .assistant
+        case .broadcast: .principal
+        default: nil
         }
     }
 }
@@ -142,7 +155,10 @@ struct CCRosterMember: Identifiable {
     let role: CCRosterRole
     let title: String
     let speaking: Bool
-    /// 牌子上的第二行小字：数字人显示 `cc.avatar.state`，助手显示它的状态。
+    /// 牌子上的第二行小字。**现在只有数字人有**（开/关），而且是中文 ——
+    /// 助手那行原来写 `lk.agent.state` 的英文原值，Chris 2026-09-18 让去掉：
+    /// 「语音助手 listening 就太长了，光叫语音助手就完了呗。」
+    /// 说没说话右边那个绿点已经讲清楚了，写一遍英文既重复又把牌子撑宽。
     let detail: String?
 
     init(id: String, role: CCRosterRole, title: String, speaking: Bool, detail: String?) {
@@ -178,28 +194,93 @@ struct CCRosterMember: Identifiable {
             participant.isSpeaking
         }
 
+        // ⚠️ 小字**不放英文原值**。Chris 2026-09-18：「英文的部分字不要了，
+        //    那『语音助手 listening』就太长了，光叫语音助手就完了呗。」
+        //    助手那行直接去掉 —— 说没说话右边那个绿点已经讲清楚了，
+        //    再写一遍 listening/speaking 是重复，还把牌子撑宽。
+        //    数字人那行保留但翻成中文：开/关是真信息（用户自己拨的开关），
+        //    而且两个字不占地方。
         var detail: String?
         if role == .avatar {
             // 状态是房间级的，由调用方扫出来传进来 —— 数字人自己不写这个键。
-            detail = avatarState
-        } else if role == .assistant {
-            detail = attrs["lk.agent.state"]
+            detail = CCRosterMember.avatarStateText(avatarState)
         }
 
-        self.init(id: ident, role: role, title: role.title,
+        // 本人那一路显示 bot 自己的名字，不写「播报」—— 那是实现细节。
+        // identity 形如 `bunny-speaker`，砍掉后缀就是名字。
+        var title = role.title
+        if role == .broadcast {
+            let base = ident.hasSuffix("-speaker")
+                ? String(ident.dropLast("-speaker".count)) : ident
+            if !base.isEmpty { title = base.prefix(1).uppercased() + base.dropFirst() }
+        }
+
+        self.init(id: ident, role: role, title: title,
                   speaking: speaking, detail: detail)
     }
+
+    /// `cc.avatar.state` 翻成中文。认不出来的原样显示 —— 宁可露出一个
+    /// 没见过的值，也别把它吞掉变成空白。
+    static func avatarStateText(_ raw: String?) -> String? {
+        switch raw {
+        case nil, "": nil
+        case "on": "开"
+        case "off": "关"
+        case "hidden": "隐藏"
+        case "unavailable": "不可用"
+        default: raw
+        }
+    }
+}
+
+extension CCPersonaRole: Identifiable {
+    var id: String { rawValue }
 }
 
 // MARK: - 单个成员牌子
 
 private struct CCRosterChip: View {
     let member: CCRosterMember
+    let room: String
+    @ObservedObject var persona: CCPersona
+    let onTapPersona: () -> Void
+
+    /// 这个牌子有没有自己的一张脸。没有的（我 / 数字人 / 访客）就还画图标。
+    private var personaRole: CCPersonaRole? { member.role.personaRole }
+    private var thumb: Image? {
+        personaRole.flatMap { persona.images[$0.key(room: room)] }
+    }
+    private var busy: Bool {
+        personaRole.map { persona.uploading.contains($0.key(room: room)) } ?? false
+    }
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: member.role.symbol)
-                .font(.system(size: 12, weight: .semibold))
+            if let personaRole {
+                // ⭐ 有脸的角色画缩略图，没设过就画一个「加图」的占位 ——
+                //    占位本身就是在告诉用户「这儿能传图」，比任何提示文案都省地方。
+                ZStack {
+                    if let thumb {
+                        thumb.resizable().scaledToFill()
+                    } else {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.fg3)
+                    }
+                    if busy {
+                        // 上传中要挡住重复点击，也要让人看出「在传」——
+                        // 没有这个反馈的话用户会反复按。
+                        Color.black.opacity(0.45)
+                        ProgressView().controlSize(.mini).tint(.white)
+                    }
+                }
+                .frame(width: 26, height: 26)
+                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .onTapGesture(perform: onTapPersona)
+            } else {
+                Image(systemName: member.role.symbol)
+                    .font(.system(size: 12, weight: .semibold))
+            }
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: member.title)
                     .font(.system(size: 12, weight: .medium))
@@ -221,75 +302,43 @@ private struct CCRosterChip: View {
         .frame(height: 34)
         .background(Capsule().fill(.fg1.opacity(member.speaking ? 0.16 : 0.08)))
         .ccAnimation(.default, value: member.speaking)
+        .modifier(CCPersonaPicker(room: room, role: personaRole, persona: persona))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim:
             "\(member.title)\(member.detail.map { "，\($0)" } ?? "")\(member.speaking ? "，正在说话" : "")"))
+        .accessibilityHint(Text(verbatim:
+            personaRole == nil ? "" : "轻点头像放大，长按换一张"))
     }
 }
 
-// MARK: - 形象牌子（点开放大 / 长按换图）
-
-private struct CCPersonaChip: View {
-    let room: String
-    @ObservedObject var persona: CCPersona
-    let onTap: () -> Void
-
-    private var thumb: Image? { persona.images[room] }
-    private var busy: Bool { persona.uploading.contains(room) }
-
-    var body: some View {
-        content
-            .frame(height: 34)
-            .background(Capsule().fill(.fg1.opacity(0.08)))
-            .contentShape(Capsule())
-            .onTapGesture(perform: onTap)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(verbatim: thumb == nil ? "还没设形象图" : "当前形象图"))
-            .accessibilityHint(Text(verbatim: "轻点放大，长按换一张"))
-            .modifier(CCPersonaPicker(room: room, persona: persona))
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        HStack(spacing: 6) {
-            ZStack {
-                if let thumb {
-                    thumb.resizable().scaledToFill()
-                } else {
-                    Image(systemName: "photo.badge.plus")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.fg3)
-                }
-                if busy {
-                    // 上传中要挡住重复点击，也要让人看出「在传」——
-                    // 没有这个反馈的话用户会反复按。
-                    Color.black.opacity(0.45)
-                    ProgressView().controlSize(.mini).tint(.white)
-                }
-            }
-            .frame(width: 44, height: 26)
-            .clipShape(RoundedRectangle(cornerRadius: 5))
-
-            Text(verbatim: "形象")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.fg2)
-        }
-        .padding(.horizontal, 8)
-    }
-}
+// MARK: - 换图 / 放大看
 
 /// 长按换图。单独抽成 modifier 是因为 `PhotosPicker` 只有 iOS 有，
 /// 而 macOS / visionOS 那两个 target 也要能编过。
 private struct CCPersonaPicker: ViewModifier {
     let room: String
+    /// nil = 这个牌子没有自己的脸（我 / 数字人 / 访客），**整个手势都不挂**。
+    /// 挂一个按了没反应的长按，比没有更让人困惑。
+    let role: CCPersonaRole?
     @ObservedObject var persona: CCPersona
     #if os(iOS)
         @State private var pick: PhotosPickerItem?
         @State private var showing = false
     #endif
 
+    // ⚠️ 两个分支返回的类型不一样（挂了手势的 vs 原样），必须 @ViewBuilder。
+    @ViewBuilder
     func body(content: Content) -> some View {
         #if os(iOS)
+            if let role { picker(content, role: role) } else { content }
+        #else
+            content
+        #endif
+    }
+
+    #if os(iOS)
+    @ViewBuilder
+    private func picker(_ content: Content, role: CCPersonaRole) -> some View {
             content
                 .onLongPressGesture(minimumDuration: 0.4) {
                     CCHaptics.reveal()
@@ -307,27 +356,30 @@ private struct CCPersonaPicker: ViewModifier {
                               let ctype = CCPersona.sniff(data)
                         else { return }
                         await MainActor.run {
-                            persona.upload(room: room, data: data, contentType: ctype)
+                            persona.upload(room: room, role: role,
+                                           data: data, contentType: ctype)
                         }
                     }
                     pick = nil
                 }
-        #else
-            content
-        #endif
     }
+    #endif
 }
 
 // MARK: - 放大看
 
 private struct CCPersonaPreview: View {
     let room: String
+    let role: CCPersonaRole
     @ObservedObject var persona: CCPersona
     @Environment(\.dismiss) private var dismiss
 
+    private var key: String { role.key(room: room) }
+    private var who: String { role == .assistant ? "语音助手" : "本人" }
+
     var body: some View {
         VStack(spacing: 4 * .grid) {
-            if let img = persona.images[room] {
+            if let img = persona.images[key] {
                 img.resizable().scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 3 * .grid))
             } else {
@@ -335,15 +387,15 @@ private struct CCPersonaPreview: View {
                     Image(systemName: "photo.badge.plus")
                         .font(.system(size: 34))
                         .foregroundStyle(.fg3)
-                    Text(verbatim: "这个房间还没设形象图")
+                    Text(verbatim: "\(who)还没设形象图")
                         .font(.system(size: 14))
                         .foregroundStyle(.fg2)
-                    Text(verbatim: "长按上面那块「形象」牌子可以传一张")
+                    Text(verbatim: "长按上面那块「\(who)」牌子可以传一张")
                         .font(.system(size: 12))
                         .foregroundStyle(.fg3)
                 }
             }
-            if let err = persona.lastError[room] {
+            if let err = persona.lastError[key] {
                 // 失败原因要显示出来 ——「点了没反应」是这类功能最常见的投诉，
                 // 而后端把原因写得很清楚（签名过期、图太大、不是图片…）。
                 Text(verbatim: err)
