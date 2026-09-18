@@ -256,7 +256,9 @@ private struct CCRosterChip: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            if let personaRole {
+            // 只判「有没有脸」，不需要解包出来的值 —— 里面用的是 thumb / busy，
+            // `if let` 会留一个没人用的绑定，编译器直接报 warning。
+            if personaRole != nil {
                 // ⭐ 有脸的角色画缩略图，没设过就画一个「加图」的占位 ——
                 //    占位本身就是在告诉用户「这儿能传图」，比任何提示文案都省地方。
                 ZStack {
