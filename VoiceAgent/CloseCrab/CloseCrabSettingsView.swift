@@ -121,10 +121,10 @@ struct CloseCrabSettingsView: View {
 
                 Section {
                     Toggle(isOn: $config.liveAvatar) {
-                        Text(verbatim: "数字人画面")
+                        Text(verbatim: "Avatar 画面")
                     }
                 } header: {
-                    Text(verbatim: "数字人")
+                    Text(verbatim: "Avatar")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(verbatim: "开着的时候，回答会配一张会说话的脸。这只是「我想要」——真正开不开由服务端定，它还要看服务通不通、并发满没满。")

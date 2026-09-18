@@ -4,43 +4,39 @@ import LiveKit
 #endif
 import SwiftUI
 
-/// 房间里**现在都有谁**，外加**数字人用的是哪张脸**。
+/// 房间里**现在都有谁**，外加**各自用的是哪张脸**。
 ///
-/// ## 为什么需要它
+/// ## 为什么要这么一排牌子
 ///
-/// 一个房间里同时有好几个东西在出声，走的是完全不同的链路：语音助手、
-/// 本体播报旁路、数字人。它们出问题的现象却一样 ——「没声音」。
-/// 在这条之前屏幕上看不出区别，一片安静不知道是谁的安静，排查只能翻服务端日志。
+/// 一个房间里同时挂着好几个会出声的东西：语音助手、本体播报旁路、Avatar。
+/// 它们出问题的现象却一样 ——「没声音」。有这排牌子，「谁在这儿、谁在说话」
+/// 一眼就能看见，不用去翻日志。
 ///
-///   谁在这儿      助手接上没、旁路在不在、数字人来了没
-///   谁在说话      绿点跟着 `isSpeaking` 走
-///   数字人状态    `cc.avatar.state` 直接显示
-///   **用哪张脸**  最后那块牌子：点开放大，长按换一张
+/// ## 状态靠**在不在**表达，不靠写字
 ///
-/// ## 「形象」那块牌子为什么单独一个，不挂在数字人身上
+/// Chris 2026-09-18：「那个开就没必要 —— 你要没开，Avatar 不会出现在这个
+/// 窗口里。只要它出现，就说明开了。」
 ///
-/// 数字人只在开着的时候才在房间里，而**换脸这件事在它不在的时候更常做** ——
-/// 先把脸准备好再拨开开关。挂在数字人身上就变成「要先开一路 GPU 才能换图」。
+/// 这条比省地方值钱：**存在本身就是状态**。再写一个 `on` 是把同一件事说两遍，
+/// 而两遍还可能不一致（属性更新和参与者进出不是一个时序）—— 那时候人该信哪个？
+/// 同理，助手那行原来写的 `listening / speaking` 也去掉了：右边那个绿点
+/// 已经说清楚了。
 ///
-/// ## 角色是按属性认的，不是按名字
+/// ## 角色怎么认（顺序不能反）
 ///
-/// identity 是服务端生成的（`agent-AJ_xxx` 这种），按前缀猜迟早猜错。
-/// 判据用 LiveKit 的标准属性：
-///
-///   `lk.avatar_provider`   数字人（它同时也带 publish_on_behalf，**所以要先判它**）
+///   `lk.avatar_provider`   Avatar（它同时也带 publish_on_behalf，**所以要先判它**）
 ///   `lk.agent.state`       语音助手
-///   `lk.publish_on_behalf` 本体播报旁路
-///   kind == .agent         其它 agent
-///   kind == .standard      真人
+///   `lk.publish_on_behalf` 本体播报旁路（显示 bot 自己的名字）
+///   `kind == .agent`       其它 agent
 ///
-/// ⚠️ 顺序不能反：数字人和旁路**都**带 `lk.publish_on_behalf`，
-/// 先判旁路的话数字人会被认成旁路，而那正是最需要看清的那一个。
+/// ⚠️ Avatar 和旁路**都**带 `lk.publish_on_behalf`，先判旁路的话 Avatar 会被
+/// 认成旁路，而那正是最需要看清的那一个。
 ///
 /// ## 为什么用 TimelineView 定时刷
 ///
-/// `isSpeaking` 是 SDK 在后台按音量算的，**它变了不一定触发 SwiftUI 重绘** ——
-/// 依赖 `objectWillChange` 的话绿点会卡住不动，看起来像「谁都没在说话」，
-/// 比没有这排还误导人。
+/// `participant.isSpeaking` / `agentState` **不保证会让 `Session` 发出变更
+/// 通知** —— 不通知就不重算 body，牌子会停在旧状态上。所以定时采样。
+
 struct CCRosterRow: View {
     @EnvironmentObject private var session: Session
     @StateObject private var persona = CCPersona.shared
@@ -70,29 +66,15 @@ struct CCRosterRow: View {
         .accessibilityLabel(Text(verbatim: "房间成员"))
     }
 
-    /// `cc.avatar.state` 是**房间级**的一条信息，但它挂在写它的那个参与者身上。
-    ///
-    /// ⚠️ 写它的是谁**会变**：曾经是语音助手，2026-09-18 起是 bot 的播报旁路。
-    /// 所以不要去某个固定角色身上找 —— 那次改归属之后，「数字人」牌子上的
-    /// 状态就一直是空的（我去数字人自己身上找了，而它从来不写这个键）。
-    /// 全房间扫一遍，谁写了就用谁的。
-    private func avatarState() -> String? {
-        for p in session.room.remoteParticipants.values {
-            if let v = p.attributes[CCAvatarAttr.state], !v.isEmpty { return v }
-        }
-        return session.room.localParticipant.attributes[CCAvatarAttr.state]
-    }
-
     private func roster() -> [CCRosterMember] {
         var out: [CCRosterMember] = []
         let local = session.room.localParticipant
         out.append(CCRosterMember(
             id: local.identity?.stringValue ?? "me",
-            role: .me, title: "我", speaking: local.isSpeaking, detail: nil))
+            role: .me, title: "我", speaking: local.isSpeaking))
         // 排序按角色，不按加入顺序 —— 顺序稳定，眼睛才不用每次重新找。
-        let state = avatarState()
         out.append(contentsOf: session.room.remoteParticipants.values
-            .map { CCRosterMember(participant: $0, avatarState: state) }
+            .map { CCRosterMember(participant: $0) }
             .sorted { $0.role.rank < $1.role.rank })
         return out
     }
@@ -129,7 +111,7 @@ enum CCRosterRole {
         switch self {
         case .me: "我"
         case .assistant: "语音助手"
-        case .avatar: "数字人"
+        case .avatar: "Avatar"
         case .broadcast: "本人"          // 会被 bot 名字盖掉，见 CCRosterMember
         case .agent: "助手"
         case .guest: "访客"
@@ -139,7 +121,7 @@ enum CCRosterRole {
     /// 这个牌子对应哪张脸 —— 有的才能长按换图。
     ///
     /// Chris 2026-09-18：「长按语音助手和长按 Bunny 都能上传一个照片。」
-    /// **「数字人」那块不给** —— 它是渲染出来的结果，不是输入；
+    /// **「Avatar」那块不给** —— 它是渲染出来的结果，不是输入；
     /// 挂在它身上会让人以为改的是「当前这段视频」。
     var personaRole: CCPersonaRole? {
         switch self {
@@ -155,25 +137,33 @@ struct CCRosterMember: Identifiable {
     let role: CCRosterRole
     let title: String
     let speaking: Bool
-    /// 牌子上的第二行小字。**现在只有数字人有**（开/关），而且是中文 ——
-    /// 助手那行原来写 `lk.agent.state` 的英文原值，Chris 2026-09-18 让去掉：
-    /// 「语音助手 listening 就太长了，光叫语音助手就完了呗。」
-    /// 说没说话右边那个绿点已经讲清楚了，写一遍英文既重复又把牌子撑宽。
-    let detail: String?
 
-    init(id: String, role: CCRosterRole, title: String, speaking: Bool, detail: String?) {
+    // ⚠️ **牌子上没有第二行小字了，整个 detail 都删掉了。**
+    //
+    // 原来助手那行写 `lk.agent.state` 的英文原值（listening/speaking），
+    // Avatar 那行写 `cc.avatar.state`（开/关）。Chris 2026-09-18 两条都砍：
+    //
+    //   「语音助手 listening 就太长了，光叫语音助手就完了呗。」
+    //   「那个开就没必要 —— 你要没开，Avatar 不会出现在这个窗口里。
+    //     只要它出现，就说明开了。」
+    //
+    // 第二句是对的，而且比省地方更值钱：**它的存在本身就是状态**。
+    // 再写一个 on 是把同一件事说两遍，而两遍还可能不一致
+    // （属性更新和参与者进出不是一个时序）—— 那时候人该信哪个？
+    // 顺带把喂它的那整套 `avatarState()` 全房扫描也删了。
+
+    init(id: String, role: CCRosterRole, title: String, speaking: Bool) {
         self.id = id
         self.role = role
         self.title = title
         self.speaking = speaking
-        self.detail = detail
     }
 
-    init(participant: Participant, avatarState: String? = nil) {
+    init(participant: Participant) {
         let attrs = participant.attributes
         let ident = participant.identity?.stringValue ?? "?"
 
-        // ⚠️ 数字人必须**排在旁路前面**判：两者都带 lk.publish_on_behalf。
+        // ⚠️ Avatar必须**排在旁路前面**判：两者都带 lk.publish_on_behalf。
         let role: CCRosterRole
         if attrs["lk.avatar_provider"] != nil {
             role = .avatar
@@ -194,18 +184,6 @@ struct CCRosterMember: Identifiable {
             participant.isSpeaking
         }
 
-        // ⚠️ 小字**不放英文原值**。Chris 2026-09-18：「英文的部分字不要了，
-        //    那『语音助手 listening』就太长了，光叫语音助手就完了呗。」
-        //    助手那行直接去掉 —— 说没说话右边那个绿点已经讲清楚了，
-        //    再写一遍 listening/speaking 是重复，还把牌子撑宽。
-        //    数字人那行保留但翻成中文：开/关是真信息（用户自己拨的开关），
-        //    而且两个字不占地方。
-        var detail: String?
-        if role == .avatar {
-            // 状态是房间级的，由调用方扫出来传进来 —— 数字人自己不写这个键。
-            detail = CCRosterMember.avatarStateText(avatarState)
-        }
-
         // 本人那一路显示 bot 自己的名字，不写「播报」—— 那是实现细节。
         // identity 形如 `bunny-speaker`，砍掉后缀就是名字。
         var title = role.title
@@ -215,21 +193,7 @@ struct CCRosterMember: Identifiable {
             if !base.isEmpty { title = base.prefix(1).uppercased() + base.dropFirst() }
         }
 
-        self.init(id: ident, role: role, title: title,
-                  speaking: speaking, detail: detail)
-    }
-
-    /// `cc.avatar.state` 翻成中文。认不出来的原样显示 —— 宁可露出一个
-    /// 没见过的值，也别把它吞掉变成空白。
-    static func avatarStateText(_ raw: String?) -> String? {
-        switch raw {
-        case nil, "": nil
-        case "on": "开"
-        case "off": "关"
-        case "hidden": "隐藏"
-        case "unavailable": "不可用"
-        default: raw
-        }
+        self.init(id: ident, role: role, title: title, speaking: speaking)
     }
 }
 
@@ -245,7 +209,7 @@ private struct CCRosterChip: View {
     @ObservedObject var persona: CCPersona
     let onTapPersona: () -> Void
 
-    /// 这个牌子有没有自己的一张脸。没有的（我 / 数字人 / 访客）就还画图标。
+    /// 这个牌子有没有自己的一张脸。没有的（我 / Avatar / 访客）就还画图标。
     private var personaRole: CCPersonaRole? { member.role.personaRole }
     private var thumb: Image? {
         personaRole.flatMap { persona.images[$0.key(room: room)] }
@@ -283,15 +247,8 @@ private struct CCRosterChip: View {
                 Image(systemName: member.role.symbol)
                     .font(.system(size: 12, weight: .semibold))
             }
-            VStack(alignment: .leading, spacing: 0) {
-                Text(verbatim: member.title)
-                    .font(.system(size: 12, weight: .medium))
-                if let d = member.detail, !d.isEmpty {
-                    Text(verbatim: d)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.fg3)
-                }
-            }
+            Text(verbatim: member.title)
+                .font(.system(size: 12, weight: .medium))
             // 说话时那个点。**不做呼吸动画** —— 一排小点各自呼吸很吵，
             // 而这条信息只有「有/无」两态，闪不闪不增加信息。
             Circle()
@@ -307,7 +264,7 @@ private struct CCRosterChip: View {
         .modifier(CCPersonaPicker(room: room, role: personaRole, persona: persona))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim:
-            "\(member.title)\(member.detail.map { "，\($0)" } ?? "")\(member.speaking ? "，正在说话" : "")"))
+            "\(member.title)\(member.speaking ? "，正在说话" : "")"))
         .accessibilityHint(Text(verbatim:
             personaRole == nil ? "" : "轻点头像放大，长按换一张"))
     }
@@ -319,7 +276,7 @@ private struct CCRosterChip: View {
 /// 而 macOS / visionOS 那两个 target 也要能编过。
 private struct CCPersonaPicker: ViewModifier {
     let room: String
-    /// nil = 这个牌子没有自己的脸（我 / 数字人 / 访客），**整个手势都不挂**。
+    /// nil = 这个牌子没有自己的脸（我 / Avatar / 访客），**整个手势都不挂**。
     /// 挂一个按了没反应的长按，比没有更让人困惑。
     let role: CCPersonaRole?
     @ObservedObject var persona: CCPersona

@@ -85,6 +85,6 @@ public enum CCAvatarServerState: String, Sendable {
     /// 给用户看的一句话。**只在 `shouldSurfaceProblem` 为真时才用得上**，
     /// 其余状态不该出现在界面上。
     public var problemText: String {
-        "数字人这会儿用不了（服务没响应，或者并发满了），先只出声。"
+        "Avatar 这会儿用不了（服务没响应，或者并发满了），先只出声。"
     }
 }
