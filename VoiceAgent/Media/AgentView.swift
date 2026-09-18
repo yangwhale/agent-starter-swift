@@ -1,8 +1,15 @@
 import LiveKitComponents
 
-/// A view that combines the avatar camera view (if available)
-/// or the audio visualizer (if available).
-/// - Note: If both are unavailable, the view will show a placeholder visualizer.
+/// 中间那块主画面：**数字人在说话就播数字人，否则画柱子。**
+///
+/// ## 说完就收，不留停止帧
+///
+/// 数字人只在有音频时生成帧 —— 说完就没有新帧了。视频轨还在，画面会僵在
+/// 最后一帧上不动。Chris 2026-09-18：「咱不要那个最后那个停止帧了，就正常
+/// 视频，别给我拼了，有什么播什么。」
+///
+/// 所以显示条件不是「有没有视频轨」而是「**这一刻在不在说**」：开口展开、
+/// 说完收走。收尾留了一小段宽限期，不然句子之间的换气会让画面一闪一闪。
 struct AgentView: View {
     @EnvironmentObject private var session: Session
     @EnvironmentObject private var rooms: CCRooms
@@ -10,33 +17,43 @@ struct AgentView: View {
     @ObservedObject private var config = CloseCrabConfig.shared
 
     @Environment(\.namespace) private var namespace
-    /// Reveals the avatar camera view when true.
-    @SceneStorage("videoTransition") private var videoTransition = false
+
+    /// 最后一次「在说话」的时刻。
+    @State private var lastSpokeAt: Date?
+    /// 当前时刻。**每个 tick 都要更新它** —— 否则说话停下来之后没有任何东西
+    /// 会让 body 重算，画面就永远收不回去（`lastSpokeAt` 此时已经不再变了）。
+    @State private var now = Date.now
+
+    /// 换气用的宽限期。句与句之间 `isSpeaking` 会短暂落下去，
+    /// 照着它立刻收画面的话，一段话里画面会一闪一闪。
+    private static let hideGrace: TimeInterval = 0.9
+    /// 采样间隔。跟 `CCRosterRow` 同一个量级，别更密 —— 这两处会同时重算。
+    private static let tick: TimeInterval = 0.2
+
+    private var avatarTrack: (any VideoTrack)? { session.ccAvatarVideoTrack }
+
+    /// 现在该不该显示数字人。
+    ///
+    /// 条件是「**这一刻在不在说**」而不是「有没有视频轨」：数字人只在有音频时
+    /// 生成帧，说完就没有新帧了，而轨还在 —— 画面会僵在最后一帧上。
+    /// Chris 2026-09-18 明确说不要那张停止帧。
+    private var showAvatar: Bool {
+        guard avatarTrack != nil, let t = lastSpokeAt else { return false }
+        return now.timeIntervalSince(t) < Self.hideGrace
+    }
 
     var body: some View {
         ZStack {
             // ⚠️ 走 `ccAvatarVideoTrack` 不走 `session.agent.avatarVideoTrack` ——
             //    我们的数字人挂在播报旁路名下，SDK 那条关联查不到。
             //    理由写在 `CCRooms.swift` 那个属性上。
-            if let avatarVideoTrack = session.ccAvatarVideoTrack {
+            if let avatarVideoTrack = avatarTrack, showAvatar {
                 SwiftUIVideoView(avatarVideoTrack)
                     .clipShape(RoundedRectangle(cornerRadius: .cornerRadiusPerPlatform))
                     .aspectRatio(avatarVideoTrack.aspectRatio, contentMode: .fit)
                     .padding(.horizontal, avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
                     .shadow(radius: 20, y: 10)
-                    .mask(
-                        GeometryReader { proxy in
-                            let targetSize = max(proxy.size.width, proxy.size.height)
-                            Circle()
-                                .frame(width: videoTransition ? targetSize : 6 * .grid)
-                                .position(x: 0.5 * proxy.size.width, y: 0.5 * proxy.size.height)
-                                .scaleEffect(2)
-                                .ccAnimation(.smooth(duration: 1.5), value: videoTransition)
-                        }
-                    )
-                    .onAppear {
-                        videoTransition = true
-                    }
+                    .transition(.ccLineReveal)
             } else if session.isConnected {
                 // 这里原来在柱子底下写一行「在听,说吧 / 它在说 / 在想…」。
                 // 2026-09-18 Chris 让去掉 —— 同样的信息现在在顶部那排
@@ -46,8 +63,35 @@ struct AgentView: View {
                     .transition(.opacity)
             }
         }
+        .ccAnimation(.smooth(duration: 0.45), value: showAvatar)
         .ccAnimation(.snappy, value: session.agent.audioTrack?.id)
         .matchedGeometryEffect(id: "agent", in: namespace!)
+        .overlay { sampler }
+    }
+
+    // MARK: - 采样
+
+    /// ⚠️ **必须轮询采样，不能用 `.onChange(of: session.ccIsSpeaking)`。**
+    ///
+    /// `ccIsSpeaking` 读的是 `participant.isSpeaking` / `agentState`，这些**不保证
+    /// 会让 `Session` 发出变更通知** —— 不通知就不重算 body，`onChange` 也就
+    /// 永远不触发。顶上那排 `CCRosterRow` 当初就是踩了这个才改成 `TimelineView`
+    /// 定时刷的，这里是同一个坑，用同一个办法。
+    ///
+    /// 放在 `overlay` 里而不是包住整个 body：`TimelineView` 每个 tick 都会重算
+    /// 它的内容，包住主画面的话 `SwiftUIVideoView` 会跟着每秒被重算五次。
+    private var sampler: some View {
+        TimelineView(.periodic(from: .now, by: Self.tick)) { ctx in
+            Color.clear
+                .allowsHitTesting(false)
+                .onChange(of: ctx.date, initial: true) { _, t in
+                    now = t
+                    if session.ccIsSpeaking { lastSpokeAt = t }
+                    // 轨没了就立刻清掉，不用等宽限期 ——
+                    // 那不是「说完了」，是「走了」。
+                    if avatarTrack == nil { lastSpokeAt = nil }
+                }
+        }
     }
 
     // MARK: - 柱状图
