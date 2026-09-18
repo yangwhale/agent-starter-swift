@@ -176,8 +176,17 @@ final class CCAvatarLink: ObservableObject {
             // ⚠️ 属性**按房间各算各的** —— 开关是每个房间一份。
             //    算在循环外的话，切到另一个房间会把上一个房间的开关发过去，
             //    而那看起来完全正常：属性写成功了，只是值是别人的。
-            var attrs = wants(room: slot.name).attributes()
-            attrs[CCAvatarAttr.visible] = visible
+            // ⚠️ **一个表达式建成，`let` 不是 `var`。**
+            //
+            // 下面那个 `Task` 是 sendable 闭包，捕获 `var` 会得到
+            // `'attrs' mutated after capture by sendable closure` —— 现在
+            // 捕获之后没人再写它，所以行为是对的；但只要以后有人在 Task
+            // 后面补一句赋值，发出去的就**静默**变成另一个值。
+            //
+            // 这跟下面把 `slot` 拆成 `room` / `name` 是同一件事：进闭包的
+            // 东西必须当场定死。Swift 6 语言模式下这条会从 warning 变 error。
+            let attrs = wants(room: slot.name).attributes()
+                .merging([CCAvatarAttr.visible: visible]) { _, new in new }
             guard sentTo[slot.name] != attrs else { continue }
             // 先把要用的东西取出来再进 Task —— 闭包里别再碰 `slot`，
             // 那是个 @MainActor 类，在异步上下文里访问它的属性要额外 await。
