@@ -15,11 +15,14 @@ struct AgentView: View {
 
     var body: some View {
         ZStack {
-            if let avatarVideoTrack = session.agent.avatarVideoTrack {
+            // ⚠️ 走 `ccAvatarVideoTrack` 不走 `session.agent.avatarVideoTrack` ——
+            //    我们的数字人挂在播报旁路名下，SDK 那条关联查不到。
+            //    理由写在 `CCRooms.swift` 那个属性上。
+            if let avatarVideoTrack = session.ccAvatarVideoTrack {
                 SwiftUIVideoView(avatarVideoTrack)
                     .clipShape(RoundedRectangle(cornerRadius: .cornerRadiusPerPlatform))
                     .aspectRatio(avatarVideoTrack.aspectRatio, contentMode: .fit)
-                    .padding(.horizontal, session.agent.avatarVideoTrack?.aspectRatio == 1 ? 4 * .grid : .zero)
+                    .padding(.horizontal, avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
                     .shadow(radius: 20, y: 10)
                     .mask(
                         GeometryReader { proxy in

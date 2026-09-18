@@ -125,6 +125,36 @@ extension Session {
             .compactMap { $0.track as? (any AudioTrack) }
     }
 
+    /// 房间里那条**数字人视频轨** —— 不能只问 `session.agent`。
+    ///
+    /// ## 为什么 SDK 那条找不到
+    ///
+    /// `session.agent.avatarVideoTrack` 走的是
+    /// `participant.avatarWorker?.firstCameraVideoTrack`，而 `avatarWorker`
+    /// 是按 `lk.publish_on_behalf == 那个 agent 的 identity` 关联的。
+    ///
+    /// 我们的数字人 2026-09-18 起挂在**本体播报旁路**（`<bot>-speaker`）名下，
+    /// 不是挂在语音助手名下 —— 因为对口型的音频来自播报那一路。
+    /// 于是 SDK 那条关联查不到它，`avatarVideoTrack` 恒为 nil：
+    /// **数字人明明在房间里、视频轨也发着（实测 384×704），屏幕上却只有柱子。**
+    ///
+    /// 所以这里按 `lk.avatar_provider` 全房扫 —— 跟 `CCRosterRow` 认角色
+    /// 用的是同一个判据，将来再挪归属也不用改这里。
+    var ccAvatarVideoTrack: (any VideoTrack)? {
+        // SDK 能找到就用它的（标准接法，比如换回挂语音助手时）。
+        if let t = agent.avatarVideoTrack { return t }
+        for p in room.remoteParticipants.values
+            where p.attributes["lk.avatar_provider"] != nil
+        {
+            // 优先 camera source；退而求其次拿第一条视频轨 ——
+            // source 的标法各家供应商不一定一致，不该因此显示不出来。
+            let pubs = p.videoTracks
+            if let t = (pubs.first { $0.source == .camera } ?? pubs.first)?
+                .track as? VideoTrack { return t }
+        }
+        return nil
+    }
+
     /// 这一路在不在出声。语义状态优先，旁路退回服务端的活跃说话人检测。
     var ccIsSpeaking: Bool {
         if case .speaking = agent.agentState { return true }
