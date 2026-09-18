@@ -293,18 +293,28 @@ private struct CCRoomTile: View {
                         glow: 0.22)
                 .transition(.opacity)
         } else {
-            Text(verbatim: icons.icon(for: slot.name))
-                // emoji 不走手写体 —— 手写字库里没有 emoji，套上去只会被系统
-                // 逐字回退，白绕一圈。只有「没设过图标、显示首字母」那种情况
-                // 才是手写体真正的用武之地：一个手写的 J 自带笔锋和不对称，
-                // 六个并排时一眼能分开，SF 的 J 不行。
-                .font(
-                    icons.hasCustomIcon(slot.name)
-                        ? .system(size: emojiSize, weight: .semibold)
-                        : CCType.roomInitial(initialSize, hand: config.handwritten)
-                )
-                .foregroundStyle(.fg1)
-                .transition(.opacity)
+            // 传过图就画图，否则画 emoji / 首字母。
+            // ⚠️ 图要**填满整个方块**（scaledToFill + clip），不留白边 ——
+            //    52pt 的地方本来就小，再让内容缩在中间就更看不清了。
+            if let custom = icons.image(for: slot.name) {
+                custom
+                    .resizable()
+                    .scaledToFill()
+                    .transition(.opacity)
+            } else {
+                Text(verbatim: icons.icon(for: slot.name))
+                    // emoji 不走手写体 —— 手写字库里没有 emoji，套上去只会被系统
+                    // 逐字回退，白绕一圈。只有「没设过图标、显示首字母」那种情况
+                    // 才是手写体真正的用武之地：一个手写的 J 自带笔锋和不对称，
+                    // 六个并排时一眼能分开，SF 的 J 不行。
+                    .font(
+                        icons.hasCustomIcon(slot.name)
+                            ? .system(size: emojiSize, weight: .semibold)
+                            : CCType.roomInitial(initialSize, hand: config.handwritten)
+                    )
+                    .foregroundStyle(.fg1)
+                    .transition(.opacity)
+            }
         }
     }
 
