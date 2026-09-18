@@ -227,9 +227,18 @@ struct CCIconPickerSheet: View {
     @ViewBuilder
     private var uploadRow: some View {
         #if os(iOS)
+            // ⚠️ **先在 body 里把值取出来，别在 PhotosPicker 的 label 闭包里读
+            //    `icons`。** 那个闭包是 `@Sendable` + nonisolated 的，而 `icons`
+            //    是 MainActor 隔离的 —— 在里面读它现在是 warning，
+            //    Swift 6 语言模式收紧之后会变成 error。
+            //
+            //    同一个方法里第 `if icons.image(...)` 那处没告警，因为它在 body
+            //    的 MainActor 上下文里。**区别只在「在不在闭包里」**，
+            //    肉眼看几乎一样，所以这里留个记号。
+            let current = icons.image(for: room)
             HStack(spacing: 10) {
                 ZStack {
-                    if let img = icons.image(for: room) {
+                    if let img = current {
                         img.resizable().scaledToFill()
                     } else {
                         Image(systemName: "photo.badge.plus")
@@ -243,11 +252,11 @@ struct CCIconPickerSheet: View {
                     .strokeBorder(.secondary.opacity(0.3)))
 
                 PhotosPicker(selection: $pick, matching: .images, photoLibrary: .shared()) {
-                    Text(verbatim: icons.image(for: room) == nil ? "用自己的图片" : "换一张")
+                    Text(verbatim: current == nil ? "用自己的图片" : "换一张")
                         .font(.system(size: 15, weight: .medium))
                 }
                 Spacer()
-                if icons.image(for: room) != nil {
+                if current != nil {
                     Button(role: .destructive) {
                         icons.setImage(nil, for: room)
                     } label: {
