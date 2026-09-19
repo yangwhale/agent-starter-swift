@@ -46,8 +46,25 @@ nonisolated func ccStage(connected: Bool,
     // 有帧在流本身就说明连着。
     if speakingWithVideo { return .video }
     guard connected else { return .idle }
-    if let role = CCPersonaRole.allCases.first(where: wants.contains), hasImage(role) {
+    if let role = ccPoster(connected: connected, wants: wants, hasImage: hasImage) {
         return .still(role)
     }
     return .bars
+}
+
+/// 该不该垫一张底片，垫谁的。**跟「在不在说话」无关。**
+///
+/// 界面上静图是垫在视频**底下**的，不是跟视频二选一 —— 视频首帧还没到的
+/// 那几百毫秒全靠它顶着。所以「有没有底片」这个问题必须能单独问，
+/// 不能从 `ccStage` 的结果反推（那个结果在说话时是 `.video`，
+/// 反推会得出「没有底片」，于是又出现空档）。
+///
+/// 两个判据跟 `ccStage` 共用同一份实现，改一处两处都变。
+nonisolated func ccPoster(connected: Bool,
+                          wants: CCAvatarWants,
+                          hasImage: (CCPersonaRole) -> Bool) -> CCPersonaRole? {
+    guard connected else { return nil }
+    guard let role = CCPersonaRole.allCases.first(where: wants.contains),
+          hasImage(role) else { return nil }
+    return role
 }

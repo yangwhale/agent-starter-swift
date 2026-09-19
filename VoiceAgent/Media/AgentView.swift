@@ -78,42 +78,69 @@ struct AgentView: View {
                        hasImage: { persona.images[$0.key(room: room)] != nil })
     }
 
+    /// 垫在底下那张静图。**说话时也要留着** —— 它是视频的底片，
+    /// 视频首帧还没到的那几百毫秒全靠它顶着（见 body 里那段）。
+    private var stillImage: Image? {
+        let room = roomName
+        guard let role = ccPoster(connected: session.isConnected,
+                                  wants: link.wants(room: room),
+                                  hasImage: { persona.images[$0.key(room: room)] != nil })
+        else { return nil }
+        return persona.images[role.key(room: room)]
+    }
+
+    /// 静图按什么宽高比收。
+    ///
+    /// ⚠️ **优先用视频轨的**：静图和视频必须一样大，否则开口那一瞬间画面会
+    /// 跳一下尺寸 —— 比闪烁更难受，而且看起来像「换了个东西」。
+    /// 轨还没来时退回数字人的出帧比例（竖版 384×704）。
+    private var personaAspect: CGFloat {
+        if let t = avatarTrack, t.aspectRatio > 0 { return CGFloat(t.aspectRatio) }
+        return 384.0 / 704.0
+    }
+
     var body: some View {
         ZStack {
             // ⚠️ 走 `ccAvatarVideoTrack` 不走 `session.agent.avatarVideoTrack` ——
             //    我们的数字人挂在播报旁路名下，SDK 那条关联查不到。
             //    理由写在 `CCRooms.swift` 那个属性上。
-            switch stage {
-            case .video:
-                if let avatarVideoTrack = avatarTrack {
-                    SwiftUIVideoView(avatarVideoTrack)
-                        .clipShape(RoundedRectangle(cornerRadius: .cornerRadiusPerPlatform))
-                        .aspectRatio(avatarVideoTrack.aspectRatio, contentMode: .fit)
-                        .padding(.horizontal,
-                                 avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
-                        .shadow(radius: 20, y: 10)
-                        .transition(.ccLineReveal)
-                }
-            case let .still(role):
-                // 开着数字人、但这一刻没在说 —— 显示那张参考图本身。
-                // ⚠️ 用 `.fit` 和视频那一支保持一致：两者尺寸对不上的话，
-                //    开口/闭口的瞬间画面会「跳」一下大小，比闪烁更难受。
-                persona.images[role.key(room: roomName)]?
+            // ⚠️ **静图是垫在视频底下的一张底片，不是跟视频二选一。**
+            //
+            //   第一版写成了 switch 的一个并列分支，Chris 2026-09-19 实测两个毛病：
+            //     「直接给我镶一个巨大的图」 —— Image 加 `.resizable()` **没有固有
+            //       尺寸**，会把整个容器撑满；而 `SwiftUIVideoView` 是按轨的宽高比
+            //       收在里面的。两者根本不一样大。
+            //     「开始说话的时候它就消失了」 —— 切到视频那一支时第一帧还没到，
+            //       中间有一段什么都没有。原来兜底是柱子，所以这个空档不明显；
+            //       换成一张大图之后就变成「啪一下没了」。
+            //
+            //   垫在底下两个毛病一起消失：视频有内容就自然盖住它，没内容就露出来，
+            //   **中间没有空档**。尺寸也用同一个 `personaAspect` 约束，不会跳。
+            if let still = stillImage {
+                still
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
+                    .aspectRatio(personaAspect, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: .cornerRadiusPerPlatform))
                     .shadow(radius: 20, y: 10)
                     .transition(.opacity)
                     .accessibilityLabel("数字人形象")
-            case .bars:
+            }
+            if stage == .video, let avatarVideoTrack = avatarTrack {
+                SwiftUIVideoView(avatarVideoTrack)
+                    .clipShape(RoundedRectangle(cornerRadius: .cornerRadiusPerPlatform))
+                    .aspectRatio(avatarVideoTrack.aspectRatio, contentMode: .fit)
+                    .padding(.horizontal,
+                             avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
+                    .shadow(radius: 20, y: 10)
+                    .transition(.ccLineReveal)
+            }
+            if stage == .bars {
                 // 这里原来在柱子底下写一行「在听,说吧 / 它在说 / 在想…」。
                 // 2026-09-18 Chris 让去掉 —— 同样的信息现在在顶部那排
                 // `CCRosterRow` 的助手牌子上（而且那儿还顺带告诉你
                 // 房间里还有谁），底下再写一遍是重复。
                 voiceBars
                     .transition(.opacity)
-            case .idle:
-                EmptyView()
             }
         }
         // ⚠️ **这里也要 ensure 一次，不能只靠 `CCRosterRow`。**

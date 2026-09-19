@@ -72,6 +72,35 @@ check("没连上且没在说 → 什么都不画",
 check("⭐ 没连上时即使开着数字人也不许画静图",
       ccStage(connected: false, speakingWithVideo: false, wants: principal, hasImage: all), .idle)
 
+print("\n── 底片（ccPoster）：跟在不在说话无关 ──")
+// ⭐ 这一组守的是 Chris 09-19 实测的那个毛病：静图和视频写成二选一之后，
+//    「开始说话的时候它就消失了」—— 切到视频时首帧还没到，中间一段空白。
+//    修法是把静图垫在底下，所以「有没有底片」必须能单独问、且**说话时依然为真**。
+func pcheck(_ name: String, _ got: CCPersonaRole?, _ want: CCPersonaRole?) {
+    if got == want { pass += 1; print("  ✅ \(name)") }
+    else { fail += 1; print("  ❌ \(name) — 得到 \(String(describing: got))，期望 \(String(describing: want))") }
+}
+pcheck("⭐ 说话时底片依然在（它垫在视频底下，不是二选一）",
+       ccPoster(connected: true, wants: principal, hasImage: all), .principal)
+pcheck("没开数字人 → 没有底片", ccPoster(connected: true, wants: none, hasImage: all), nil)
+pcheck("开了但图没下下来 → 没有底片",
+       ccPoster(connected: true, wants: principal, hasImage: nothing), nil)
+pcheck("没连上 → 没有底片", ccPoster(connected: false, wants: principal, hasImage: all), nil)
+pcheck("只有别的角色的图 → 没有底片",
+       ccPoster(connected: true, wants: assistant, hasImage: { $0 == .principal }), nil)
+// ⭐ 两个判据必须同源：ccStage 说要显示静图时，ccPoster 必须给出同一个角色
+for w in [none, principal, assistant, both] {
+    for h in [all, nothing] {
+        let st = ccStage(connected: true, speakingWithVideo: false, wants: w, hasImage: h)
+        let po = ccPoster(connected: true, wants: w, hasImage: h)
+        let consistent = (st == .still(po ?? .principal) && po != nil) || (st == .bars && po == nil)
+        if consistent { pass += 1 } else {
+            fail += 1; print("  ❌ ⭐ 两个判据不同源：stage=\(st) poster=\(String(describing: po))")
+        }
+    }
+}
+print("  ✅ ⭐ ccStage 和 ccPoster 在 8 种组合下同源")
+
 print("\n\(String(repeating: "=", count: 46))")
 print("通过 \(pass) 条，失败 \(fail) 条")
 exit(fail == 0 ? 0 : 1)
