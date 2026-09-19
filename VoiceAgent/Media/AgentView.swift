@@ -1,6 +1,7 @@
 import LiveKitComponents
 
-/// 中间那块主画面：**数字人在说话就播数字人，否则画柱子。**
+/// 中间那块主画面：**在说话就播数字人视频，没在说话就显示那张形象静图，
+/// 没开数字人才画柱子。**
 ///
 /// ## 说完就收，不留停止帧
 ///
@@ -10,11 +11,31 @@ import LiveKitComponents
 ///
 /// 所以显示条件不是「有没有视频轨」而是「**这一刻在不在说**」：开口展开、
 /// 说完收走。收尾留了一小段宽限期，不然句子之间的换气会让画面一闪一闪。
+///
+/// ## 为什么现在「收走」之后是静图而不是柱子
+///
+/// Chris 2026-09-19：「手机 APP 在启动的时候，最好是能去 load 你处理过的
+/// 这个图，然后展示出来。」
+///
+/// ⚠️ **这跟上面那条「不要停止帧」不冲突，两者是不同的东西：**
+///
+///     停止帧    视频轨的最后一帧 —— 半张着嘴、说到一半，僵住很难看
+///     形象静图  参考图本身 —— 正面、闭嘴、中性表情，本来就是拿来看的
+///
+/// 而且它顺带解决一个原来就有的问题：开着数字人但还没开口的那段时间，
+/// 屏幕上是柱子，跟接下来要出现的那张脸毫无关系，切换很突兀。
+///
+/// **只在这个房间真的开了数字人时才显示静图** —— 没开的话屏幕上凭空出现
+/// 一张脸，会让人以为数字人已经在跑了。
 struct AgentView: View {
     @EnvironmentObject private var session: Session
     @EnvironmentObject private var rooms: CCRooms
     /// 只为「显示网络读数」那个排障开关订阅 —— 它同时控制柱子底下那行帧数。
     @ObservedObject private var config = CloseCrabConfig.shared
+    /// 形象静图。跟 `CCRosterRow` 是同一个单例，图只下一次、两处共用。
+    @StateObject private var persona = CCPersona.shared
+    /// 数字人开关 —— 据此判断「这房间开没开、开的是哪个角色」。
+    @ObservedObject private var link = CCAvatarLink.shared
 
     @Environment(\.namespace) private var namespace
 
@@ -44,32 +65,71 @@ struct AgentView: View {
         return now.timeIntervalSince(t) < Self.hideGrace
     }
 
+    private var roomName: String { session.room.name ?? "" }
+
+    /// 这一刻该画什么。**判定在 `CCStage.swift` 里**（纯函数、有 14 条离线测试
+    /// 和 6 条变异），这儿只负责把它画出来 —— 写在 View 里的分支在真机跑之前
+    /// 没有任何人能说它对不对。
+    private var stage: CCStage {
+        let room = roomName
+        return ccStage(connected: session.isConnected,
+                       speakingWithVideo: avatarTrack != nil && showAvatar,
+                       wants: link.wants(room: room),
+                       hasImage: { persona.images[$0.key(room: room)] != nil })
+    }
+
     var body: some View {
         ZStack {
             // ⚠️ 走 `ccAvatarVideoTrack` 不走 `session.agent.avatarVideoTrack` ——
             //    我们的数字人挂在播报旁路名下，SDK 那条关联查不到。
             //    理由写在 `CCRooms.swift` 那个属性上。
-            if let avatarVideoTrack = avatarTrack, showAvatar {
-                SwiftUIVideoView(avatarVideoTrack)
+            switch stage {
+            case .video:
+                if let avatarVideoTrack = avatarTrack {
+                    SwiftUIVideoView(avatarVideoTrack)
+                        .clipShape(RoundedRectangle(cornerRadius: .cornerRadiusPerPlatform))
+                        .aspectRatio(avatarVideoTrack.aspectRatio, contentMode: .fit)
+                        .padding(.horizontal,
+                                 avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
+                        .shadow(radius: 20, y: 10)
+                        .transition(.ccLineReveal)
+                }
+            case let .still(role):
+                // 开着数字人、但这一刻没在说 —— 显示那张参考图本身。
+                // ⚠️ 用 `.fit` 和视频那一支保持一致：两者尺寸对不上的话，
+                //    开口/闭口的瞬间画面会「跳」一下大小，比闪烁更难受。
+                persona.images[role.key(room: roomName)]?
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: .cornerRadiusPerPlatform))
-                    .aspectRatio(avatarVideoTrack.aspectRatio, contentMode: .fit)
-                    .padding(.horizontal, avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
                     .shadow(radius: 20, y: 10)
-                    .transition(.ccLineReveal)
-            } else if session.isConnected {
+                    .transition(.opacity)
+                    .accessibilityLabel("数字人形象")
+            case .bars:
                 // 这里原来在柱子底下写一行「在听,说吧 / 它在说 / 在想…」。
                 // 2026-09-18 Chris 让去掉 —— 同样的信息现在在顶部那排
                 // `CCRosterRow` 的助手牌子上（而且那儿还顺带告诉你
                 // 房间里还有谁），底下再写一遍是重复。
                 voiceBars
                     .transition(.opacity)
+            case .idle:
+                EmptyView()
             }
         }
+        // ⚠️ **这里也要 ensure 一次，不能只靠 `CCRosterRow`。**
+        //    那一排是「房间里有谁」，未来完全可能被折叠或隐藏；主画面靠它
+        //    顺带把图下下来的话，一旦它不显示，这儿就永远是柱子 ——
+        //    而且不报错，只是「怎么没图」。`ensure` 自己去重，多调无害。
+        .onAppear { persona.ensureAll(room: roomName) }
+        .onChange(of: roomName) { _, r in persona.ensureAll(room: r) }
         // ⚠️ 时长从 `CCLineReveal.duration` 取，**别在这儿另写一个数** ——
         //    两处不一致的话进场退场节奏对不上，而那种不对劲很难指认。
         //    曲线用 linear：三段时序已经在 `CCLineReveal` 里编排好了，
         //    外面再叠一条缓动会把「先快后慢」压平，又变回看不出过程。
         .ccAnimation(.linear(duration: CCLineReveal.duration), value: showAvatar)
+        // 三态之间的切换也要有过渡（柱子↔静图、静图↔视频），
+        // 否则图下完那一刻、以及每句话说完那一刻，都是硬切。
+        .ccAnimation(.easeInOut(duration: 0.25), value: stage)
         .ccAnimation(.snappy, value: session.agent.audioTrack?.id)
         .matchedGeometryEffect(id: "agent", in: namespace!)
         .overlay { sampler }
