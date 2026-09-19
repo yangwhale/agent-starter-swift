@@ -14,7 +14,6 @@
 | `CCVisibilityPolicy.swift` | `CCVisibilityPolicyTests.swift` | 93 | 「关要慢、开要快」的不对称、宽限期边界、回前台清零不累计、inactive→background 不重置、deadline 排定时器（含已隐藏返回 nil、晚醒不为负）|
 | `CCAvatarState.swift` | `CCAvatarStateTests.swift` | 75 | 四个状态的解析（大小写/空白/未知值）、`unknown` 与 `off` 不能合并、「报错」和「显示画面」都必须同时看用户自己的开关、rawValue 与服务端逐字对齐 |
 | `CCAvatarRoles.swift` | `CCAvatarRolesTests.swift` | 48 | 双击的互斥语义（含「抢过来再双击是全关不是弹回」）、**关掉的角色必须显式写 `false`**、老键只镜像 principal、存盘规范形与解析容错、角色 rawValue 与服务端 `policy.py` 逐字对齐 |
-| `CCStage.swift` | `CCStageTests.swift` | 14 | 主画面三态的判定：在说话时视频压过一切（连没连上都不问）、**没开数字人不许显示静图**、开了但图没下下来要退回柱子、只有那个角色自己的图算数、两个角色同时开着时结果必须稳定（不能用 Set 的 first）|
 
 > `CCVisibilityPolicy` 那条不对称最值得留意：**两个方向的代价完全不一样。**
 > 误判成「看不见」会让正在看的人画面断掉并重起（首帧 1.26 秒 + 重抢槽位），
@@ -52,7 +51,7 @@ docker run --rm -v /tmp/swtest:/w -w /w swift:6.2-noble \
 确认测试真的会炸。`CCLook` 现有 10 条变异（区间开闭、边界值挪位、比较符方向、
 跨夜漏加、负数不折回、auto 不看时钟、off 也给图、秒数不参与、两档标签撞名），
 **10 杀 0 漏**。`CCVisibilityPolicy` 11 杀 0 漏，`CCAvatarState` 9 杀 0 漏，
-`CCStage` 6 杀 0 漏（判定顺序反、不查图、随便一张图就算、用 Set 的 first、没开也兜底、去掉未连接保护），`CCAvatarRoles` 9 杀 0 漏（互斥失效、漏写 `false`、老键镜像错、存盘顺序反、
+`CCAvatarRoles` 9 杀 0 漏（互斥失效、漏写 `false`、老键镜像错、存盘顺序反、
 解析不去空白、属性键少个点、缓存键不带角色、双击关不掉、空集合存占位串）。
 
 ### 变异测试自己也会骗人：三个真踩过的坑
