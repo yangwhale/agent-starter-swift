@@ -82,18 +82,17 @@ struct CCBotStatusPanel: View {
     /// 在等人的时候，标题就是「在等什么」。
     private var waiting: Bool { !(snap?.wait ?? "").isEmpty }
 
-    /// 服务端给的是一整句「在跑 cd ~/CloseCrab && grep …」。
-    /// **标题只放前面那个动词**，后面那一长串单独一行小字。
+    /// 整句多长就拆成「动词 ＋ 一行小字」。
     ///
-    /// ⚠️ 不拆的话：一条命令几十个字符，在标题字号下会把右边的计时
-    /// **整个挤出屏幕**，而且尾巴直接被屏幕边缘切掉、连省略号都没有。
-    /// 2026-09-20 真机截图上就是这样 —— 看不到跑了多久，而那是这块屏
-    /// 最有用的一个数。
-    /// 短到能整句放进标题就不拆。「在读 agent_state.py」拆成
-    /// 「在读」＋一行小字反而更难看 —— **只有塞不下的才拆**。
+    /// ⚠️ 不拆的话：服务端给的是一整句「在跑 cd ~/CloseCrab && grep …」，
+    /// 一条命令几十个字符，在标题字号下会把右边的计时**整个挤出屏幕**，
+    /// 而且尾巴直接被屏幕边缘切掉、连省略号都没有。2026-09-20 真机截图上
+    /// 就是这样 —— 看不到跑了多久，而那是这块屏最有用的一个数。
+    ///
+    /// 但**短的不拆**：「在读 agent_state.py」拆成「在读」＋一行小字反而更难看。
     private static let inlineLimit = 18
 
-    /// 整句要不要拆。
+    /// 这一句要不要拆。
     private var splits: Bool {
         guard let s = snap, s.on, !waiting else { return false }
         return s.act.count > Self.inlineLimit && s.act.contains(" ")
