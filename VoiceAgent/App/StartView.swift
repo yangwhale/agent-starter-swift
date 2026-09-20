@@ -5,7 +5,7 @@ import SwiftUI
 struct StartView: View {
     @EnvironmentObject private var session: Session
     @Environment(CCRooms.self) private var rooms
-    @ObservedObject private var config = CloseCrabConfig.shared
+    private var config: CloseCrabConfig { .shared }
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Namespace private var button

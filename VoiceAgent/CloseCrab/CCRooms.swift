@@ -357,7 +357,6 @@ final class CCRooms {
     var onRoomsChanged: (() -> Void)?
 
     private let config = CloseCrabConfig.shared
-    private var bag = Set<AnyCancellable>()
 
     init() {
         activeName = config.room
@@ -370,9 +369,11 @@ final class CCRooms {
         // `config.onlineRooms` 拿到的是**旧值**，于是刚勾上的房间要等下一次
         // 无关变更才被建出来。表现是「勾了没反应，再随便点一下它才出现」。
         // 丢进 Task 推到下一个 runloop tick，那时新值已经写进去了。
-        config.objectWillChange
-            .sink { [weak self] _ in Task { @MainActor in self?.sync() } }
-            .store(in: &bag)
+        // ⚠️ 从「订阅 config.objectWillChange」换成了显式回调。
+        //    原来那条要 `Task` 跳一拍才拿得到新值（objectWillChange 是
+        //    「即将改变」）；`didSet` 回调触发时值已经是新的，**不用跳**。
+        //    而且范围收窄了：改背景图、拨震动开关不会再来跑一遍 sync()。
+        config.onSelectionChanged = { [weak self] in self?.sync() }
     }
 
     // MARK: - 槽位增删

@@ -124,7 +124,7 @@ private struct CCShell: View {
     let rooms: CCRooms
     let active: CCRoomSlot
     /// 要订阅，不能直接读 `.shared` —— 直接读拿得到值，但**开关拨了界面不会重绘**。
-    @ObservedObject private var config = CloseCrabConfig.shared
+    private var config: CloseCrabConfig { .shared }
 
     /// 聊天（字幕）开关。**提到 chrome 这一层 = 跨房间共享**：
     /// 开着字幕滑到隔壁，字幕还开着。字幕是「我想看文字」这个偏好，

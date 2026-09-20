@@ -31,7 +31,7 @@ struct CCBackdrop: View {
     /// 当前 bot 的主题色，透给极光那一层。
     var tint: Color?
 
-    @ObservedObject private var config = CloseCrabConfig.shared
+    private var config: CloseCrabConfig { .shared }
     @Environment(\.colorScheme) private var scheme
     @Environment(\.scenePhase) private var scenePhase
 

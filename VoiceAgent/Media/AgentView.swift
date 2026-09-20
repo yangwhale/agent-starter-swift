@@ -15,7 +15,7 @@ struct AgentView: View {
     @Environment(CCRoomSlot.self) private var slot
     @Environment(CCRooms.self) private var rooms
     /// 只为「显示网络读数」那个排障开关订阅 —— 它同时控制柱子底下那行帧数。
-    @ObservedObject private var config = CloseCrabConfig.shared
+    private var config: CloseCrabConfig { .shared }
 
     /// 这一页那个房间的 bot 状态。**按 `Session` 对象身份找自己那个槽位** ——
     /// 分页里每页注入的是自己那一页的 `Session`，拿不到槽位本身（理由见

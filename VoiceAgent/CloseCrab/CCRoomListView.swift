@@ -14,7 +14,7 @@ import SwiftUI
 struct CCRoomListView: View {
     @EnvironmentObject private var session: Session
     @Environment(CCRooms.self) private var rooms
-    @ObservedObject private var config = CloseCrabConfig.shared
+    private var config: CloseCrabConfig { .shared }
     private var directory: CCRoomDirectory { .shared }
 
     @Environment(\.dismiss) private var dismiss

@@ -5,7 +5,8 @@ import SwiftUI
 /// 这些全是**部署形态**，不是代码：换个入口、加个 bot、轮换一次密钥，
 /// 都不该变成一次重新编译 + 重新签名 + 重新装机。
 struct CloseCrabSettingsView: View {
-    @ObservedObject private var config = CloseCrabConfig.shared
+    /// 设置页要**双向绑定**（`$config.xxx`），所以用 `@Bindable` 而不是裸属性。
+    @Bindable private var config = CloseCrabConfig.shared
     private var directory: CCRoomDirectory { .shared }
     @Environment(\.dismiss) private var dismiss
     /// 数字人那一路。**读单例不用 `@EnvironmentObject`** —— 后者忘了注入是

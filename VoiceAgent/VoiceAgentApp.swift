@@ -17,7 +17,7 @@ struct VoiceAgentApp: App {
     /// 用 `@StateObject` 而不是 `@ObservedObject`：`App` 不像 View 那样会被
     /// 反复重建，`@ObservedObject` 在这一层的行为没有被文档明确保证。
     /// 包的是单例，`wrappedValue` 那个 autoclosure 只求值一次也无所谓。
-    @StateObject private var config = CloseCrabConfig.shared
+    private var config: CloseCrabConfig { .shared }
 
     /// app 在前台还是后台。**这是 `cc.client.visible` 的唯一来源** ——
     /// 别在下层 View 里再读一遍 scenePhase 自己判，两份判断迟早会错开。

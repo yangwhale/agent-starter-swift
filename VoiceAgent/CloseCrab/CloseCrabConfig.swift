@@ -1,17 +1,32 @@
+import Observation
 import SwiftUI
 
 /// `CCStore` 的界面外衣：只负责让 SwiftUI 知道「值变了」。
 /// 真正的持久化全在 `CCStore`，这里一个字段都不自己攒着 ——
 /// 否则设置页改完、后台的 token source 还读着旧值，那种不一致最难看出来。
 @MainActor
-final class CloseCrabConfig: ObservableObject {
+@Observable
+final class CloseCrabConfig {
     static let shared = CloseCrabConfig()
 
-    @Published var baseURL: String { didSet { CCStore.baseURL = baseURL } }
-    @Published var signalURL: String { didSet { CCStore.signalURL = signalURL } }
-    @Published var sharedSecret: String { didSet { CCStore.sharedSecret = sharedSecret } }
+    var baseURL: String { didSet { CCStore.baseURL = baseURL } }
+    var signalURL: String { didSet { CCStore.signalURL = signalURL } }
+    var sharedSecret: String { didSet { CCStore.sharedSecret = sharedSecret } }
+    /// 「勾了哪几个」或者「当前是谁」变了就叫一声。
+    ///
+    /// ⚠️ **这是替掉 `CCRooms` 原来那条 `config.objectWillChange` 订阅的。**
+    /// 那条订阅有两个毛病：
+    /// 1. 范围太大 —— 改个背景图、拨个震动开关，都会去跑一遍 `sync()`
+    /// 2. `objectWillChange` 是在值**改变之前**发的，所以 sink 里读到的是旧值，
+    ///    当年不得不 `Task` 跳一拍绕开（那段注释里写着「勾了没反应，
+    ///    再随便点一下它才出现」）。
+    ///
+    /// 改成 `didSet` 回调，两个毛病一起没了：**只有真正相关的两个字段会叫，
+    /// 而且叫的时候值已经是新的**，不用再跳那一拍。
+    var onSelectionChanged: (() -> Void)?
+
     /// 话筒现在对着谁。改它会顺带把它拉进在线名单（见 `CCStore.onlineRooms` 的不变量 2）。
-    @Published var room: String { didSet { CCStore.room = room; syncOnline() } }
+    var room: String { didSet { CCStore.room = room; syncOnline(); onSelectionChanged?() } }
 
     /// 哪几个房间连着、听得见。**跟 `room` 是两个轴**，说明见 `CCStore.onlineRooms`。
     ///
@@ -19,17 +34,17 @@ final class CloseCrabConfig: ObservableObject {
     /// 立刻回读对齐一次 —— 不然界面上的勾会跟真正生效的名单对不上，
     /// 而这种不一致**看不出来**：勾是亮的，房间却没连。
     /// 显不显示网络读数。见 `CCStore.netReadout`。
-    @Published var netReadout: Bool { didSet { CCStore.netReadout = netReadout } }
+    var netReadout: Bool { didSet { CCStore.netReadout = netReadout } }
 
     /// 不说话时把麦克风让出去。见 `CCStore.releaseMicWhenIdle`。
     /// **改完要重启 App 才生效。**
-    @Published var releaseMicWhenIdle: Bool { didSet { CCStore.releaseMicWhenIdle = releaseMicWhenIdle } }
+    var releaseMicWhenIdle: Bool { didSet { CCStore.releaseMicWhenIdle = releaseMicWhenIdle } }
 
-    @Published var onlineRooms: [String] { didSet { CCStore.onlineRooms = onlineRooms; syncOnline() } }
+    var onlineRooms: [String] { didSet { CCStore.onlineRooms = onlineRooms; syncOnline(); onSelectionChanged?() } }
 
     /// 麦克风语音处理的实现。**全局一份**，每个房间的 `AudioOptions` 各自订阅它
     /// 往自己那条麦克风轨上应用（见 `AudioOptions.init`）。
-    @Published var voiceProcessing: VoiceProcessingMode { didSet { CCStore.voiceProcessing = voiceProcessing } }
+    var voiceProcessing: VoiceProcessingMode { didSet { CCStore.voiceProcessing = voiceProcessing } }
 
     // MARK: - 外观
     //
@@ -37,16 +52,16 @@ final class CloseCrabConfig: ObservableObject {
     // 没有任何后台任务会去改它们。
 
     /// 背景图。见 `CCBackdrop`。
-    @Published var backdrop: CCBackdropChoice { didSet { CCStore.backdrop = backdrop } }
+    var backdrop: CCBackdropChoice { didSet { CCStore.backdrop = backdrop } }
 
     /// macOS 按住说话的触发键。写死一个键等于替用户做了个他没同意的决定。
-    @Published var pushToTalkKey: CCPushToTalkKey { didSet { CCStore.pushToTalkKey = pushToTalkKey } }
+    var pushToTalkKey: CCPushToTalkKey { didSet { CCStore.pushToTalkKey = pushToTalkKey } }
     /// 深浅色三档。见 `CCAppearance`。
-    @Published var appearance: CCAppearance { didSet { CCStore.appearance = appearance } }
+    var appearance: CCAppearance { didSet { CCStore.appearance = appearance } }
     /// 手势震动。见 `CCHaptics`。
-    @Published var haptics: Bool { didSet { CCStore.haptics = haptics } }
+    var haptics: Bool { didSet { CCStore.haptics = haptics } }
     /// 房间名用手写体。见 `CCHandFont`。
-    @Published var handwritten: Bool { didSet { CCStore.handwritten = handwritten } }
+    var handwritten: Bool { didSet { CCStore.handwritten = handwritten } }
 
     // ⚠️ Avatar 开关**不在这里** —— 它是**每个房间、每个角色**一个，
     //    住在 `CCAvatarLink.wants(room:)`，界面在房间里那排牌子上（双击）。
