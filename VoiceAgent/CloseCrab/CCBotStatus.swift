@@ -138,7 +138,20 @@ final class CCBotStatus {
         // 解不出来就**保持上一份**，不要清空。服务端哪天多加一个字段、
         // 或者半路截断，清空会让屏幕闪一下变空 —— 那比停在旧值上更糟，
         // 因为旧值至少是真的发生过的。
-        guard let s = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
+        //
+        // ⚠️ **但必须留一声。** 原来这里是 `try?` 直接吞掉 ——
+        // 于是「解析失败」和「服务端没发新状态」在屏幕上**长得一模一样**
+        // （都是停在旧值），而且**连日志都没有**，故障完全隐形。
+        // 这是 tommy 2026-09-20 指出的，跟今天撞了六次的是同一个形状。
+        let s: Snapshot
+        do {
+            s = try JSONDecoder().decode(Snapshot.self, from: data)
+        } catch {
+            // print 而不是 os_log：从 Mac 上拉设备日志只有 stdout 到得了
+            // （`log stream --device` 这个选项在现在的 macOS 上已经不存在）。
+            print("⚠️ [CCBotStatus] 状态解析失败，保持上一份: \(error)")
+            return
+        }
         lastRaw = raw
         snap = s
     }
