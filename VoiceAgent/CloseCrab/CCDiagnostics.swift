@@ -1,3 +1,4 @@
+import Observation
 import LiveKit
 import SwiftUI
 
@@ -21,7 +22,8 @@ import SwiftUI
 /// 同理 `jitterBufferDelay` 是累计秒数，要除以 `jitterBufferEmittedCount`
 /// 才是当前平均驻留时间。这是最常见的误读。
 @MainActor
-final class CCDiagnostics: ObservableObject {
+@Observable
+final class CCDiagnostics {
     /// 一行读数：标题、值、可选的提示。
     struct Row: Identifiable {
         let id = UUID()
@@ -38,8 +40,8 @@ final class CCDiagnostics: ObservableObject {
         let rows: [Row]
     }
 
-    @Published private(set) var groups: [Group] = []
-    @Published private(set) var updatedAt: String = "—"
+    private(set) var groups: [Group] = []
+    private(set) var updatedAt: String = "—"
 
     private var timer: Task<Void, Never>?
     private weak var remote: Track?
@@ -236,7 +238,7 @@ final class CCDiagnostics: ObservableObject {
 /// 常驻会让人养成盯着仪表盘的习惯，而不是听内容。
 struct CCDiagnosticsView: View {
     @EnvironmentObject private var rooms: CCRooms
-    @StateObject private var diag = CCDiagnostics()
+    @State private var diag = CCDiagnostics()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {

@@ -1,3 +1,4 @@
+import Observation
 import Foundation
 import SwiftUI
 
@@ -31,14 +32,15 @@ struct CCRoom: Identifiable, Equatable, Decodable {
 /// 本地仍然留一份上次拿到的名单（存在 `CCStore.roomsCSV`），只当缓存用：
 /// 冷启动、飞行模式下界面不至于空着。**它不是第二份真理** —— 每次拉取成功都整份覆盖。
 @MainActor
-final class CCRoomDirectory: ObservableObject {
+@Observable
+final class CCRoomDirectory {
     static let shared = CCRoomDirectory()
 
-    @Published private(set) var rooms: [CCRoom]
-    @Published private(set) var isRefreshing = false
+    private(set) var rooms: [CCRoom]
+    private(set) var isRefreshing = false
     /// 上次拉取的错误。留着显示给人看，而不是默默退回缓存 ——
     /// 「列表是旧的」和「列表是新的」长得一模一样，不说没人知道。
-    @Published private(set) var lastError: String?
+    private(set) var lastError: String?
 
     private init() {
         rooms = CCStore.rooms.map { CCRoom(name: $0) }

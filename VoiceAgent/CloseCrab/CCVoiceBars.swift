@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import Observation
 import LiveKit
 import SwiftUI
 
@@ -35,16 +36,17 @@ import SwiftUI
 ///    一直在变），所以哪怕音频这条路是断的，「它在说话」这件事仍然能表达出来。
 ///    用不用兜底会写在排障那行里，不会假装一切正常。
 @MainActor
-final class CCVoiceMeter: ObservableObject, AudioRenderer {
+@Observable
+final class CCVoiceMeter: AudioRenderer {
     /// 每根柱子当前的高度系数，0–1。
-    @Published private(set) var levels: [Float]
+    private(set) var levels: [Float]
 
     /// 一共收到过多少个音频缓冲。**柱子不动时第一个该看的数。**
     /// 它一直是 0 ＝ 音轨那头就没通，跟界面无关。
-    @Published private(set) var frames: Int = 0
+    private(set) var frames: Int = 0
 
     /// 现在跑的是不是兜底动画。
-    @Published private(set) var isFallback = false
+    private(set) var isFallback = false
 
     let barCount: Int
 
@@ -226,7 +228,7 @@ struct CCVoiceBars: View {
     /// 排障开关打开时，在柱子底下显示收了多少帧、是不是在跑兜底。
     var showsDebug: Bool = false
 
-    @StateObject private var meter = CCVoiceMeter(barCount: 5)
+    @State private var meter = CCVoiceMeter(barCount: 5)
 
     /// 静止时的高度 ＝ 柱子宽度，于是是个圆点；一说话就抽成长条。
     /// 方块上那个小版本会把这三个都调小（见 `CCRoomTileRow`）。

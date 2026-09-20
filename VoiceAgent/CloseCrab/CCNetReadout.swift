@@ -1,3 +1,4 @@
+import Observation
 import LiveKit
 import SwiftUI
 
@@ -28,7 +29,8 @@ import SwiftUI
 /// 前者是累计延迟秒数，后者是累计吐出的样本数，**相除才是当前平均驻留时间**。
 /// 直接读 `jitterBufferDelay` 会得到一个一直在涨的累计值，那是最常见的误读。
 @MainActor
-final class CCNetStats: ObservableObject {
+@Observable
+final class CCNetStats {
     struct Snapshot: Equatable {
         /// 当前缓冲平均深度，毫秒。
         var bufferMs: Double = 0
@@ -39,7 +41,7 @@ final class CCNetStats: ObservableObject {
         var hasData = false
     }
 
-    @Published private(set) var snap = Snapshot()
+    private(set) var snap = Snapshot()
 
     private var timer: Task<Void, Never>?
     /// 存 `Track` 不存 `AudioTrack`：后者是协议，**没有 class 约束就不能 weak**。
@@ -103,7 +105,7 @@ final class CCNetStats: ObservableObject {
 /// 那一刻它才有价值，所以做成开关，别常驻。
 struct CCNetReadout: View {
     @EnvironmentObject private var rooms: CCRooms
-    @StateObject private var stats = CCNetStats()
+    @State private var stats = CCNetStats()
 
     var body: some View {
         Group {

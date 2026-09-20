@@ -1,3 +1,4 @@
+import Observation
 import Foundation
 import SwiftUI
 
@@ -23,18 +24,19 @@ import SwiftUI
 /// 用时间戳缓存的话，换了脸却在有效期内的那几分钟里你看到的还是旧的 ——
 /// 而你刚刚才换过，只会以为上传失败又传一遍。
 @MainActor
-final class CCPersona: ObservableObject {
+@Observable
+final class CCPersona {
     static let shared = CCPersona()
 
     /// 每个房间当前那张图。key 是房间名。
-    @Published private(set) var images: [String: Image] = [:]
+    private(set) var images: [String: Image] = [:]
     /// 当前版本号（＝内容哈希）。用来判断要不要重新下。
-    @Published private(set) var versions: [String: String] = [:]
+    private(set) var versions: [String: String] = [:]
     /// 正在上传的房间 —— 界面据此转圈并挡住重复点击。
-    @Published private(set) var uploading: Set<String> = []
+    private(set) var uploading: Set<String> = []
     /// 上一次失败的原因，按房间存。**要显示给用户**：
     /// 「点了没反应」是这类功能最常见的投诉，而原因后端都写清楚了。
-    @Published private(set) var lastError: [String: String] = [:]
+    private(set) var lastError: [String: String] = [:]
 
     private var inflight: Set<String> = []
 

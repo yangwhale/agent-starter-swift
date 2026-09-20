@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 #if os(iOS)
     import PhotosUI
@@ -20,16 +21,17 @@ import SwiftUI
 ///
 /// 六个一模一样的机器人头，等于没有图标。首字母至少能区分。
 @MainActor
-final class CCRoomIcons: ObservableObject {
+@Observable
+final class CCRoomIcons {
     static let shared = CCRoomIcons()
 
     /// 键是房间名。用 `@Published` 整份替换而不是逐键改 ——
     /// SwiftUI 对字典的逐键变更不保证发通知。
-    @Published private(set) var map: [String: String]
+    private(set) var map: [String: String]
 
     /// 传过图的房间 → 那张图。**跟 emoji 分开两份**，因为它们的取舍不同：
     /// emoji 轻、可以整份塞 UserDefaults；图片重、只能落盘，而且要能缓存。
-    @Published private(set) var images: [String: Image] = [:]
+    private(set) var images: [String: Image] = [:]
 
     private static let key = "cc.roomIcons"
 
@@ -130,7 +132,7 @@ final class CCRoomIcons: ObservableObject {
 struct CCIconPickerSheet: View {
     let room: String
 
-    @ObservedObject private var icons = CCRoomIcons.shared
+    private var icons = CCRoomIcons.shared
     @Environment(\.dismiss) private var dismiss
 
     /// 分组，不是一长条。

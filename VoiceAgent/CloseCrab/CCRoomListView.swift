@@ -15,7 +15,7 @@ struct CCRoomListView: View {
     @EnvironmentObject private var session: Session
     @EnvironmentObject private var rooms: CCRooms
     @ObservedObject private var config = CloseCrabConfig.shared
-    @ObservedObject private var directory = CCRoomDirectory.shared
+    private var directory = CCRoomDirectory.shared
 
     @Environment(\.dismiss) private var dismiss
     @State private var switchingTo: String?

@@ -22,11 +22,12 @@
     ///
     /// ⚠️ 没有这个降级，用户会以为功能坏了 —— 而真相只是没点那个开关。
     @MainActor
-    final class CCMacHotkey: ObservableObject {
+    @Observable
+    final class CCMacHotkey {
         /// 辅助功能授权状态。设置页据此显示提示和「去授权」按钮。
-        @Published private(set) var isTrusted = false
+        private(set) var isTrusted = false
         /// 全局监听有没有真的挂上。授权了但挂失败也要看得见。
-        @Published private(set) var isGlobalActive = false
+        private(set) var isGlobalActive = false
 
         private var machine = CCPushToTalkMachine()
 

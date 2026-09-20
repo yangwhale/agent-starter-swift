@@ -97,7 +97,7 @@ struct CCRoomTileRow: View {
 /// 写成方法的话整排都要跟着重画，六个房间时每秒几十次全量重绘。
 private struct CCRoomTile: View {
     @ObservedObject var slot: CCRoomSlot
-    @ObservedObject private var icons = CCRoomIcons.shared
+    private var icons = CCRoomIcons.shared
     /// 只为「手写体」那个开关订阅。**不订阅的话开关拨了字不会变** ——
     /// `CCType` 是纯函数，它不知道谁该重绘。
     @ObservedObject private var config = CloseCrabConfig.shared

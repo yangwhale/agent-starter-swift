@@ -1,4 +1,5 @@
 #if os(iOS) || os(visionOS)
+import Observation
 import AVFAudio
 import Foundation
 import LiveKit
@@ -72,7 +73,8 @@ import UIKit
 /// 真机上要是出现「没声音 / 回声 / 开麦要等很久」，在设置里关掉它就退回
 /// SDK 原来的行为，**不用重新编译**。
 @MainActor
-final class CCAudioSessionPolicy: ObservableObject {
+@Observable
+final class CCAudioSessionPolicy {
     static let shared = CCAudioSessionPolicy()
 
     /// **引擎此刻真的在采集。** 界面拿它当「可以开口了」的判据。
@@ -85,14 +87,14 @@ final class CCAudioSessionPolicy: ObservableObject {
     /// 为什么不用 `LocalMedia.isMicrophoneEnabled`：那是**轨道**的状态，
     /// 比意图准，但仍然不等于「音频引擎已经在往里灌采样」。这一条是引擎
     /// 自己报上来的，是这条链上最靠后、也最接近事实的那个信号。
-    @Published private(set) var isCapturing = false
+    private(set) var isCapturing = false
 
     /// 真机上用来确认它到底有没有生效 —— 诊断页读这个。
     /// 没有这行的话，「改了没效果」和「改了但没跑到」长得一模一样。
     private(set) var lastApplied: String = "（还没配置过）"
 
     /// 最近一次自愈：什么时候、为什么。诊断页看这个。
-    @Published private(set) var lastRecovery = "（还没发生过）"
+    private(set) var lastRecovery = "（还没发生过）"
 
     private let observer = Observer()
     private var installed = false

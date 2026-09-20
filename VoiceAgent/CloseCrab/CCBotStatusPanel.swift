@@ -25,7 +25,7 @@ import SwiftUI
 struct CCBotStatusPanel: View {
     /// **这一页那个房间的**状态。由 `AgentView` 从自己的槽位取出来传进来 ——
     /// 曾经是 `CCBotStatus.shared`，那会让 A 房间的状态显示在 B 房间的屏上。
-    @ObservedObject var status: CCBotStatus
+    var status: CCBotStatus
 
     /// 计时用。**必须自己驱动重算** —— `sec` 是服务端发的那一刻的值，
     /// 没有新属性进来它就不会变，而人要看的是「到现在多久了」。

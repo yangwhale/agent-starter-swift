@@ -54,9 +54,9 @@ import SwiftUI
 
 struct CCRosterRow: View {
     @EnvironmentObject private var session: Session
-    @StateObject private var persona = CCPersona.shared
+    private var persona = CCPersona.shared
     /// Avatar 开关住在这儿（每房间、每角色），顺带拿服务端回报来给标记上色。
-    @ObservedObject private var link = CCAvatarLink.shared
+    private var link = CCAvatarLink.shared
     /// 正在放大看谁的形象。nil = 没在看。
     @State private var previewing: CCPersonaRole?
 
@@ -241,8 +241,8 @@ extension CCPersonaRole: Identifiable {
 private struct CCRosterChip: View {
     let member: CCRosterMember
     let room: String
-    @ObservedObject var persona: CCPersona
-    @ObservedObject var link: CCAvatarLink
+    let persona: CCPersona
+    let link: CCAvatarLink
     let onTapPersona: () -> Void
 
     /// 这个牌子有没有自己的一张脸。没有的（我 / Avatar / 访客）就还画图标。
@@ -360,8 +360,8 @@ private struct CCChipGestures: ViewModifier {
     let room: String
     /// nil = 这个牌子没有自己的角色，整组手势都不挂。
     let role: CCPersonaRole?
-    @ObservedObject var persona: CCPersona
-    @ObservedObject var link: CCAvatarLink
+    let persona: CCPersona
+    let link: CCAvatarLink
     let onPreview: () -> Void
 
     #if os(iOS)
@@ -423,7 +423,7 @@ private struct CCChipGestures: ViewModifier {
 private struct CCPersonaPreview: View {
     let room: String
     let role: CCPersonaRole
-    @ObservedObject var persona: CCPersona
+    let persona: CCPersona
     @Environment(\.dismiss) private var dismiss
 
     private var key: String { role.key(room: room) }

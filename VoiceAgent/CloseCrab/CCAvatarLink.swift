@@ -1,3 +1,4 @@
+import Observation
 import Combine
 import LiveKit
 import SwiftUI
@@ -32,7 +33,8 @@ import SwiftUI
 ///   （LiveKit 文档明说超过每几秒一次会有服务端同步开销），
 ///   为一次失败去轮询是反着来的。
 @MainActor
-final class CCAvatarLink: ObservableObject {
+@Observable
+final class CCAvatarLink {
     /// **单例，跟 `CloseCrabConfig.shared` / `CCRoomDirectory.shared` 一个理由：**
     /// 这东西本来就只该有一个 —— 两个实例会各挂一份 delegate、各写一次属性，
     /// 而属性不适合高频写。
@@ -44,14 +46,14 @@ final class CCAvatarLink: ObservableObject {
 
     /// 服务端最近一次回报。**是全房共享的那一份**，不是「我的」——
     /// 要判断该不该给用户看，走 `CCAvatarServerState` 上那两个方法。
-    @Published private(set) var serverState: CCAvatarServerState = .unknown
+    private(set) var serverState: CCAvatarServerState = .unknown
 
     /// 上报失败的原因，给界面显示。`nil` = 没出过错。
-    @Published private(set) var lastPublishError: String?
+    private(set) var lastPublishError: String?
 
     /// 已经被翻动过的房间。**只有 `toggle()` 会写它** ——
     /// 没在这里的房间走 `CCStore` 现读，见 `wants(room:)`。
-    @Published private(set) var touched: [String: CCAvatarWants] = [:]
+    private(set) var touched: [String: CCAvatarWants] = [:]
 
     /// 由 `VoiceAgentApp` 在启动时 `attach` 进来。没接上之前所有上报都是空转 ——
     /// 不是错误，只是还没到时候。

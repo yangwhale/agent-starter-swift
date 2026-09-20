@@ -1,3 +1,4 @@
+import Observation
 import Combine
 import Foundation
 import LiveKit
@@ -71,10 +72,11 @@ enum CCBotAttr {
 /// 服务端那半边在 `closecrab/voice/livekit_out.py`，字段表在
 /// `CloseCrab/docs/bot-state-protocol.md`（**那份是协议的单一来源**）。
 @MainActor
-final class CCBotStatus: ObservableObject {
-    @Published private(set) var snap: Snapshot?
+@Observable
+final class CCBotStatus {
+    private(set) var snap: Snapshot?
     /// 最近几条流水。**只留几条** —— 它是氛围不是信息，多了就成了刷屏。
-    @Published private(set) var steps: [String] = []
+    private(set) var steps: [String] = []
 
     private static let maxSteps = 4
 

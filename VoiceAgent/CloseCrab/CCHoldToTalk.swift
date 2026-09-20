@@ -31,7 +31,7 @@ struct CCTalkBar: View {
     @EnvironmentObject private var localMedia: LocalMedia
     @EnvironmentObject private var mic: CCMicPolicy
     #if os(iOS) || os(visionOS)
-    @ObservedObject private var audio = CCAudioSessionPolicy.shared
+    private var audio = CCAudioSessionPolicy.shared
     #endif
 
     /// 麦克风常开时这条不该还摆出「按住说话」的样子 —— 它此刻没作用。

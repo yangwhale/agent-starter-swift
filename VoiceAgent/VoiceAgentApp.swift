@@ -10,7 +10,7 @@ struct VoiceAgentApp: App {
     /// 数字人开关的客户端这一半：上报「想要吗 / 看得见吗」，收服务端的结论。
     /// 在这一层接线是因为它要跟着 `scenePhase` 走 —— 而 scenePhase 的
     /// 权威来源就在这里，往下传只会让每个 View 各读一份、各判一次。
-    @StateObject private var avatar = CCAvatarLink.shared
+    private let avatar = CCAvatarLink.shared
 
     /// 深浅色三档。要订阅 —— 在设置里拨了开关得立刻翻过来。
     ///
