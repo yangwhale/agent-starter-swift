@@ -277,25 +277,40 @@ final class CCRoomSlot: Identifiable {
     ///
     /// 所以不需要「静音 30 秒才断」那种延迟策略 —— 恢复够快，直接做就行。
     func enforceMute() {
-        let pubs = session.room.remoteParticipants.values
+        // ⛔ **必须是「已经有轨道」的那些，不能是「所有发布项」。**
+        //
+        // 2026-09-20 我改成后者，当场回归：app 刚起来时发布项先到、轨道后到，
+        // 于是那些 track 还是 nil 的发布项**被提前记成「已处理」**，
+        // 而设音量那一步作用在 nil 上是空操作 —— 等轨道真到了，
+        // 它已经在 handledTracks 里，**永远不会再被处理**。
+        // 现象：重启之后图标是静音的，声音照出。
+        //
+        // 所以这里配对取出，**只保留轨道已经在的**；轨道还没到的自然落在
+        // pending 之外，下一次事件来了会重新看一遍。
+        let pairs = session.room.remoteParticipants.values
             .flatMap(\.audioTracks)
-            .compactMap { $0 as? RemoteTrackPublication }
+            .compactMap { pub -> (RemoteTrackPublication, RemoteAudioTrack)? in
+                guard let p = pub as? RemoteTrackPublication,
+                      let t = pub.track as? RemoteAudioTrack else { return nil }
+                return (p, t)
+            }
 
-        let live = Set(pubs.map(ObjectIdentifier.init))
+        // ⚠️ 记账**按轨道记，不按发布项记**。发布项的生命周期比轨道长
+        //    （轨道可以先没有、后出现），按它记就会出现上面那个「提前记账」。
+        let live = Set(pairs.map { ObjectIdentifier($0.1) })
         handledTracks.formIntersection(live)   // 走掉的轨道别一直攒着
 
-        let pending = pubs.filter { !handledTracks.contains(ObjectIdentifier($0)) }
+        let pending = pairs.filter { !handledTracks.contains(ObjectIdentifier($0.1)) }
         guard !pending.isEmpty else { return }
-        handledTracks.formUnion(pending.map(ObjectIdentifier.init))
+        handledTracks.formUnion(pending.map { ObjectIdentifier($0.1) })
 
         let muted = isMuted
         let volume: Double = muted ? 0 : 1
         Task.detached {
-            for pub in pending {
-                // 本地先静音 —— 这一步是瞬时的，不受网络影响。
-                (pub.track as? RemoteAudioTrack)?.volume = volume
-                // 再让服务端别发了。失败不致命：音量已经是 0，
-                // 用户该听不见的还是听不见，只是没省到那份解码。
+            for (pub, track) in pending {
+                // 本地先静音 —— 瞬时，不受网络影响，而且**这一步才是真正静音的**。
+                track.volume = volume
+                // 再让服务端别发了（省一整套解码）。失败不致命：音量已经是 0。
                 try? await pub.set(enabled: !muted)
             }
         }
