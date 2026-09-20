@@ -78,7 +78,7 @@ struct CCRosterRow: View {
         // 这里的 `from: .now` **是安全的**，不要照着另外两处一起改。
         // 闭包参数是 `_`（不看刻度值），而且里面**不回写任何 `@State`** ——
         // 那个自激环要「定时器回写状态、状态又被 body 读到」两头都成立才闭合。
-        // 对照 `CCBotStatusPanel.epoch` 那段：那两处两头都成立，所以会死循环。
+        // 对照 `CCBotStatusStrip.epoch` 那段：那两处两头都成立，所以会死循环。
         TimelineView(.periodic(from: .now, by: 0.35)) { _ in
             HStack(spacing: 6) {
                 ForEach(roster()) { m in

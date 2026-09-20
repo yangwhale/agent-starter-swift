@@ -17,15 +17,6 @@ struct AgentView: View {
     /// 只为「显示网络读数」那个排障开关订阅 —— 它同时控制柱子底下那行帧数。
     private var config: CloseCrabConfig { .shared }
 
-    /// 这一页那个房间的 bot 状态。**按 `Session` 对象身份找自己那个槽位** ——
-    /// 分页里每页注入的是自己那一页的 `Session`，拿不到槽位本身（理由见
-    /// `CCRooms.swift` 里 `ccBotParticipants` 那段注释），所以只能反查。
-    ///
-    /// ⚠️ 这里**没有** `@ObservedObject`，所以它的变化不会直接触发重算 ——
-    /// 靠下面 `sampler` 那 0.2 秒一次的轮询捎带。这跟本文件里
-    /// `ccIsSpeaking` 用轮询是同一个理由，不是偷懒。
-    private var botStatus: CCBotStatus { slot.botStatus }
-
     @Environment(\.namespace) private var namespace
     /// 几何 id 按页分区。**多房间分页时不分区会跨页撞 id**，见 `geoScope` 的注释。
     @Environment(\.geoScope) private var geoScope
@@ -68,15 +59,6 @@ struct AgentView: View {
     /// 条件是「**这一刻在不在说**」而不是「有没有视频轨」：数字人只在有音频时
     /// 生成帧，说完就没有新帧了，而轨还在 —— 画面会僵在最后一帧上。
     /// Chris 2026-09-18 明确说不要那张停止帧。
-    /// 这块屏改显示 bot 状态。
-    ///
-    /// 两个条件：数字人这会儿播不了（否则数字人优先，它才是这块屏的正主），
-    /// 而且**确实收到过状态**（没收到就退回柱子，别摆一块空板）。
-    private var showBotStatus: Bool {
-        guard !showAvatar, slot.isConnected else { return false }
-        return botStatus.snap != nil
-    }
-
     private var showAvatar: Bool {
         guard avatarTrack != nil, let t = lastSpokeAt else { return false }
         return now.timeIntervalSince(t) < Self.hideGrace
@@ -94,18 +76,6 @@ struct AgentView: View {
                     .padding(.horizontal, avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
                     .shadow(radius: 20, y: 10)
                     .transition(.ccLineReveal)
-            } else if showBotStatus {
-                // 数字人放不了的时候，这块地方显示「bot 在忙什么」。
-                //
-                // Chris 2026-09-20 定的：「短时间内不会把 live avatar 打开，
-                // 后端不 ready，那块小屏是橘色的。橘色的时候就显示整个 bot
-                // 的运行状态。」
-                //
-                // 判据是「有没有状态可显示」，**不是「数字人是不是 unavailable」** ——
-                // 后者要等服务端回话，在它回话之前这块屏会先空一会儿；
-                // 而 bot 状态是本来就在的，有就该显示。
-                CCBotStatusPanel(status: botStatus)
-                    .transition(.opacity)
             } else if slot.isConnected {
                 // 这里原来在柱子底下写一行「在听,说吧 / 它在说 / 在想…」。
                 // 2026-09-18 Chris 让去掉 —— 同样的信息现在在顶部那排
@@ -120,7 +90,6 @@ struct AgentView: View {
         //    曲线用 linear：三段时序已经在 `CCLineReveal` 里编排好了，
         //    外面再叠一条缓动会把「先快后慢」压平，又变回看不出过程。
         .ccAnimation(.linear(duration: CCLineReveal.duration), value: showAvatar)
-        .ccAnimation(.snappy, value: showBotStatus)
         // ⛔ 这儿原来有一句 `botStatus.attach(room:)`。**绑定不能放在界面里** ——
         //    分页横滑时两页同时 onAppear，后来那次会把先来那次的 delegate 挤掉。
         //    现在绑定在 `CCRoomSlot.init`，一房一次。

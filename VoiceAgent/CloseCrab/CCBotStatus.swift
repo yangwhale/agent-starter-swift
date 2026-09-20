@@ -16,7 +16,7 @@ import LiveKit
 /// 那个地方在不在同一个隔离域」**。只有被 `nonisolated` 上下文读到时才要标。
 ///
 /// 对照：`CCRosterRow.height` 同样是被隔离的 `static let`，但读它的是
-/// `CCBotStatusPanel` 的 body（本身就在 MainActor 上），所以**不用标**。
+/// `CCBotStatusStrip` 的 body（本身就在 MainActor 上），所以**不用标**。
 /// 下面这两个要标，是因为读它们的是 delegate 回调 —— 那是 `nonisolated` 的。
 /// （2026-09-20 tommy 编译时给出的更准确表述，比原来那句「一律要标」好使。）
 ///

@@ -30,7 +30,18 @@ struct AppView: View {
                     //
                     // ⚠️ 这是 `overlay`，**不占位置**。任何顶对齐的主画面内容
                     //    都会被它盖住，那种内容要自己让开 `CCRosterRow.height`。
-                    .overlay(alignment: .top) { CCRosterRow() }
+                    // 牌子 ＋ 紧贴着它下面那条状态带。
+                    //
+                    // ⚠️ 这是 overlay，**不占位置**（浮在主画面上）。以前状态屏
+                    //    做在中间那块大屏上，于是「有数字人就放数字人、没有才放状态」
+                    //    得二选一 —— 而这两样根本不冲突。挪上来之后中间还给
+                    //    数字人/柱子，两边都在，顺带也不会再压到牌子上。
+                    .overlay(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            CCRosterRow()
+                            CCBotStatusStrip(status: slot.botStatus)
+                        }
+                    }
             } else {
                 notConnected()
             }
