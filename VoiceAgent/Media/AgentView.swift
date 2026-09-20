@@ -133,7 +133,8 @@ struct AgentView: View {
         //    （`HostPreferencesTransform.updateValue`），matchedGeometryEffect
         //    底层走的就是 preference。
         .matchedGeometryEffect(id: "agent-\(geoScope)", in: namespace!)
-        .overlay { sampler }
+        // ⚠️ **没有数字人就整个不装。** 见 `sampler` 的注释。
+        .overlay { if avatarTrack != nil { sampler } }
     }
 
     // MARK: - 采样
@@ -147,6 +148,14 @@ struct AgentView: View {
     ///
     /// 放在 `overlay` 里而不是包住整个 body：`TimelineView` 每个 tick 都会重算
     /// 它的内容，包住主画面的话 `SwiftUIVideoView` 会跟着每秒被重算五次。
+    /// ⚠️ **只在有数字人视频轨时才挂**（见上面 `.overlay` 那一行）。
+    ///
+    /// 它存在的唯一理由是给「说完之后收画面」那段宽限期计时 ——
+    /// 没有数字人就没有画面要收，这个 5 Hz 的定时器纯属白跳。
+    /// 而数字人**默认是关的**，所以绝大多数时候它现在根本不存在。
+    ///
+    /// 2026-09-20：原来它无条件常驻。当时还兼着「采样 isSpeaking」的活，
+    /// 现在 `slot.isSpeaking` 是 @Observable 镜像，那一半理由也没了。
     private var sampler: some View {
         TimelineView(.periodic(from: epoch, by: Self.tick)) { ctx in
             Color.clear

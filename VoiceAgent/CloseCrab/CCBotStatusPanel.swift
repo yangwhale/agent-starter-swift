@@ -93,7 +93,9 @@ struct CCBotStatusPanel: View {
         // ＋8 是留口气，不然卡片上沿正好贴着牌子下沿，看着像粘在一起。
         .padding(.top, CCRosterRow.height + 8)
         .padding(.horizontal, 4)
-        .overlay(sampler)
+        // ⚠️ **只在「在忙」时才挂。** 空闲时 `elapsed` 返回冻住的 `s.sec`，
+        //    根本不读 `now` —— 定时器跳了也改变不了屏上任何一个像素。
+        .overlay { if snap?.on == true { sampler } }
     }
 
     // MARK: - 顶部
