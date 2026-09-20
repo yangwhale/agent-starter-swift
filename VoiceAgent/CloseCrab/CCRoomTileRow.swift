@@ -56,7 +56,16 @@ struct CCRoomTileRow: View {
                     }
                 }
                 .padding(.horizontal, 4 * .grid)
-                .padding(.vertical, 2 * .grid)
+                // ⚠️ **下面不留内边距。** Chris 2026-09-20：「你给我省出来的地方
+                //    不是让你留缝的，是让你把中间的框变大的。」
+                //    这 8pt 原来夹在名字和颈部之间 —— 颈部本来就该从方块**底下
+                //    直接长出来**，中间垫一道空隙，「窗口是从这个方块长出来的」
+                //    这个意思就断了。去掉之后颈部顶边紧贴名字。
+                //
+                //    说话时那圈光晕（shadow radius 22）会不会被滚动区裁掉？
+                //    不会 —— 方块底下还有 5pt 间距 ＋ 一行名字（约 16pt），
+                //    21pt 已经罩住绝大部分，差的那一点点看不出来。
+                .padding(.top, 2 * .grid)
             }
             // 只有一两个方块时不要弹；多了才允许滚。
             .scrollBounceBehavior(.basedOnSize)

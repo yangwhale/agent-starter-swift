@@ -293,10 +293,15 @@ private struct CCShell: View {
             .frame(maxWidth: CC.Size.contentMax)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, CC.Space.screen)
-            // ⚠️ 这一格**每减一点都直接变成窗口变高**（窗口是 VStack 里唯一
-            //    会伸缩的一块）。Chris 2026-09-20：「我为啥要改，不就是为了
-            //    把省下来的这一行给到那块去。」—— 所以这里取 tight 不取 snug。
-            .padding(.bottom, CC.Space.tight)
+            // ⚠️ **这里一点都不留。** 窗口是 VStack 里唯一会伸缩的一块，
+            //    所以这一格每减一点都直接变成窗口变高。
+            //    Chris 2026-09-20：「照比下面那个按住说话中间有个缝……
+            //    把这两个缝给我弄没有。我给你省出来的地方不是让你留缝的，
+            //    是让你把中间的框变大的。」
+            //
+            //    说话条本身是一块玻璃、有自己的形状，窗口是实心圆角卡片 ——
+            //    两者直接相邻不会糊在一起。真要是看着贴太紧，
+            //    加回 `CC.Space.hairline`（2pt）就够，别加回 10。
     }
 
     @ViewBuilder
