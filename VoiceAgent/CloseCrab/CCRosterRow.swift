@@ -54,9 +54,9 @@ import SwiftUI
 
 struct CCRosterRow: View {
     @EnvironmentObject private var session: Session
-    private var persona = CCPersona.shared
+    private var persona: CCPersona { .shared }
     /// Avatar 开关住在这儿（每房间、每角色），顺带拿服务端回报来给标记上色。
-    private var link = CCAvatarLink.shared
+    private var link: CCAvatarLink { .shared }
     /// 正在放大看谁的形象。nil = 没在看。
     @State private var previewing: CCPersonaRole?
 

@@ -37,7 +37,7 @@ struct CCRootView: View {
     #if os(macOS)
         /// Mac 的按住说话。**单例** —— 全局事件监听只该有一个，
         /// 每次视图重建都新建一个的话会挂出一堆重复监听器。
-        private var hotkey = CCMacHotkey.shared
+        private var hotkey: CCMacHotkey { .shared }
     #endif
 
     /// 放在最外层而不是每页一个：`matchedGeometryEffect` 的两端如果落在

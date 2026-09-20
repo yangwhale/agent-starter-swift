@@ -132,7 +132,7 @@ final class CCRoomIcons {
 struct CCIconPickerSheet: View {
     let room: String
 
-    private var icons = CCRoomIcons.shared
+    private var icons: CCRoomIcons { .shared }
     @Environment(\.dismiss) private var dismiss
 
     /// 分组，不是一长条。

@@ -6,17 +6,17 @@ import SwiftUI
 /// 都不该变成一次重新编译 + 重新签名 + 重新装机。
 struct CloseCrabSettingsView: View {
     @ObservedObject private var config = CloseCrabConfig.shared
-    private var directory = CCRoomDirectory.shared
+    private var directory: CCRoomDirectory { .shared }
     @Environment(\.dismiss) private var dismiss
     /// 数字人那一路。**读单例不用 `@EnvironmentObject`** —— 后者忘了注入是
     /// 运行时崩溃而不是编译错误，而下面那个 `#Preview` 必然注入不了。
-    private var avatar = CCAvatarLink.shared
+    private var avatar: CCAvatarLink { .shared }
 
     #if os(macOS)
         /// 读单例。**这里用单例是对的**：底下那个全局事件监听本来就只该有一个，
         /// 两个实例会重复注册、同一次按键触发两遍。
         /// 而设置页是 sheet（关掉就没了），从它去持有生命周期更长的东西才是错的。
-        private var macHotkey = CCMacHotkey.shared
+        private var macHotkey: CCMacHotkey { .shared }
     #endif
 
     var body: some View {
