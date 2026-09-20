@@ -4,7 +4,7 @@ import SwiftUI
 /// The initial view that is shown when the app is not connected to the server.
 struct StartView: View {
     @EnvironmentObject private var session: Session
-    @EnvironmentObject private var rooms: CCRooms
+    @Environment(CCRooms.self) private var rooms
     @ObservedObject private var config = CloseCrabConfig.shared
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass

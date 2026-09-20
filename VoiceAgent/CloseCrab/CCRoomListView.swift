@@ -13,7 +13,7 @@ import SwiftUI
 /// 所以「改选择 → 重连」自然就连到新房间，一个 `Session` 用到底。
 struct CCRoomListView: View {
     @EnvironmentObject private var session: Session
-    @EnvironmentObject private var rooms: CCRooms
+    @Environment(CCRooms.self) private var rooms
     @ObservedObject private var config = CloseCrabConfig.shared
     private var directory: CCRoomDirectory { .shared }
 

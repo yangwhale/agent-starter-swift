@@ -14,7 +14,7 @@
     /// 2. **不用开窗切房间** —— 菜单里直接点
     /// 3. **窗口关了也还在** —— 配合全局热键（`CCMacHotkey`）就是完整形态
     struct CCMenuBarLabel: View {
-        @ObservedObject var rooms: CCRooms
+        let rooms: CCRooms
 
         var body: some View {
             // 只用 SF Symbol，不画自定义图形：菜单栏会跟着深浅色和「减少透明度」
@@ -40,7 +40,7 @@
 
     /// 菜单栏点开之后的内容。
     struct CCMenuBarContent: View {
-        @ObservedObject var rooms: CCRooms
+        let rooms: CCRooms
         @Environment(\.openWindow) private var openWindow
 
         var body: some View {
@@ -81,7 +81,7 @@
     /// `App` 不是 View，在那一层读 `rooms.slots` 拿到的是构建那一刻的快照，
     /// **房间列表异步加载完之后菜单不会刷新**（会一直是空的）。
     struct CCRoomCommands: View {
-        @ObservedObject var rooms: CCRooms
+        let rooms: CCRooms
 
         var body: some View {
             ForEach(Array(rooms.slots.prefix(9).enumerated()), id: \.element.id) { index, slot in

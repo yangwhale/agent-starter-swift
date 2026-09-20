@@ -104,7 +104,7 @@ final class CCNetStats {
 /// 平时它是噪音 —— 一个正常人不需要随时看着丢包率。只有在「地铁上又吞字了」
 /// 那一刻它才有价值，所以做成开关，别常驻。
 struct CCNetReadout: View {
-    @EnvironmentObject private var rooms: CCRooms
+    @Environment(CCRooms.self) private var rooms
     @State private var stats = CCNetStats()
 
     var body: some View {

@@ -6,7 +6,7 @@ import LiveKitComponents
 struct ControlBar: View {
     @EnvironmentObject private var session: Session
     @EnvironmentObject private var localMedia: LocalMedia
-    @EnvironmentObject private var rooms: CCRooms
+    @Environment(CCRooms.self) private var rooms
 
     @Binding var chat: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass

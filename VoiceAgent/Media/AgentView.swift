@@ -12,7 +12,7 @@ import LiveKitComponents
 /// 说完收走。收尾留了一小段宽限期，不然句子之间的换气会让画面一闪一闪。
 struct AgentView: View {
     @EnvironmentObject private var session: Session
-    @EnvironmentObject private var rooms: CCRooms
+    @Environment(CCRooms.self) private var rooms
     /// 只为「显示网络读数」那个排障开关订阅 —— 它同时控制柱子底下那行帧数。
     @ObservedObject private var config = CloseCrabConfig.shared
 

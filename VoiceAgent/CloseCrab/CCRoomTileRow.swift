@@ -29,7 +29,7 @@ import SwiftUI
 /// 单击和双击必须用 `ExclusiveGesture` 串起来，否则 SwiftUI 会把双击的第一下
 /// 也当成单击派发，结果「切房间 + 静音」一起发生。代价是单击晚约 0.25 秒。
 struct CCRoomTileRow: View {
-    @EnvironmentObject private var rooms: CCRooms
+    @Environment(CCRooms.self) private var rooms
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var iconEditing: CCRoomRef?
 

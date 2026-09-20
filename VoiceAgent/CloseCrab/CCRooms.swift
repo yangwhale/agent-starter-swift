@@ -311,15 +311,25 @@ extension Session {
 /// 播放那一头相反：音频引擎是进程级一份，各房间的远端轨**自动混进同一路输出**，
 /// 所以「都听得见」这件事不用写一行代码。
 @MainActor
-final class CCRooms: ObservableObject {
-    @Published private(set) var slots: [CCRoomSlot] = []
+@Observable
+final class CCRooms {
+    private(set) var slots: [CCRoomSlot] = []
     /// 话筒现在对着谁。空串 = 还没选。
-    @Published private(set) var activeName: String = ""
+    private(set) var activeName: String = ""
     /// 正在连接中的房间名，用来在界面上转圈。
-    @Published private(set) var connecting: Set<String> = []
+    private(set) var connecting: Set<String> = []
 
     var active: CCRoomSlot? { slots.first { $0.name == activeName } }
     var isAnyConnected: Bool { slots.contains { $0.session.isConnected } }
+
+    /// 槽位增删、连接状态变化时叫一声。
+    ///
+    /// ⚠️ **这是替掉 `CCAvatarLink` 原来那条 `rooms.objectWillChange` 订阅的。**
+    /// `@Observable` 没有 `objectWillChange`，而且就算有也不该那么用 ——
+    /// 那条订阅的本意是「槽位变了要重挂 delegate、重发属性」，
+    /// 用「这个对象的任何属性变了」去代表它，**范围大了一个数量级**。
+    /// 显式回调把「什么时候需要」写清楚了，也少一条 Combine 订阅。
+    var onRoomsChanged: (() -> Void)?
 
     private let config = CloseCrabConfig.shared
     private var bag = Set<AnyCancellable>()
@@ -375,6 +385,7 @@ final class CCRooms: ObservableObject {
 
         slots.sort { (plan.order.firstIndex(of: $0.name) ?? 0) < (plan.order.firstIndex(of: $1.name) ?? 0) }
         if activeName != plan.active { activeName = plan.active }
+        onRoomsChanged?()
     }
 
     // MARK: - 连接
@@ -411,6 +422,7 @@ final class CCRooms: ObservableObject {
         // 靠监听连接状态是拦不住的，原因见 CCMicPolicy.enforceMutedAfterConnect。
         await slot.micPolicy.enforceMutedAfterConnect()
         connecting.remove(slot.name)
+        onRoomsChanged?()      // 连上了 —— 该把 avatar 开关报给这个房间
     }
 
     // MARK: - 切换 / 静音
@@ -432,6 +444,8 @@ final class CCRooms: ObservableObject {
     func toggleMute(_ name: String) {
         guard let slot = slots.first(where: { $0.name == name }) else { return }
         slot.applyMute(!slot.isMuted)
-        objectWillChange.send()
+        // ⛔ 这里原来还有一句 objectWillChange.send()。不需要了 ——
+        //    `slot.isMuted` 现在是 @Observable 属性，读它的方块会自己更新，
+        //    而不读它的那些不会被打扰。
     }
 }

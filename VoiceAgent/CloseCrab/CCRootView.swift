@@ -32,7 +32,7 @@ import SwiftUI
 ///
 /// 所以页面里的 `AgentView` 读到的永远是本页那个房间，哪怕它此刻不是当前页。
 struct CCRootView: View {
-    @ObservedObject var rooms: CCRooms
+    let rooms: CCRooms
 
     #if os(macOS)
         /// Mac 的按住说话。**单例** —— 全局事件监听只该有一个，
@@ -54,7 +54,7 @@ struct CCRootView: View {
                 empty()
             }
         }
-        .environmentObject(rooms)
+        .environment(rooms)
         .environment(\.namespace, namespace)
         // 背景垫在最底下。它是 Liquid Glass 的折射源 —— 没有它,
         // 上面所有玻璃都只是半透明灰块。详见 CCBackdrop。
@@ -121,7 +121,7 @@ struct CCRootView: View {
 /// `CCRooms` 只在槽位增删、切换时发通知，当前这条连接连上没有是槽位自己的事 ——
 /// 写在 `CCRootView` 里的话，连上之后启动页不会自己退下去。
 private struct CCShell: View {
-    @ObservedObject var rooms: CCRooms
+    let rooms: CCRooms
     let active: CCRoomSlot
     /// 要订阅，不能直接读 `.shared` —— 直接读拿得到值，但**开关拨了界面不会重绘**。
     @ObservedObject private var config = CloseCrabConfig.shared

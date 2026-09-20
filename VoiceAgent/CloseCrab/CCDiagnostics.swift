@@ -237,7 +237,7 @@ final class CCDiagnostics {
 /// **不做成常驻**：这些数字平时是噪音，只在「刚才怎么又卡了」那一刻才值钱。
 /// 常驻会让人养成盯着仪表盘的习惯，而不是听内容。
 struct CCDiagnosticsView: View {
-    @EnvironmentObject private var rooms: CCRooms
+    @Environment(CCRooms.self) private var rooms
     @State private var diag = CCDiagnostics()
     @Environment(\.dismiss) private var dismiss
 

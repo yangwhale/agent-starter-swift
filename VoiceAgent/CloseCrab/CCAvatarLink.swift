@@ -1,5 +1,4 @@
 import Observation
-import Combine
 import LiveKit
 import SwiftUI
 
@@ -64,7 +63,6 @@ final class CCAvatarLink {
     /// 否则「进后台→回前台→再进后台」会留下一串闹钟，
     /// 最早那个到点就把人判成看不见，而他明明在看。
     private var graceTask: Task<Void, Never>?
-    private var bag = Set<AnyCancellable>()
     private var delegate: CCAvatarDelegate?
 
     /// **每个房间**上一次收到的值，key 是房间名。相同就不重发 ——
@@ -112,10 +110,13 @@ final class CCAvatarLink {
     /// 接上房间层。**只该调一次**（`VoiceAgentApp.init`）。
     func attach(rooms: CCRooms) {
         self.rooms = rooms
-        // 房间增删也要重报：新连上的房间不知道我们的开关状态。
-        rooms.objectWillChange
-            .sink { [weak self] _ in Task { @MainActor in self?.attachAndPublish() } }
-            .store(in: &bag)
+        // 房间增删、连上，都要重挂 delegate ＋ 重报开关状态。
+        // ⚠️ 从「订阅 rooms.objectWillChange」改成了显式回调：
+        //    前者是「这个对象任何属性变了都叫我」，范围大一个数量级，
+        //    而我们真正需要的只是「槽位变了」和「连上了」这两个时刻。
+        rooms.onRoomsChanged = { [weak self] in
+            Task { @MainActor in self?.attachAndPublish() }
+        }
         attachAndPublish()
     }
 
