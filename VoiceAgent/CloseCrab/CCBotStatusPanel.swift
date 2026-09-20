@@ -71,7 +71,8 @@ struct CCBotStatusPanel: View {
         }
         // 让开那排浮在上面的牌子。高度从 `CCRosterRow.height` 取，
         // **别在这儿另写一个 44** —— 两处不一致就会又压上去。
-        .padding(.top, CCRosterRow.height)
+        // ＋8 是留口气，不然卡片上沿正好贴着牌子下沿，看着像粘在一起。
+        .padding(.top, CCRosterRow.height + 8)
         .padding(.horizontal, 4)
         .overlay(sampler)
     }
