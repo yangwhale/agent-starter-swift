@@ -122,6 +122,17 @@ SDK 哪天自己迁到 `@Observable`，这两行才能跟着换。
 - **去掉属性包装器之后，那个属性会参与 memberwise init**。它是 `private` 的话，
   合成的 init 就被降级成 `private`，跨文件构造直接编不过。
   解法：单例引用改成计算属性（`private var x: T { .shared }`），不进 memberwise init。
+
+  > **判据是「是不是裸存储属性」，不是「是不是 private」。**
+  > 同一天踩过一次、躲过两次，三次正好把边界划清楚：
+  >
+  > | 写法 | 进 memberwise init 吗 | 结果 |
+  > |---|---|---|
+  > | `private var icons = CCRoomIcons.shared`（裸存储） | 进 | ⛔ init 被降级成 private |
+  > | `let rooms: CCRooms`（裸存储、非 private） | 进 | ✅ 不降级 |
+  > | `@ScaledMetric private var tileSide` / `@State private var chat` | **不进** | ✅ private 与否都无所谓 |
+  >
+  > `private` 只是放大器 —— **裸存储属性 ＋ private** 两个条件同时成立才出事。
 - **`@EnvironmentObject` 只要声明就订阅，跟 body 里读不读无关。**
   改完读法却留着声明 = 整件事白做。实测有 2 处是**声明了从没使用过的死订阅**。
 
