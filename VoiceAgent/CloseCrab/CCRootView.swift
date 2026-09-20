@@ -172,12 +172,24 @@ private struct CCShell: View {
     @ViewBuilder
     private func connected() -> some View {
         VStack(spacing: 0) {
-            roomBar()
-
             // 方块行 + 颈部。绑在一起是因为颈部要读方块的位置：
             // preference 只能从子树往上冒，overlay 必须挂在**包住方块行**的那一层。
             VStack(spacing: 0) {
-                CCRoomTileRow()
+                // ⭐ 汉堡和方块**共享第一行**（Chris 2026-09-20）。
+                //    原来汉堡自己占一整行摆在左上角，方块行在它下面 ——
+                //    等于为一颗图标付掉一整行高度，而那一行剩下全是空白。
+                //
+                //    汉堡放右边不是随意选的：左边要给方块行让位，而方块行是
+                //    **可以横向滚的**，右边这颗必须钉死不动，否则房间一多
+                //    它就跟着滚出屏幕了。滚动区域是 HStack 里的弹性一方，
+                //    这颗按钮是固定一方，宽度自动让出来。
+                HStack(spacing: 0) {
+                    CCRoomTileRow()
+                    menuButton()
+                }
+                // 方块行原来下面还压着一行，现在它自己就是最上面一行 ——
+                // 补一点顶部余量，别让方块贴着状态栏。
+                .padding(.top, 2 * .grid)
                 Color.clear.frame(height: CCTileConnector.height)
             }
             .overlayPreferenceValue(CCTileAnchorKey.self) { anchors in
@@ -214,36 +226,38 @@ private struct CCShell: View {
         #endif
     }
 
-    /// 左上角那颗汉堡 —— 房间列表的入口，也顺便告诉你现在在跟谁说话。
-    private func roomBar() -> some View {
-        HStack {
-            Button {
-                roomsPresented = true
-            } label: {
-                HStack(spacing: 2 * .grid) {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 15, weight: .medium))
-                    Text(verbatim: rooms.activeName)
-                        // 手写体开着时这里也换 —— 房间名在界面上出现三处
-                        // （房间条、方块底下、抽屉里），前两处是同一个东西的
-                        // 两个位置，字不一样会看着像两个 app 拼起来的。
-                        .font(CCType.roomBar(15, hand: config.handwritten))
-                }
+    /// 右上角那颗汉堡 —— 房间列表的入口。
+    ///
+    /// ## 为什么只有三条杠，名字去掉了
+    ///
+    /// Chris 2026-09-20：「那个字不要了，就只要三个横杠，那就省地方。」
+    ///
+    /// 名字**没有丢**：它就写在下面每个方块底下，当前那个还额外有玻璃材质
+    /// 和颈部指着它。房间条上再写一遍是同一件事说两遍，而它占掉的是
+    /// 这一行里最贵的横向空间 —— 方块行要往右滚的那部分。
+    ///
+    /// ⚠️ **但读屏用户会丢。** 他们看不到「哪个方块是选中的」那套视觉语言，
+    /// 原来那行文字是他们唯一知道当前房间的地方。所以名字挪进
+    /// `accessibilityValue` —— 屏幕上省掉，读屏里留着。
+    /// （去掉可见文字＝同时去掉读屏内容，这一步很容易漏。）
+    private func menuButton() -> some View {
+        Button {
+            roomsPresented = true
+        } label: {
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.fg0)
-                .padding(.horizontal, 4 * .grid)
-                .padding(.vertical, 2 * .grid)
-                // 原来是 `Capsule().fill(.bg2)` —— 浅色下是一颗不透明的白药丸，
-                // 正好压在背景图最亮那一块上，看着像贴了张纸。
-                // 换成玻璃，和控制栏那排按钮同一种材质。
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
+                // 11 × 4 = 44pt，正好是 Apple 给的最小点击目标。
+                // 图标本身只有 17pt，剩下的是「摸得着」的余量。
+                .frame(width: 11 * .grid, height: 11 * .grid)
+                // 跟控制栏那排按钮同一种材质。
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
         }
-        .padding(.horizontal, 4 * .grid)
-        .padding(.top, 2 * .grid)
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("房间列表"))
+        .accessibilityValue(Text(rooms.activeName))
+        .padding(.trailing, 4 * .grid)
         .sheet(isPresented: $roomsPresented) {
             CCRoomListView()
         }

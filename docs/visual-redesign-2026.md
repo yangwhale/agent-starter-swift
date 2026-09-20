@@ -51,7 +51,7 @@
 
 ### 3. 字体全程 SF Pro Regular/Medium，没有字阶对比
 
-`CCRoomTileRow` 用 `.caption2`，`CCTalkBar` 用 `.headline`，`roomBar` 用 `15pt medium`。最大和最小之间差不到 2 倍，整屏没有视觉焦点。2026 年的普遍做法是拉开到 4–6 倍（tubikstudio 与 Figma 都把 "bold typography / expressive type" 列为核心趋势）。
+`CCRoomTileRow` 用 `.caption2`，`CCTalkBar` 用 `.headline`（`roomBar` 那条 `15pt medium` 已随房间条一起去掉）。最大和最小之间差不到 2 倍，整屏没有视觉焦点。2026 年的普遍做法是拉开到 4–6 倍（tubikstudio 与 Figma 都把 "bold typography / expressive type" 列为核心趋势）。
 
 ### 4. 音频可视化静止时真的像坏了
 

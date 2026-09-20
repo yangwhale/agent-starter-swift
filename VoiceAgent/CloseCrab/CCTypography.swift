@@ -166,10 +166,7 @@ nonisolated enum CCType {
             : .system(size: size, weight: .semibold)
     }
 
-    /// 左上角房间条上那个名字。`size` 须为已缩放值。
-    static func roomBar(_ size: CGFloat, hand: Bool) -> Font {
-        hand
-            ? .custom(CCHandFont.postScriptName, fixedSize: size * handScale)
-            : .system(size: size, weight: .medium)
-    }
+    // ⛔ 这里原来有个 `roomBar(_:hand:)` —— 左上角房间条上那个名字的字体。
+    //    2026-09-20 房间条整个去掉了（汉堡挪到右上角、只留三条杠、名字不写了），
+    //    这个 helper 随之没有调用方，一并删掉。
 }
