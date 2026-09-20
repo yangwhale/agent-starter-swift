@@ -10,6 +10,15 @@ import LiveKit
 /// **所有类型默认都是 MainActor-isolated，包括裸 enum** ——
 /// 所以每个 `static let` 还要**单独**标 `nonisolated`，光搬出 @MainActor 类不够。
 ///
+/// ⚠️ **但不是所有 `static let` 都得标。** 规则的准确说法是：
+/// 隔离会传染给 `static let` 这件事一直成立，**会不会报错取决于「读它的
+/// 那个地方在不在同一个隔离域」**。只有被 `nonisolated` 上下文读到时才要标。
+///
+/// 对照：`CCRosterRow.height` 同样是被隔离的 `static let`，但读它的是
+/// `CCBotStatusPanel` 的 body（本身就在 MainActor 上），所以**不用标**。
+/// 下面这两个要标，是因为读它们的是 delegate 回调 —— 那是 `nonisolated` 的。
+/// （2026-09-20 tommy 编译时给出的更准确表述，比原来那句「一律要标」好使。）
+///
 /// 收消息那两个 delegate 回调是 `nonisolated` 的（`RoomDelegate` 是
 /// `@objc` + `Sendable`），读不到被隔离的常量：
 ///
