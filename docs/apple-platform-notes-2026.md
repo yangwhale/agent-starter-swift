@@ -75,20 +75,52 @@ unproven and likely fights the morph animation*。
 
 ---
 
-## 三、最大的一笔技术债：`ObservableObject`
+## 三、`ObservableObject` —— ✅ 2026-09-20 已迁移（本节原来的结论已作废）
 
-**现状：14 处 `ObservableObject`，0 处 `@Observable`。**
+**现状：15 个类型用 `@Observable`，只剩 4 个 `ObservableObject`**
+（`CCStore` / `CCMicPolicy` / `CCHaptics` / `AudioOptions`）。
 
-多篇资料都指向同一件事：`ObservableObject` 会触发
-**state invalidation cascade** —— 任何一个 `@Published` 变化都可能让整棵视图树重新求值，
-而 `@Observable` 只让**真正读了那个属性的视图**重算。
+### 当初的判断对，但「不要顺手迁移」那句被现实推翻了
 
-对我们尤其相关：`CCRooms` 在切房间、连接状态变化、说话状态变化时都会发通知，
-而订阅它的是根视图 —— 相当于每次状态抖动整棵树都过一遍。
+本节原文写着「最大的一笔技术债」「⚠️ 但不要顺手迁移，要单独排期」。
+**前半句是对的，后半句被一次事故否掉了** —— 2026-09-20 那天不是「顺手」做的，
+是被逼着做的：
 
-⚠️ **但不要顺手迁移。** 找到的资料里专门有一篇讲迁移的七个坑，
-其中两个跟我们直接相关：`@State` 持有引用类型时的非惰性初始化、嵌套 observable 的更新丢失。
-**这是一次要单独排期、带回归测试做的事**，不是顺手改。
+`ObservableObject` 的 state invalidation cascade 在真机上实测出来是
+**静置不动 72–81% CPU、两分钟内存涨 1.7 GB、进程半小时被系统回收 8 次**。
+它不是「以后该还的债」，是**当天就在烧电池的故障**。
+
+### 真实的根因比本节原来写的更具体
+
+原文说「`CCRooms` 发通知、根视图订阅它」。实测下来主犯是另一条：
+
+    CCRoomSlot: session.objectWillChange.sink { self.objectWillChange.send() }
+
+把 LiveKit 的**每一条**变更通知原样转发成自己的「我变了」，而订阅槽位的是
+整屏布局 —— 探针实测峰值 **730 次界面重算/秒**，静置无操作。
+
+### 迁移实际怎么做的（分三阶段，都编过真机）
+
+1. **叶子对象**（10 个，不在 environment、无人订阅其 objectWillChange）
+2. **核心链路** `CCRoomSlot` / `CCRooms` / `CloseCrabConfig` ——
+   这一步才是重点：不只是换标注，而是**把「转发通知」改成「发布派生值」**，
+   六个镜像属性逐项比对、只有真变了才写，外加 80 ms 合并窗口
+3. **拆掉 view 对 `Session` 的订阅** —— 从 9 处降到 1 处
+   （`Session` 是 LiveKit 的 ObservableObject，改不了它；
+   但**读它任何一个属性就等于订阅它全部变化**，所以只能不读）
+
+结果：界面重算 730 次/秒 → **0**；事件合并比在连接尖峰段 **310 : 1**。
+
+### 原文担心的那两个坑，实际都没发生
+
+`@State` 持引用类型的非惰性初始化、嵌套 observable 更新丢失 —— 都没踩到。
+**真正栽的是另外两个**，记在这儿给下一次：
+
+- **去掉属性包装器之后，那个属性会参与 memberwise init**。它是 `private` 的话，
+  合成的 init 就被降级成 `private`，跨文件构造直接编不过。
+  解法：单例引用改成计算属性（`private var x: T { .shared }`），不进 memberwise init。
+- **`@EnvironmentObject` 只要声明就订阅，跟 body 里读不读无关。**
+  改完读法却留着声明 = 整件事白做。实测有 2 处是**声明了从没使用过的死订阅**。
 
 ---
 
@@ -203,7 +235,7 @@ WWDC26 反对的是 `userInterfaceIdiom` 和 orientation，那两个我们一处
 2. **方向键切房间用 `.onMoveCommand`** —— 顺手，而且是「意图」层面更对的 API
    （iOS 没这个 API，是缺口不是设计；iPad 外接键盘只能走 `.onKeyPress`）
 3. **房间方块选中态对齐 `\.backgroundProminence`** —— 语义对齐，为以后塞进 `List` 留路
-4. **`@Observable` 迁移** —— 收益最大但要单独排期，不要顺手做。
+4. ~~**`@Observable` 迁移**~~ —— ✅ 2026-09-20 已做，见第三节。
    **在 iOS 上应该比在 Mac 上更靠前**：`CCRooms` 的说话状态是音量驱动、
    接近每帧在变，失效级联在 Mac 上是浪费，在 iPhone 上是掉帧加耗电
 5. **全局字阶 `CC.Font` 六个字号全是固定的** —— 换成语义字号能拿到动态字号支持，
