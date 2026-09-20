@@ -32,7 +32,13 @@ struct VoiceAgentApp: App {
         //    `isAutomaticConfigurationEnabled` 得在连接前设；而且连上的那一刻
         //    就会开一次麦（见 CCAudioSessionPolicy 的类文档），晚一步就晚了。
         #if os(iOS) || os(visionOS)
+        // 两件事，**故意分开装**：
+        //   install()         接管音频会话（受设置里那个开关控制，可以关掉）
+        //   installRecovery() 被打断之后自己爬起来（**永远装**）
+        // 它们治的是两个毛病：一个是「别占着麦」，一个是「别哑掉」。
+        // 绑在一个开关上的话，关掉前者会顺手把后者也关了。
         CCAudioSessionPolicy.shared.install()
+        CCAudioSessionPolicy.shared.installRecovery()
         #endif
 
         // 手写体自己注册一次兜底。**Font.custom 找不到字体时不报错、直接退回

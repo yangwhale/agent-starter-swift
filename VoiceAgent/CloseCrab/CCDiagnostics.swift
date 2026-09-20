@@ -252,6 +252,12 @@ struct CCDiagnosticsView: View {
                     } label: {
                         Text(verbatim: "音频会话")
                     }
+                    LabeledContent {
+                        Text(verbatim: CCAudioSessionPolicy.shared.lastRecovery)
+                            .font(.caption).multilineTextAlignment(.trailing)
+                    } label: {
+                        Text(verbatim: "最近自愈")
+                    }
                     #endif
                     LabeledContent {
                         Text(verbatim: rooms.activeName)

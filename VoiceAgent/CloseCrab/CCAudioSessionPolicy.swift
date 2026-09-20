@@ -2,6 +2,9 @@
 import AVFAudio
 import Foundation
 import LiveKit
+#if os(iOS)
+import UIKit
+#endif
 
 /// 不说话的时候，把麦克风还给别的 App。
 ///
@@ -88,8 +91,14 @@ final class CCAudioSessionPolicy: ObservableObject {
     /// 没有这行的话，「改了没效果」和「改了但没跑到」长得一模一样。
     private(set) var lastApplied: String = "（还没配置过）"
 
+    /// 最近一次自愈：什么时候、为什么。诊断页看这个。
+    @Published private(set) var lastRecovery = "（还没发生过）"
+
     private let observer = Observer()
     private var installed = false
+    private var recoveryInstalled = false
+    /// 我们自己管类别时，最后一次算出来的那套。自愈要原样再设一遍。
+    private var lastConfig: AudioSessionConfiguration?
 
     private init() {}
 
@@ -122,13 +131,116 @@ final class CCAudioSessionPolicy: ObservableObject {
             print("[CCAudioSessionPolicy] 切静音模式失败，静音时仍会占麦: \(error)")
         }
 
-        observer.onApply = { [weak self] text, capturing in
+        observer.onApply = { [weak self] text, capturing, config in
             Task { @MainActor in
                 self?.lastApplied = text
                 self?.isCapturing = capturing
+                if let config { self?.lastConfig = config }
             }
         }
         lastApplied = "已接管，等引擎第一次启动"
+    }
+
+    // MARK: - 被打断之后自己爬起来
+
+    /// **跟「让出麦克风」那个开关无关，永远装。**
+    ///
+    /// 这两件事是两个毛病，不该绑在一个开关上：让出麦克风是想让别的 App
+    /// 能用麦；这一段是防「App 还活着但彻底哑了」。
+    ///
+    /// ## 症状
+    ///
+    /// Chris 2026-09-20：「后台放久了以后就没声了。下一次 bot 说话它不出声，
+    /// 我去点，应用也没退出，就是单纯的不出声。」
+    ///
+    /// ## 为什么会哑
+    ///
+    /// iOS 会在来电话、Siri、闹钟、别的 App 抢独占音频、以及音频服务自己
+    /// 重启的时候**把我们的 session 停掉**，然后发一条通知。
+    ///
+    /// ⚠️ **中断结束时 iOS 不会替你重新激活** —— 这是最容易漏的一条：
+    /// `.ended` 只是告诉你「可以了」，`setActive(true)` 得自己调。
+    /// 不调的话 session 就一直停着：WebRTC 照收音频帧，一个字也出不了喇叭。
+    /// **App 活着、连接正常、界面一切如常，就是没声音** —— 正是 Chris 描述的样子。
+    ///
+    /// 扒过了：app 里一处中断处理都没有，`client-sdk-swift` 2.17.0 的 Swift 层
+    /// 也没有（WebRTC 那个 xcframework 里有没有我看不到源码，**不下结论**；
+    /// 但这个毛病现在就在发生，说明现有的那些不够）。
+    func installRecovery() {
+        guard !recoveryInstalled else { return }
+        recoveryInstalled = true
+
+        let nc = NotificationCenter.default
+
+        nc.addObserver(forName: AVAudioSession.interruptionNotification,
+                       object: nil, queue: .main) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            Task { @MainActor in
+                switch type {
+                case .began:
+                    self?.lastRecovery = "被打断了（等结束）"
+                case .ended:
+                    // **不看 `.shouldResume`。** 那个标志是给「恢复播放一首歌」
+                    // 设计的；我们是一条随时可能来声音的实时连接，
+                    // 无论如何都得把 session 抢回来。
+                    self?.recover(reason: "中断结束")
+                @unknown default:
+                    self?.recover(reason: "未知中断类型")
+                }
+            }
+        }
+
+        nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification,
+                       object: nil, queue: .main) { [weak self] _ in
+            // 音频服务整个重启了，所有音频对象都作废。重设一遍是必须的第一步；
+            // 光这一步够不够我不确定，所以**要在诊断页看得见它发生过** ——
+            // 「偶尔哑一次」和「音频服务崩过」必须能分开。
+            Task { @MainActor in self?.recover(reason: "⚠️ 音频服务重启过") }
+        }
+
+        nc.addObserver(forName: AVAudioSession.routeChangeNotification,
+                       object: nil, queue: .main) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable
+            else { return }
+            // 耳机拔了 / 蓝牙断了。iOS 会暂停，我们要接着放。
+            Task { @MainActor in self?.recover(reason: "设备拔掉了") }
+        }
+
+        #if os(iOS)
+        nc.addObserver(forName: UIApplication.didBecomeActiveNotification,
+                       object: nil, queue: .main) { [weak self] _ in
+            // **兜底。** 上面三条哪条漏了，回前台这一下也能救回来 ——
+            // 而「我去点开」正是 Chris 发现哑掉的那个时刻。
+            Task { @MainActor in self?.recover(reason: "回前台自检") }
+        }
+        #endif
+    }
+
+    /// ⚠️ **不做「只在哑了的时候才修」的聪明判断。**
+    ///
+    /// 系统**没有公开 API 能查 session 还是不是激活的**（`isOtherAudioPlaying`
+    /// 问的是别人，不是自己）。想省这一下就只能靠一个猜出来的判据 ——
+    /// 而这个 bug 本身就难复现，一个猜错的判据会让它继续难复现。
+    ///
+    /// 直接无条件 `setActive(true)`：对已经激活的 session 它基本是空操作，
+    /// 一次前台切换一次，代价可以忽略。
+    private func recover(reason: String) {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            // 自己管类别的时候要把类别也重设一遍：中断期间 iOS 可能改过它。
+            if let config = lastConfig {
+                try session.setCategory(config.category,
+                                        mode: config.mode,
+                                        options: config.categoryOptions)
+            }
+            try session.setActive(true)
+            lastRecovery = "\(reason) → 已重新激活（引擎在跑：\(AudioManager.shared.isEngineRunning)）"
+        } catch {
+            lastRecovery = "\(reason) → 重新激活失败: \(error)"
+        }
+        print("[CCAudioSessionPolicy] \(lastRecovery)")
     }
 
     // MARK: - 观察者
@@ -139,7 +251,7 @@ final class CCAudioSessionPolicy: ObservableObject {
     /// 音频直接没了。协议默认实现会转发，我们重写的这两个要自己转。
     private final class Observer: AudioEngineObserver, @unchecked Sendable {
         var next: (any AudioEngineObserver)?
-        var onApply: ((String, Bool) -> Void)?
+        var onApply: ((String, Bool, AudioSessionConfiguration?) -> Void)?
 
         func engineWillEnable(_ engine: AVAudioEngine,
                               isPlayoutEnabled: Bool,
@@ -216,16 +328,17 @@ final class CCAudioSessionPolicy: ObservableObject {
                 try session.setPreferredIOBufferDuration(0.02)
                 try session.setActive(true)
                 report("\(isRecordingEnabled ? "录音中" : "只放音") → \(config.category.rawValue)",
-                       capturing: isRecordingEnabled)
+                       capturing: isRecordingEnabled, config: config)
             } catch {
                 // 配置失败就当没通 —— **宁可绿灯不亮，也不能让人对着坏的麦说话。**
                 report("配置失败: \(error)", capturing: false)
             }
         }
 
-        private func report(_ text: String, capturing: Bool) {
+        private func report(_ text: String, capturing: Bool,
+                            config: AudioSessionConfiguration? = nil) {
             print("[CCAudioSessionPolicy] \(text)")
-            onApply?(text, capturing)
+            onApply?(text, capturing, config)
         }
     }
 }
