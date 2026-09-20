@@ -2,6 +2,13 @@ import LiveKitComponents
 import SwiftUI
 
 struct ChatView: View {
+    /// ⚠️ **这是全 app 唯一一个该保留 `@EnvironmentObject Session` 的地方。**
+    ///
+    /// 它显示的就是 `session.messages`，而那个属性没有镜像可读 ——
+    /// 字幕本来就得跟着消息流走。代价（跟着 Session 每条变化重算）
+    /// 在这里可以接受，因为**只有打开字幕时它才在视图树上**。
+    ///
+    /// 其余 8 处订阅都已经拆掉了，理由见 `CCRoomSlot` 里那段 ⛔。
     @EnvironmentObject private var session: Session
 
     var body: some View {

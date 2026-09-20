@@ -150,6 +150,9 @@ final class CCRoomSlot: Identifiable {
     private(set) var isConnected: Bool = false
     /// 这一路数字人视频轨。
     private(set) var avatarVideoTrack: (any VideoTrack)?
+    /// 语音助手那一路连上没有。**跟 `isConnected` 不是一回事** ——
+    /// 房间连着不代表助手 worker 已经进来了，控制栏那几个按钮看的是后者。
+    private(set) var agentConnected: Bool = false
     /// 连接错误 / 助手错误 —— 错误条要显示它们，所以也得镜像。
     private(set) var connectionError: Error?
     private(set) var agentError: Error?
@@ -173,10 +176,27 @@ final class CCRoomSlot: Identifiable {
     ///   `⚡️SlotRefresh`     合并后（我们真干了多少次活）
     private var refreshScheduled = false
 
+    /// 合并窗口。**这是「多久算一次」的唯一旋钮。**
+    ///
+    /// ⚠️ 上一版只立了个旗标就排活，实测合并比**稳定在 2.0 : 1** ——
+    /// 因为旗标只在「同一批 main actor 任务」内有效：排出去的那个 Task
+    /// 排在当前队列尾，它一跑完就清旗，紧接着到的事件又立一次。
+    /// 事件源源不断时，队列几乎不积压，**根本没有批可合**。
+    ///
+    /// 改成**按时间**合并：排活之后先睡一个窗口，这段时间里来的全部被吃掉。
+    /// 80 ms ≈ 12.5 次/秒 —— 对「连上没有、在不在说话」这类显示状态，
+    /// 12 Hz 远远够用（人眼分辨不出 80 ms 的延迟），而上游是 500 次/秒。
+    ///
+    /// **代价写清楚**：镜像最多晚 80 ms。所以判断逻辑仍然直接读 `session`，
+    /// 见上面那条分界。
+    private static let refreshWindow = Duration.milliseconds(80)
+
     private func scheduleRefresh() {
         guard !refreshScheduled else { return }
         refreshScheduled = true
         Task { @MainActor [weak self] in
+            // 先睡一个窗口 —— 这段时间里来的事件全部被上面那个旗标吃掉。
+            try? await Task.sleep(for: Self.refreshWindow)
             guard let self else { return }
             self.refreshScheduled = false
             CCProbe.event("SlotRefresh")   // 探针：**合并后**真正干活的频率
@@ -203,6 +223,9 @@ final class CCRoomSlot: Identifiable {
 
         let sp = session.ccIsSpeaking
         if sp != isSpeaking { isSpeaking = sp }
+
+        let ac = session.agent.isConnected
+        if ac != agentConnected { agentConnected = ac }
 
         // 轨道比 id 不比对象：重连会换新对象但内容没变，比对象会误判成「变了」。
         let tracks = session.ccBotAudioTracks

@@ -3,7 +3,9 @@ import SwiftUI
 
 /// A multiplatform view that shows the chat input text field and send button.
 struct ChatInputView: View {
-    @EnvironmentObject private var session: Session
+    /// 只用来**发一条消息**（一个动作，不读任何状态），所以不订阅 ——
+    /// `@EnvironmentObject` 会让这个输入框跟着 Session 的每条变化重算。
+    @Environment(CCRoomSlot.self) private var slot
 
     @FocusState.Binding var keyboardFocus: Bool
     @State private var messageText = ""
@@ -99,6 +101,6 @@ struct ChatInputView: View {
         let text = messageText
         messageText = ""
         keyboardFocus = false
-        await session.send(text: text)
+        await slot.session.send(text: text)
     }
 }

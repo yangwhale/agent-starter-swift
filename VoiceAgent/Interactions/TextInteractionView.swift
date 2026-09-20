@@ -10,7 +10,9 @@ import SwiftUI
 ///
 /// Additionally, the view shows a complete chat view with text input capabilities.
 struct TextInteractionView: View {
-    @EnvironmentObject private var session: Session
+    /// 只为算宽度看一眼有没有数字人。**读槽位镜像，不订阅 Session** ——
+    /// 后者会把这个 view 挂到「每秒几百次」的通知上，而它只关心一个有无。
+    @Environment(CCRoomSlot.self) private var slot
     @EnvironmentObject private var localMedia: LocalMedia
 
     @FocusState.Binding var keyboardFocus: Bool
@@ -39,14 +41,14 @@ struct TextInteractionView: View {
         HStack {
             Spacer()
             AgentView()
-                .frame(maxWidth: session.ccAvatarVideoTrack != nil ? 50 * .grid : 25 * .grid)
+                .frame(maxWidth: slot.avatarVideoTrack != nil ? 50 * .grid : 25 * .grid)
             ScreenShareView()
             LocalParticipantView()
             Spacer()
         }
         .frame(
             height: localMedia.isCameraEnabled || localMedia.isScreenShareEnabled
-                || session.ccAvatarVideoTrack != nil ? 50 * .grid : 25 * .grid
+                || slot.avatarVideoTrack != nil ? 50 * .grid : 25 * .grid
         )
         .safeAreaPadding()
     }

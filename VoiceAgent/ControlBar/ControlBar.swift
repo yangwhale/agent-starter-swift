@@ -4,7 +4,8 @@ import LiveKitComponents
 /// Available controls depend on the agent features and the track availability.
 /// - SeeAlso: ``AgentFeatures``
 struct ControlBar: View {
-    @EnvironmentObject private var session: Session
+    /// 三个按钮只看「助手连上没有」。**读槽位镜像，不订阅 Session**。
+    @Environment(CCRoomSlot.self) private var slot
     @EnvironmentObject private var localMedia: LocalMedia
     @Environment(CCRooms.self) private var rooms
 
@@ -156,7 +157,7 @@ struct ControlBar: View {
             Spacer()
         }
         .frame(width: Constants.buttonWidth)
-        .disabled(!session.agent.isConnected)
+        .disabled(!slot.agentConnected)
     }
 
     private func screenShareButton() -> some View {
@@ -183,7 +184,7 @@ struct ControlBar: View {
                 borderColor: .separator1
             )
         )
-        .disabled(!session.agent.isConnected)
+        .disabled(!slot.agentConnected)
     }
 
     private func textInputButton() -> some View {
@@ -210,7 +211,7 @@ struct ControlBar: View {
                 borderColor: .separator1
             )
         )
-        .disabled(!session.agent.isConnected)
+        .disabled(!slot.agentConnected)
     }
 
     private func disconnectButton() -> some View {
