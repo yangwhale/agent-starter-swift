@@ -90,6 +90,21 @@ nonisolated enum CCProbe {
             let line = noisy.prefix(5)
                 .map { "\($0.key)=\($0.value)" }
                 .joined(separator: "  ")
+            // ⚠️ **两条都发，不能只发 os_log。**
+            //
+            // `Logger` 走的是统一日志系统，**不进 stdout** —— 而从 Mac 上
+            // 拉连接设备的日志需要 `log stream --device`，那个选项在现在的
+            // macOS 上**已经不存在了**（tommy 2026-09-20 实测 `unrecognized
+            // option --device`，`log stream --help` 里也没有任何 device 相关项）。
+            //
+            // 能实时、全量、零依赖拿到的只有 stdout：
+            //     xcrun devicectl device process launch --console
+            // 所以真正到得了我们手里的是 `print`。os_log 那条留着是给
+            // Console.app / sysdiagnose 用的，两条不冲突。
+            //
+            // ⚠️ 这个坑最毒的地方：采集链路不通时看到的是「一条输出都没有」，
+            // 跟「探针没触发」长得一模一样，但含义完全相反。
+            print("🔥 每秒重算次数: " + line)
             log.error("🔥 每秒重算次数: \(line, privacy: .public)")
         }
         t.resume()

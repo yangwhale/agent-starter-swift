@@ -172,7 +172,19 @@ final class CCAvatarLink: ObservableObject {
         let live = Set(rooms.slots.filter(\.session.isConnected).map(\.name))
         sentTo = sentTo.filter { live.contains($0.key) }
 
-        for slot in rooms.slots where slot.session.isConnected {
+        // ⚠️ 守卫必须同时看 `room.connectionState`，**只看 `session.isConnected`
+        //    是不够的**。2026-09-20 实测：45 秒内 SDK 打了 **109 条**
+        //    `[Retry] Attempt 1 of 3`，配套报
+        //    `Invalid state(connectionState is .disconnected)` ——
+        //    也就是 `session.isConnected` 放行了，而 SDK 那头按
+        //    `room.connectionState` 判定为未连接，直接拒绝，**每次还起一轮
+        //    三次重试**。2.4 次/秒 × 3 = 每秒七次注定失败的操作，纯烧电。
+        //
+        //    两个信号不是一回事：`Session` 那个是 LiveKitComponents 的会话层
+        //    状态，`connectionState` 是 SDK 底层连接状态，中间有窗口期。
+        //    **判据要用真正会被检查的那个。**
+        for slot in rooms.slots
+        where slot.session.isConnected && slot.session.room.connectionState == .connected {
             // ⚠️ 属性**按房间各算各的** —— 开关是每个房间一份。
             //    算在循环外的话，切到另一个房间会把上一个房间的开关发过去，
             //    而那看起来完全正常：属性写成功了，只是值是别人的。
