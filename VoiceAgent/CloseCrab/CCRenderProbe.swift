@@ -87,11 +87,20 @@ nonisolated enum CCProbe {
             counts.removeAll(keepingCapacity: true)
             lock.unlock()
 
-            let noisy = snapshot.filter { $0.value >= noisyPerSecond }
+            // ⚠️ **⚡️ 开头的事件计数无条件打印，不看阈值。**
+            //
+            // 它们只有两三个、而且正是我们要量的那几个比值 ——
+            // 2026-09-20 就吃过一次亏：`⚡️SlotRefresh` 掉到 100 以下之后
+            // 直接从日志里消失，于是「合并比值」只能给出一个下界（>7.2:1），
+            // 量不出真值。**判据被自己的降噪阈值挡住了。**
+            //
+            // view 的 body 计数仍然按阈值筛 —— 那些有十几个，不筛会刷屏。
+            let noisy = snapshot
+                .filter { $0.key.hasPrefix("⚡️") || $0.value >= noisyPerSecond }
                 .sorted { $0.value > $1.value }
             guard !noisy.isEmpty else { return }
             // 一行一个，最多五个 —— 排在前面的才是驱动源，后面的多半是被它带着转的。
-            let line = noisy.prefix(5)
+            let line = noisy.prefix(8)
                 .map { "\($0.key)=\($0.value)" }
                 .joined(separator: "  ")
             // ⚠️ **两条都发，不能只发 os_log。**
