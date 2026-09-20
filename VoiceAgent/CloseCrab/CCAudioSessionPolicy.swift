@@ -69,8 +69,20 @@ import LiveKit
 /// 真机上要是出现「没声音 / 回声 / 开麦要等很久」，在设置里关掉它就退回
 /// SDK 原来的行为，**不用重新编译**。
 @MainActor
-final class CCAudioSessionPolicy {
+final class CCAudioSessionPolicy: ObservableObject {
     static let shared = CCAudioSessionPolicy()
+
+    /// **引擎此刻真的在采集。** 界面拿它当「可以开口了」的判据。
+    ///
+    /// 为什么不用「按下去了」：那是**意图**，不是事实。按下到真的通，中间
+    /// 隔着 `setMicrophone` 的往返，换成 `.restart` 静音模式之后还多一次
+    /// 引擎重启。绿灯亮在意图上，人就会对着一个还没通的麦说话，第一个字
+    /// 直接丢 —— 而丢字这件事当场看不出来，只能靠「说完发现没人回」发现。
+    ///
+    /// 为什么不用 `LocalMedia.isMicrophoneEnabled`：那是**轨道**的状态，
+    /// 比意图准，但仍然不等于「音频引擎已经在往里灌采样」。这一条是引擎
+    /// 自己报上来的，是这条链上最靠后、也最接近事实的那个信号。
+    @Published private(set) var isCapturing = false
 
     /// 真机上用来确认它到底有没有生效 —— 诊断页读这个。
     /// 没有这行的话，「改了没效果」和「改了但没跑到」长得一模一样。
@@ -110,8 +122,11 @@ final class CCAudioSessionPolicy {
             print("[CCAudioSessionPolicy] 切静音模式失败，静音时仍会占麦: \(error)")
         }
 
-        observer.onApply = { [weak self] text in
-            Task { @MainActor in self?.lastApplied = text }
+        observer.onApply = { [weak self] text, capturing in
+            Task { @MainActor in
+                self?.lastApplied = text
+                self?.isCapturing = capturing
+            }
         }
         lastApplied = "已接管，等引擎第一次启动"
     }
@@ -124,7 +139,7 @@ final class CCAudioSessionPolicy {
     /// 音频直接没了。协议默认实现会转发，我们重写的这两个要自己转。
     private final class Observer: AudioEngineObserver, @unchecked Sendable {
         var next: (any AudioEngineObserver)?
-        var onApply: ((String) -> Void)?
+        var onApply: ((String, Bool) -> Void)?
 
         func engineWillEnable(_ engine: AVAudioEngine,
                               isPlayoutEnabled: Bool,
@@ -178,9 +193,9 @@ final class CCAudioSessionPolicy {
                 // App（音乐、导航）不会自己恢复。
                 do {
                     try session.setActive(false, options: .notifyOthersOnDeactivation)
-                    report("已释放（麦克风让出去了）")
+                    report("已释放（麦克风让出去了）", capturing: false)
                 } catch {
-                    report("释放失败: \(error)")
+                    report("释放失败: \(error)", capturing: false)
                 }
                 return
             }
@@ -200,15 +215,17 @@ final class CCAudioSessionPolicy {
                 // 报 kAudioUnitErr_TooManyFramesToProcess (-10874)。
                 try session.setPreferredIOBufferDuration(0.02)
                 try session.setActive(true)
-                report("\(isRecordingEnabled ? "录音中" : "只放音") → \(config.category.rawValue)")
+                report("\(isRecordingEnabled ? "录音中" : "只放音") → \(config.category.rawValue)",
+                       capturing: isRecordingEnabled)
             } catch {
-                report("配置失败: \(error)")
+                // 配置失败就当没通 —— **宁可绿灯不亮，也不能让人对着坏的麦说话。**
+                report("配置失败: \(error)", capturing: false)
             }
         }
 
-        private func report(_ text: String) {
+        private func report(_ text: String, capturing: Bool) {
             print("[CCAudioSessionPolicy] \(text)")
-            onApply?(text)
+            onApply?(text, capturing)
         }
     }
 }

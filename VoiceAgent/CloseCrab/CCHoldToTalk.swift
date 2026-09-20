@@ -30,9 +30,34 @@ import SwiftUI
 struct CCTalkBar: View {
     @EnvironmentObject private var localMedia: LocalMedia
     @EnvironmentObject private var mic: CCMicPolicy
+    #if os(iOS) || os(visionOS)
+    @ObservedObject private var audio = CCAudioSessionPolicy.shared
+    #endif
 
     /// 麦克风常开时这条不该还摆出「按住说话」的样子 —— 它此刻没作用。
     private var isAlwaysOn: Bool { localMedia.isMicrophoneEnabled && !mic.isHolding }
+
+    /// **真的通了吗** —— 区别于「按下去了」。
+    ///
+    /// Chris 2026-09-20 定的：「点击开麦预热的这段时间我是能看出来的，
+    /// 什么时候通了我才开始说话。」他说得对，但**原来的实现给不了这层保险**：
+    /// 绿色和震动都挂在 `mic.isHolding` 上，而那个是在手指落下那一瞬间
+    /// 同步置真的，`setMic(true)` 还没跑。绿灯亮 ≠ 麦通了。
+    ///
+    /// 判据取两条里更靠后的那个：
+    /// - 轨道开了（`isMicrophoneEnabled`）—— 平台无关的底线
+    /// - 引擎真的在采集（`CCAudioSessionPolicy.isCapturing`）—— 更接近事实，
+    ///   但只有接管了音频会话时才有；开关关掉时它恒为 false，所以那种情况下
+    ///   **不能**要求它，否则绿灯永远不亮。
+    private var isLive: Bool {
+        #if os(iOS) || os(visionOS)
+        if CCAudioSessionPolicy.isEnabled { return localMedia.isMicrophoneEnabled && audio.isCapturing }
+        #endif
+        return localMedia.isMicrophoneEnabled
+    }
+
+    /// 按住了，但还没通。界面上要看得出来这一档 —— 它正是「先别说话」。
+    private var isWarmingUp: Bool { mic.isHolding && !isLive }
 
     var body: some View {
         HStack(spacing: CC.Space.snug) {
@@ -53,6 +78,7 @@ struct CCTalkBar: View {
         .overlay(alignment: .leading) { holdingPulse }
         .contentShape(.cc(CC.Radius.bar))
         .ccAnimation(CC.Motion.fade, value: mic.isHolding)
+        .ccAnimation(CC.Motion.fade, value: isLive)
         .ccAnimation(CC.Motion.fade, value: isAlwaysOn)
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -60,9 +86,19 @@ struct CCTalkBar: View {
                 .onEnded { _ in mic.endHold() }
         )
         #if os(iOS)
-        // 开麦那一下给个震动。看不见的状态变化必须有别的通道告诉人，
-        // 否则你只能靠「说完发现没人回」来发现自己没按住。
-        .sensoryFeedback(.impact(weight: .medium), trigger: mic.isHolding)
+        // ⭐ 震在**真的通了**那一下，不是手指落下那一下。
+        //
+        //    这一记就是「可以开口了」的信号 —— 提前震等于骗人，人会对着
+        //    还没通的麦说话，第一个字丢掉。丢字当场看不出来，只能靠
+        //    「说完发现没人回」发现，是最难查的那种。
+        //
+        //    松开时不震：闭麦晚 900 ms（给模型留判断「说完了」的静音，
+        //    见 CCMicPolicy.releaseTailMs），那时候震反而对不上手的动作。
+        //    走 CCHaptics 而不是 .sensoryFeedback，因为要认设置里那个
+        //    「关掉震动」的开关。
+        .onChange(of: isLive) { _, live in
+            if live { CCHaptics.toggleMute() }
+        }
         #endif
         .accessibilityLabel(Text(verbatim: label))
         .accessibilityAddTraits(.isButton)
@@ -82,7 +118,11 @@ struct CCTalkBar: View {
     /// 但染色必须有底：`.clear.tint(.green)` 在亮背景上会淡到看不出，
     /// 而「麦还开着」是个漏了会尴尬的状态，不能为了好看牺牲它。
     private var glass: Glass {
-        if mic.isHolding {
+        if isWarmingUp {
+            // 按下了但还没通。**用黄色不用淡绿** —— 淡绿和满绿在余光里
+            // 分不出来，而这两档的含义正好相反（先别说 / 可以说）。
+            .regular.tint(.yellow).interactive()
+        } else if mic.isHolding {
             .regular.tint(.green).interactive()
         } else if isAlwaysOn {
             .regular.tint(.green.opacity(0.5)).interactive()
@@ -92,17 +132,22 @@ struct CCTalkBar: View {
     }
 
     private var foreground: Color {
-        mic.isHolding || isAlwaysOn ? .white : .primary
+        // 黄底上用黑字。白字在黄色上读不清，而这一档要传达的恰恰是
+        // 「**先别说**」—— 看不清就等于没说。
+        if isWarmingUp { return .black }
+        return mic.isHolding || isAlwaysOn ? .white : .primary
     }
 
     private var icon: String {
-        if mic.isHolding { "waveform" }
+        if isWarmingUp { "hourglass" }
+        else if mic.isHolding { "waveform" }
         else if isAlwaysOn { "mic.fill" }
         else { "mic.slash.fill" }
     }
 
     private var label: String {
-        if mic.isHolding { "松开结束" }
+        if isWarmingUp { "接通中，先别说" }
+        else if mic.isHolding { "松开结束" }
         else if isAlwaysOn { "麦克风常开中" }
         else { "按住说话" }
     }
@@ -113,7 +158,7 @@ struct CCTalkBar: View {
     /// 是个漏了会尴尬的状态。一个动的东西在余光里永远比一块静止的颜色显眼。
     @ViewBuilder
     private var holdingPulse: some View {
-        if mic.isHolding {
+        if mic.isHolding, isLive {
             Circle()
                 .fill(.white)
                 .frame(width: 8, height: 8)
