@@ -49,7 +49,10 @@
                 Button(active.isMuted ? "取消静音" : "静音") {
                     // 走跟界面同一条路，不要在这儿另写一套开关逻辑 ——
                     // 两套状态迟早会对不上。
-                    active.isMuted.toggle()
+                    // ⚠️ 原来这里是 `active.isMuted.toggle()` —— 只翻了标记，
+                    //    **音量一个字节都没动**，菜单栏这条静音一直是装饰。
+                    //    改 `isMuted` 为 private(set) 就是为了让这种写法编不过。
+                    active.applyMute(!active.isMuted)
                 }
                 Divider()
             }

@@ -17,13 +17,33 @@ final class CCRoomSlot: ObservableObject, Identifiable {
 
     nonisolated var id: String { name }
 
-    /// 被我静音了 —— 连着，但它说什么我都听不见。
-    @Published var isMuted = false
+    /// 被我静音了 —— 连着，但它说什么我都听不见。**跨重启记住。**
+    @Published private(set) var isMuted = false
+
+    /// 已经按当前状态处理过的远端音轨。
+    ///
+    /// ⚠️ 光记一个 `isMuted` 布尔是不够的，这正是 2026-09-20 那个 bug：
+    /// 静音是**一次性动作**（把当时在场的轨道音量拧到 0），而远端音轨是会变的
+    /// —— 参与者进出、断线重连、助手重新发布，**每来一条新轨都是 volume 1**。
+    /// 于是重启（或者后台待久了自动重连）之后，小喇叭图标还在，声音却回来了：
+    /// 状态记住了，动作没跟上。
+    ///
+    /// 记下已处理的轨道，是为了**只对新来的那几条动手** —— 读写 `volume` 会
+    /// 阻塞调用线程直到 WebRTC 信令线程应用完，不能每次刷新都全量重设一遍。
+    ///
+    /// 用 `ObjectIdentifier` 不用 `track.sid`：sid 那个类型来自另一个包，
+    /// 它的字符串表示我在 SDK 源码里核不到 —— **核不到就不用**。
+    /// 对象身份在这里反而更准：一条轨道只要还是同一个对象，就已经处理过；
+    /// 重连换了新对象，那本来就该重新处理。
+    private var handledTracks: Set<ObjectIdentifier> = []
 
     private var bag = Set<AnyCancellable>()
 
     init(name: String) {
         self.name = name
+        // 跨重启恢复。**恢复的是状态，动作由 `enforceMute()` 在轨道出现时补上** ——
+        // 这里直接调 applyMute 没用，此刻一条远端轨都还没有。
+        isMuted = CCStore.mutedRooms.contains(name)
         // **token source 绑死这个房间名**，不能像单房间时代那样现读全局当前房间 ——
         // 否则 N 条连接会全部跑去连同一个房间。
         session = Session(
@@ -43,7 +63,16 @@ final class CCRoomSlot: ObservableObject, Identifiable {
         // 包 `Task { @MainActor }`：sink 的闭包是 nonisolated 的，
         // 直接碰 MainActor 类的成员在 Swift 6 下编译不过。
         session.objectWillChange
-            .sink { [weak self] _ in Task { @MainActor in self?.objectWillChange.send() } }
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    // ⭐ 每次房间有变化都补一次静音。**这就是那个 bug 的修法**：
+                    //    把静音从「按一下做一次」变成「一直维持住」。
+                    //    新参与者、重连、重新发布 —— 都从这儿经过。
+                    self.enforceMute()
+                    self.objectWillChange.send()
+                }
+            }
             .store(in: &bag)
     }
 
@@ -97,11 +126,30 @@ final class CCRoomSlot: ObservableObject, Identifiable {
     /// 所以丢进 detached task（`RemoteAudioTrack` 是 `@unchecked Sendable`）。
     func applyMute(_ muted: Bool) {
         isMuted = muted
+        CCStore.setMuted(muted, room: name)
+        handledTracks.removeAll()         // 目标变了，所有轨道都要重新处理一遍
+        enforceMute()
+    }
+
+    /// 把静音**维持住**，不只是「按下那一刻做一次」。
+    ///
+    /// 每次房间状态变化都会调到这儿（见 `init` 里那条订阅）。只对还没按当前
+    /// 目标处理过的轨道动手，所以反复调用是廉价的。
+    func enforceMute() {
         let tracks = session.room.remoteParticipants.values
             .flatMap(\.audioTracks)
             .compactMap { $0.track as? RemoteAudioTrack }
+
+        let live = Set(tracks.map(ObjectIdentifier.init))
+        handledTracks.formIntersection(live)   // 走掉的轨道别一直攒着
+
+        let pending = tracks.filter { !handledTracks.contains(ObjectIdentifier($0)) }
+        guard !pending.isEmpty else { return }
+        handledTracks.formUnion(pending.map(ObjectIdentifier.init))
+
+        let volume: Double = isMuted ? 0 : 1
         Task.detached {
-            for track in tracks { track.volume = muted ? 0 : 1 }
+            for track in pending { track.volume = volume }
         }
     }
 }

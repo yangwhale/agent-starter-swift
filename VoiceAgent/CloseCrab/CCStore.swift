@@ -31,6 +31,7 @@ nonisolated enum CCStore {
         static let rooms = "cc.rooms"
         static let room = "cc.room"
         static let onlineRooms = "cc.onlineRooms"
+        static let mutedRooms = "cc.mutedRooms"
         static let netReadout = "cc.netReadout"
         static let releaseMicWhenIdle = "cc.audio.releaseMicWhenIdle"
         static let voiceProcessing = "cc.voiceProcessing"
@@ -126,6 +127,27 @@ nonisolated enum CCStore {
                 .normalize(all: rooms, picked: newValue, active: room)
                 .joined(separator: ",")
         }
+    }
+
+    /// 哪几个房间被我静音了（听不见它说话）。逗号分隔，跟 `onlineRooms` 同款。
+    ///
+    /// **只存不校验**：静音一个当前没在线的房间是合法的 —— 你可能先静音、
+    /// 再取消勾选、过几天又勾回来，那时候它该还是静音的。
+    static var mutedRooms: Set<String> {
+        get {
+            Set((nonEmpty(UserDefaults.standard.string(forKey: Key.mutedRooms)) ?? "")
+                .split(separator: ",").map(String.init))
+        }
+        set {
+            UserDefaults.standard.set(newValue.sorted().joined(separator: ","),
+                                      forKey: Key.mutedRooms)
+        }
+    }
+
+    static func setMuted(_ muted: Bool, room name: String) {
+        var set = mutedRooms
+        if muted { set.insert(name) } else { set.remove(name) }
+        mutedRooms = set
     }
 
     /// 勾 / 取消勾。当前房间取消不掉的规则也在 `CCRoomSelection` 里。
