@@ -128,6 +128,28 @@ struct CloseCrabSettingsView: View {
                 //    现象就是「双击了没反应」），牌子上那个标记只能说明
                 //    本地状态，说明不了报上去没有。
 
+                // ⚠️ 临时：定位「静止也满转烧 CPU」用的二分开关。
+                //    为什么做成开关而不是一次改一处，见 `CCStore.offStatusPanel`。
+                //    **定位完整段删掉**，别让它长住在设置里。
+                Section {
+                    Toggle(isOn: $config.offStatusPanel) {
+                        Text(verbatim: "关掉：中间那块状态屏")
+                    }
+                    Toggle(isOn: $config.offRoster) {
+                        Text(verbatim: "关掉：顶上那排人名牌子")
+                    }
+                    Toggle(isOn: $config.offAgentSampler) {
+                        Text(verbatim: "关掉：主画面定时采样")
+                    }
+                    Toggle(isOn: $config.offBackdrop) {
+                        Text(verbatim: "关掉：背景")
+                    }
+                } header: {
+                    Text(verbatim: "二分排障（临时）")
+                } footer: {
+                    Text(verbatim: "App 静止不动时也在满转烧 CPU、内存两分钟涨 883 MB。这四个是「不用任何操作就一直在跑」的组件。一次关一个，每次关完等两三分钟，看还烧不烧 —— 烧就说明不是它。关掉「主画面定时采样」会让数字人画面收不回去，那是预期的，不用管。")
+                }
+
                 Section {
                     Toggle(isOn: $config.netReadout) {
                         Text(verbatim: "显示网络读数")

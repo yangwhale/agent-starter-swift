@@ -14,6 +14,9 @@ import SwiftUI
 struct AppView: View {
     @EnvironmentObject private var session: Session
     @EnvironmentObject private var localMedia: LocalMedia
+    /// 只为二分排障那几个开关订阅（临时）。不订阅的话拨了开关界面不会变，
+    /// 看着像开关坏了。
+    @ObservedObject private var config = CloseCrabConfig.shared
 
     /// 字幕开关。**由 chrome 持有**，跨房间共享，所以这里是只读的值不是 `@State`。
     let chat: Bool
@@ -25,7 +28,13 @@ struct AppView: View {
                 interactions()
                     // 房间成员条挂在**这一页**的顶上，不提到 chrome 里 ——
                     // 每页的成员不一样，跟着页面走才对得上。
-                    .overlay(alignment: .top) { CCRosterRow() }
+                    //
+                    // ⚠️ 这是 `overlay`，**不占位置**。任何顶对齐的主画面内容
+                    //    都会被它盖住，那种内容要自己让开 `CCRosterRow.height`。
+                    .overlay(alignment: .top) {
+                        // 二分排障开关，临时。见 `CCStore.offStatusPanel`。
+                        if !config.offRoster { CCRosterRow() }
+                    }
             } else {
                 notConnected()
             }
