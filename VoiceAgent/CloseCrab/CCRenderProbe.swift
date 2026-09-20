@@ -29,7 +29,21 @@ import SwiftUI
 /// 出问题：某个 label 每秒几百上千次，那就是驱动源。
 ///
 /// ⚠️ **定位完删掉整个文件和所有 `ccProbe` 调用点。** 它自己也有开销。
-enum CCProbe {
+///
+/// ## ⚠️ 整个类型标 `nonisolated`，不要逐个成员标
+///
+/// 工程开了 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`，**裸 enum 也被隔离**。
+/// 我第一版逐个给 `static var` 标 `nonisolated(unsafe)`，**漏了 `lock` 和
+/// `startDumper()`** —— 编译三个 error，全是同一条规则。
+///
+/// 这个仓库里已经有九处在用 `nonisolated enum`（`CCStore` / `CCEndpoint` /
+/// `CCType` …）。**新写这类无状态门面，第一笔就该照着抄。**
+/// 逐个成员标是在跟编译器比谁记性好，而且只在「被 nonisolated 上下文读到」
+/// 时才报错 —— 漏了的那个可能要等到另一个调用点才暴露。
+///
+/// 2026-09-20 我在同一条规则上栽了三次：CCBotStatus 的属性名常量、
+/// CCRosterRow.height（那次是虚惊，同隔离域读不报错）、这里。
+nonisolated enum CCProbe {
     private static let log = Logger(subsystem: "com.higcp.closecrab.probe",
                                     category: "render")
 
@@ -45,7 +59,7 @@ enum CCProbe {
     nonisolated(unsafe) private static var started = false
 
     /// 记一笔。**调用点要放在 body 求值路径上**，不是 onAppear。
-    nonisolated static func tick(_ label: String) {
+    static func tick(_ label: String) {
         lock.lock()
         counts[label, default: 0] += 1
         let need = !started
@@ -56,7 +70,7 @@ enum CCProbe {
 
     /// 非 body 的事件也能记（属性到达、objectWillChange 之类）。
     /// 跟 body 计数分开看 —— **要分清「谁在被重算」和「谁在驱动重算」**。
-    nonisolated static func event(_ label: String) {
+    static func event(_ label: String) {
         tick("⚡️" + label)
     }
 
