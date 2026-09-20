@@ -135,6 +135,13 @@ private struct CCShell: View {
     @State private var roomsPresented = false
     @FocusState private var keyboardFocus: Bool
 
+    /// 方块本体的边长。**必须和 `CCRoomTile` 里那个 `side` 同源同缩放** ——
+    /// 汉堡要对齐的是**方块本体的中线**，而方块会跟着系统字号长。
+    /// 写死 54 的话，用户把字号调大，汉堡就会越偏越低。
+    @ScaledMetric(relativeTo: .caption) private var tileSide: CGFloat = CC.Size.tile
+    /// 方块行自己的上内边距，抄自 `CCRoomTileRow`。汉堡要跟它对齐。
+    private static let tileRowInsetTop: CGFloat = 2 * .grid
+
     var body: some View {
         ZStack {
             if active.isConnected {
@@ -183,13 +190,17 @@ private struct CCShell: View {
                 //    **可以横向滚的**，右边这颗必须钉死不动，否则房间一多
                 //    它就跟着滚出屏幕了。滚动区域是 HStack 里的弹性一方，
                 //    这颗按钮是固定一方，宽度自动让出来。
-                HStack(spacing: 0) {
+                //    ⚠️ **对齐的是方块本体的中线，不是整行的中线。**
+                //    方块底下还挂着一行名字，按整行居中的话汉堡会低约 13pt ——
+                //    Chris 2026-09-20 第一眼就看出来了：「它有点低了，应该往上点」。
+                //    做法：整个 HStack 顶对齐，汉堡自己占一格**和方块等高**的区域，
+                //    在那一格里居中 → 圆心正好落在方块中线上，而且跟着字号一起长。
+                HStack(alignment: .top, spacing: 0) {
                     CCRoomTileRow()
                     menuButton()
+                        .frame(height: tileSide)
+                        .padding(.top, Self.tileRowInsetTop)
                 }
-                // 方块行原来下面还压着一行，现在它自己就是最上面一行 ——
-                // 补一点顶部余量，别让方块贴着状态栏。
-                .padding(.top, 2 * .grid)
                 Color.clear.frame(height: CCTileConnector.height)
             }
             .overlayPreferenceValue(CCTileAnchorKey.self) { anchors in
@@ -282,7 +293,10 @@ private struct CCShell: View {
             .frame(maxWidth: CC.Size.contentMax)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, CC.Space.screen)
-            .padding(.bottom, CC.Space.snug)
+            // ⚠️ 这一格**每减一点都直接变成窗口变高**（窗口是 VStack 里唯一
+            //    会伸缩的一块）。Chris 2026-09-20：「我为啥要改，不就是为了
+            //    把省下来的这一行给到那块去。」—— 所以这里取 tight 不取 snug。
+            .padding(.bottom, CC.Space.tight)
     }
 
     @ViewBuilder
