@@ -62,6 +62,14 @@ struct CCRosterRow: View {
 
     private var roomName: String { session.room.name ?? "" }
 
+    /// 这排牌子有多高。
+    ///
+    /// ⚠️ **它是挂在 `AppView` 上的 `.overlay(alignment: .top)`，overlay 不占位置** ——
+    /// 它直接浮在主画面上面。以前不出事是因为主画面那两种内容（数字人视频、
+    /// 声音柱子）都垂直居中，够不着顶。**任何顶对齐的内容都会被它盖住**，
+    /// 所以那种内容要自己让开这么高。2026-09-20 状态屏就是这么撞上的。
+    static let height: CGFloat = 44
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.35)) { _ in
             HStack(spacing: 6) {
@@ -73,7 +81,7 @@ struct CCRosterRow: View {
             .padding(.horizontal, 2 * .grid)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 44)
+        .frame(height: Self.height)
         .onAppear { persona.ensureAll(room: roomName) }
         .onChange(of: roomName) { _, r in persona.ensureAll(room: r) }
         .sheet(item: $previewing) { role in
