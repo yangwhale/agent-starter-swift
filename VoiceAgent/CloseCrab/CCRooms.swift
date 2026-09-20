@@ -8,7 +8,8 @@ import SwiftUI
 /// 麦克风轨、自己的处理选项。上游 starter 在 app 入口建了各一个，
 /// 那是「只有一个房间」时代的写法。
 @MainActor
-final class CCRoomSlot: ObservableObject, Identifiable {
+@Observable
+final class CCRoomSlot: Identifiable {
     let name: String
     let session: Session
     let localMedia: LocalMedia
@@ -21,7 +22,7 @@ final class CCRoomSlot: ObservableObject, Identifiable {
     nonisolated var id: String { name }
 
     /// 被我静音了 —— 连着，但它说什么我都听不见。**跨重启记住。**
-    @Published private(set) var isMuted = false
+    private(set) var isMuted = false
 
     /// 已经按当前状态处理过的远端音轨。
     ///
@@ -85,7 +86,9 @@ final class CCRoomSlot: ObservableObject, Identifiable {
                         self.botStatus.clear()
                     }
                     CCProbe.event("SlotWillChange")   // 探针，定位完删
-                    self.objectWillChange.send()
+                    // ⛔ 这里原来是 `self.objectWillChange.send()` —— 整树重算的源头。
+                    //    现在只更新那几个真的变了的镜像属性，见上面那段。
+                    self.refresh()
                 }
             }
             .store(in: &bag)
@@ -123,13 +126,72 @@ final class CCRoomSlot: ObservableObject, Identifiable {
     ///
     /// 语义状态优先是有道理的：它表达的是「轮到它了」，比音量早一点点，
     /// 界面反应会显得跟手。旁路那条没有语义状态可用，只能退回音量。
-    var isSpeaking: Bool { session.ccIsSpeaking }
+    private(set) var isSpeaking: Bool = false
 
     /// 给波形用的**全部** bot 音轨 —— 语音助手的 ＋ 旁路的。
     ///
     /// 返回数组不是单条：两条路可能同时有声（助手在说话时本体也播了个提示音），
     /// 而且哪条在响是运行时才知道的。表头把它们一起量，取最大值。
-    var botAudioTracks: [any AudioTrack] { session.ccBotAudioTracks }
+    private(set) var botAudioTracks: [any AudioTrack] = []
+
+    // MARK: - 派生镜像
+    //
+    // ## ⛔ 为什么要镜像，而不是让界面直接读 `session`
+    //
+    // 这一段是 2026-09-20 耗电改造的核心。原来的写法是：
+    //
+    //     session.objectWillChange.sink { … self.objectWillChange.send() }
+    //
+    // 把 LiveKit 的**每一条**变更通知原样转发成「我变了」，而订阅槽位的是
+    // 整屏布局 `CCShell` —— 于是音量抖一下、有人进房、某个属性改了，
+    // 全都翻译成**整棵界面树重算**（含分页里当前看不见的那些页）。
+    // 实测静止不动就 72–81% CPU、两分钟内存涨 1.7 GB。
+    //
+    // 现在改成：**一条订阅算出一份快照，逐项比对，只有真的变了才写。**
+    // 配合 `@Observable`（属性级追踪），「谁读了哪个属性」才会被重算 ——
+    // 一个只显示连接状态的方块，不会因为音量抖动而重绘。
+    //
+    // ## ⚠️ 界面读镜像，逻辑读 `session`
+    //
+    // 镜像是在**下一个 runloop** 才更新的（`objectWillChange` 是「即将改变」，
+    // 在 sink 里直接读拿到的是旧值，所以必须 `Task` 跳一拍）。
+    // 所以：
+    //   · 界面显示 → 读镜像（晚一拍无所谓，而且这才有属性级追踪）
+    //   · 判断逻辑 → 直接读 `session`（比如「连上了才发属性」那种守卫，
+    //     读镜像会拿到旧值，后果是 2026-09-20 那种「守卫放行、SDK 拒收」）
+
+    /// 连上了没有。**界面用这个**，别读 `session.isConnected`。
+    private(set) var isConnected: Bool = false
+    /// 这一路数字人视频轨。
+    private(set) var avatarVideoTrack: (any VideoTrack)?
+    /// 连接错误 / 助手错误 —— 错误条要显示它们，所以也得镜像。
+    private(set) var connectionError: Error?
+    private(set) var agentError: Error?
+
+    /// 算一份快照，逐项比对，**只有变了才写**。
+    ///
+    /// 这个「只有变了才写」是整件事的关键：`@Observable` 在赋值时通知，
+    /// 无脑赋值等于每次都通知，属性级追踪就白做了。
+    private func refresh() {
+        let c = session.isConnected
+        if c != isConnected { isConnected = c }
+
+        let sp = session.ccIsSpeaking
+        if sp != isSpeaking { isSpeaking = sp }
+
+        // 轨道比 id 不比对象：重连会换新对象但内容没变，比对象会误判成「变了」。
+        let tracks = session.ccBotAudioTracks
+        if tracks.map(\.id) != botAudioTracks.map(\.id) { botAudioTracks = tracks }
+
+        let av = session.ccAvatarVideoTrack
+        if av?.id != avatarVideoTrack?.id { avatarVideoTrack = av }
+
+        // Error 没法直接比，比文案 —— 错误条显示的本来也就是这个。
+        let e = session.error
+        if e?.localizedDescription != connectionError?.localizedDescription { connectionError = e }
+        let ae = session.agent.error
+        if ae?.localizedDescription != agentError?.localizedDescription { agentError = ae }
+    }
 
     /// 旧名字留着：方块上的小波形只关心「有没有东西在响」，给它第一条就够。
     var agentAudioTrack: (any AudioTrack)? { session.agent.audioTrack ?? botAudioTracks.first }

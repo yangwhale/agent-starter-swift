@@ -122,7 +122,7 @@ struct CCRootView: View {
 /// 写在 `CCRootView` 里的话，连上之后启动页不会自己退下去。
 private struct CCShell: View {
     @ObservedObject var rooms: CCRooms
-    @ObservedObject var active: CCRoomSlot
+    let active: CCRoomSlot
     /// 要订阅，不能直接读 `.shared` —— 直接读拿得到值，但**开关拨了界面不会重绘**。
     @ObservedObject private var config = CloseCrabConfig.shared
 
@@ -137,7 +137,7 @@ private struct CCShell: View {
 
         let _ = CCProbe.tick("Shell")   // 探针，定位完删
         ZStack {
-            if active.session.isConnected {
+            if active.isConnected {
                 connected()
             } else {
                 StartView()
@@ -150,7 +150,7 @@ private struct CCShell: View {
         .environmentObject(active.localMedia)
         .environmentObject(active.audioOptions)
         .environmentObject(active.micPolicy)
-        .ccAnimation(.default, value: active.session.isConnected)
+        .ccAnimation(.default, value: active.isConnected)
         .ccAnimation(.default, value: chat)
         // 预热 Taptic Engine。不热身的话第一下手势会明显迟半拍 ——
         // 而第一下恰恰是「这 app 有没有震动」的全部印象。
@@ -161,7 +161,7 @@ private struct CCShell: View {
         // 在这个工程（默认 MainActor 隔离）下必然继承主 actor。
         .onAppear { CCHaptics.warmUp() }
         #if os(iOS)
-        .sensoryFeedback(.impact, trigger: active.session.isConnected)
+        .sensoryFeedback(.impact, trigger: active.isConnected)
         #endif
     }
 
@@ -365,11 +365,11 @@ private struct CCShell: View {
     private func errors() -> some View {
         #if !os(visionOS)
             VStack(spacing: CC.Space.tight) {
-                if let error = active.session.error, !active.session.isConnected {
+                if let error = active.connectionError, !active.isConnected {
                     ErrorView(error: error, room: active.name) { active.session.dismissError() }
                 }
 
-                if let agentError = active.session.agent.error, !active.session.isConnected {
+                if let agentError = active.agentError, !active.isConnected {
                     ErrorView(error: agentError, room: active.name) { Task { await active.session.end() }}
                 }
 
@@ -380,7 +380,7 @@ private struct CCShell: View {
             .frame(maxHeight: .infinity, alignment: .top)
             // 连上那一刻红条要滑走，不要「啪」地消失 —— 突然消失会让人
             // 怀疑自己看错了，滑走才读得出「刚才那个问题解决了」。
-            .ccAnimation(CC.Motion.snap, value: active.session.isConnected)
+            .ccAnimation(CC.Motion.snap, value: active.isConnected)
         #endif
     }
 
