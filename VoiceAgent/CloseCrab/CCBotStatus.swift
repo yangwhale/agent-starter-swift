@@ -2,6 +2,30 @@ import Combine
 import Foundation
 import LiveKit
 
+/// 两个键的名字。
+///
+/// ## ⚠️ 为什么不能放在 `CCBotStatus` 里
+///
+/// 这个工程开了 `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`，
+/// **所有类型默认都是 MainActor-isolated，包括裸 enum** ——
+/// 所以每个 `static let` 还要**单独**标 `nonisolated`，光搬出 @MainActor 类不够。
+///
+/// 收消息那两个 delegate 回调是 `nonisolated` 的（`RoomDelegate` 是
+/// `@objc` + `Sendable`），读不到被隔离的常量：
+///
+///     main actor-isolated static property 'stateAttr'
+///     can not be referenced from a nonisolated context
+///
+/// 隔离按**声明位置**算，跟内容有没有可变状态无关。一个 `let String`
+/// 读一下怎么会不安全？编译器不看这个。
+///
+/// 跟 `CCAvatarAttr` 同一个形状 —— 那边的注释里记着同样的坑，
+/// 我这次还是又踩了一遍（2026-09-20，tommy 编译时抓到）。
+enum CCBotAttr {
+    nonisolated static let state = "cc.bot.state"
+    nonisolated static let stepTopic = "cc.bot.step"
+}
+
 /// bot 此刻在忙什么 —— 中间那块屏的数据源。
 ///
 /// ## 这块屏为什么归它
@@ -33,9 +57,6 @@ import LiveKit
 final class CCBotStatus: ObservableObject {
     static let shared = CCBotStatus()
 
-    static let stateAttr = "cc.bot.state"
-    static let stepTopic = "cc.bot.step"
-
     @Published private(set) var snap: Snapshot?
     /// 最近几条流水。**只留几条** —— 它是氛围不是信息，多了就成了刷屏。
     @Published private(set) var steps: [String] = []
@@ -64,7 +85,7 @@ final class CCBotStatus: ObservableObject {
         }
         // ⭐ 补一次当前值。见类文档那条 ⚠️。
         for p in room.remoteParticipants.values {
-            if let raw = p.attributes[Self.stateAttr] { ingest(raw) }
+            if let raw = p.attributes[CCBotAttr.state] { ingest(raw) }
         }
     }
 
@@ -102,7 +123,15 @@ final class CCBotStatus: ObservableObject {
         var done: Int = 0
     }
 
-    struct Task: Codable, Equatable, Identifiable {
+    /// 一条子 agent 或后台命令。
+    ///
+    /// ⚠️ **不能叫 `Task`。** 叫 Task 会把 `_Concurrency.Task` 遮蔽掉，
+    /// 于是同一个文件里 `Task { @MainActor in … }` 被解析成
+    /// 「构造一个 Codable 的 CCBotStatus.Task」，报错是
+    /// 「trailing closure passed to parameter of type 'any Decoder'」——
+    /// **完全不提重名**，很容易被 Decoder 带偏去查 JSON 解析。
+    /// 2026-09-20 就是这么栽的。
+    struct Job: Codable, Equatable, Identifiable {
         var id: String = ""
         /// 真子 agent（true）还是后台命令（false）。
         ///
@@ -130,7 +159,7 @@ final class CCBotStatus: ObservableObject {
         var sec: Double = 0
         var subs = Counts()
         var bg = Counts()
-        var tasks: [Task] = []
+        var tasks: [Job] = []
         /// 挂不到任何任务上的子 agent 动作。**不为 0 就说明下面那份列表不完整。**
         var unlinked: Int = 0
 
@@ -164,14 +193,14 @@ final class CCBotStatus: ObservableObject {
         // 参数是**变化的那几个键**，不是全量。取不到就是别的键变了，跟我们无关。
         nonisolated func room(_ room: Room, participant: Participant,
                               didUpdateAttributes attributes: [String: String]) {
-            guard let raw = attributes[CCBotStatus.stateAttr] else { return }
+            guard let raw = attributes[CCBotAttr.state] else { return }
             onState(raw)
         }
 
         nonisolated func room(_ room: Room, participant: RemoteParticipant?,
                               didReceiveData data: Data, forTopic topic: String,
                               encryptionType: EncryptionType) {
-            guard topic == CCBotStatus.stepTopic else { return }
+            guard topic == CCBotAttr.stepTopic else { return }
             onStep(data)
         }
     }

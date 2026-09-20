@@ -30,7 +30,6 @@ struct CCBotStatusPanel: View {
     @State private var now = Date.now
     /// 最后一次收到状态的本地时刻，用来把服务端那个 `sec` 往前推。
     @State private var seenAt = Date.now
-    @State private var lastSnapID: String = ""
 
     private static let tick: TimeInterval = 1.0
 
@@ -115,7 +114,7 @@ struct CCBotStatusPanel: View {
             .foregroundStyle(tint)
     }
 
-    private func taskRow(_ t: CCBotStatus.Task) -> some View {
+    private func taskRow(_ t: CCBotStatus.Job) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: icon(for: t.st))
                 .font(.caption)
