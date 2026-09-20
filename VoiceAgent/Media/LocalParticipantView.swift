@@ -5,6 +5,8 @@ struct LocalParticipantView: View {
     @EnvironmentObject private var localMedia: LocalMedia
 
     @Environment(\.namespace) private var namespace
+    /// 几何 id 按页分区。**多房间分页时不分区会跨页撞 id**，见 `geoScope` 的注释。
+    @Environment(\.geoScope) private var geoScope
 
     var body: some View {
         if let cameraTrack = localMedia.cameraTrack {
@@ -25,7 +27,7 @@ struct LocalParticipantView: View {
                         .padding(2 * .grid)
                     }
                 }
-                .matchedGeometryEffect(id: "camera", in: namespace!)
+                .matchedGeometryEffect(id: "camera-\(geoScope)", in: namespace!)
         }
     }
 }

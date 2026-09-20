@@ -295,6 +295,9 @@ private struct CCShell: View {
             .environmentObject(slot.localMedia)
             .environmentObject(slot.audioOptions)
             .environmentObject(slot.micPolicy)
+            // ⭐ 给这一页的几何动画 id 分区。**不分区的话相邻页会抢同一个 id** ——
+            //    理由写在 `EnvironmentValues.geoScope` 上，那条是承重的。
+            .environment(\.geoScope, slot.name)
     }
 
     /// 分页选中项。

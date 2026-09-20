@@ -28,6 +28,8 @@ struct AgentView: View {
     }
 
     @Environment(\.namespace) private var namespace
+    /// 几何 id 按页分区。**多房间分页时不分区会跨页撞 id**，见 `geoScope` 的注释。
+    @Environment(\.geoScope) private var geoScope
 
     /// 最后一次「在说话」的时刻。
     @State private var lastSpokeAt: Date?
@@ -107,7 +109,12 @@ struct AgentView: View {
         //    分页横滑时两页同时 onAppear，后来那次会把先来那次的 delegate 挤掉。
         //    现在绑定在 `CCRoomSlot.init`，一房一次。
         .ccAnimation(.snappy, value: session.agent.audioTrack?.id)
-        .matchedGeometryEffect(id: "agent", in: namespace!)
+        // ⭐ id 必须带页分区。横滑时相邻页同时在场，不分区就是 N 个 view
+        //    在同一个 group 里都当 source —— SwiftUI 对此的行为是未定义的，
+        //    而 09-19 那次看门狗崩溃的栈正卡在 preference 传递上
+        //    （`HostPreferencesTransform.updateValue`），matchedGeometryEffect
+        //    底层走的就是 preference。
+        .matchedGeometryEffect(id: "agent-\(geoScope)", in: namespace!)
         .overlay { sampler }
     }
 
