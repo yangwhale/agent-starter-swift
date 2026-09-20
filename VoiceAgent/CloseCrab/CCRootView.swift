@@ -33,9 +33,6 @@ import SwiftUI
 /// 所以页面里的 `AgentView` 读到的永远是本页那个房间，哪怕它此刻不是当前页。
 struct CCRootView: View {
     @ObservedObject var rooms: CCRooms
-    /// 只为背景那个二分排障开关订阅（临时）。要订阅不能直接读 `.shared` ——
-    /// 直接读拿得到值，但拨了开关不会重绘。
-    @ObservedObject private var config = CloseCrabConfig.shared
 
     #if os(macOS)
         /// Mac 的按住说话。**单例** —— 全局事件监听只该有一个，
@@ -62,10 +59,7 @@ struct CCRootView: View {
         // 背景垫在最底下。它是 Liquid Glass 的折射源 —— 没有它,
         // 上面所有玻璃都只是半透明灰块。详见 CCBackdrop。
         .background {
-            // 二分排障开关，临时。见 `CCStore.offStatusPanel`。
-            if !config.offBackdrop {
-                CCBackdrop(tint: rooms.active.map { CCIdentityColor.color(for: $0.name) })
-            }
+            CCBackdrop(tint: rooms.active.map { CCIdentityColor.color(for: $0.name) })
         }
         #if os(macOS)
             .onAppear {

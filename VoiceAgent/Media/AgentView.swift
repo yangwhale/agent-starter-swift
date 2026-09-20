@@ -75,7 +75,6 @@ struct AgentView: View {
     /// 而且**确实收到过状态**（没收到就退回柱子，别摆一块空板）。
     private var showBotStatus: Bool {
         guard !showAvatar, session.isConnected else { return false }
-        if config.offStatusPanel { return false }   // 二分排障开关，临时
         return botStatus?.snap != nil
     }
 
@@ -135,8 +134,7 @@ struct AgentView: View {
         //    （`HostPreferencesTransform.updateValue`），matchedGeometryEffect
         //    底层走的就是 preference。
         .matchedGeometryEffect(id: "agent-\(geoScope)", in: namespace!)
-        // 二分排障开关，临时。关掉之后数字人画面收不回去，那是预期的。
-        .overlay { if !config.offAgentSampler { sampler } }
+        .overlay { sampler }
     }
 
     // MARK: - 采样

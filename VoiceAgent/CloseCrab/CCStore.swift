@@ -33,11 +33,6 @@ nonisolated enum CCStore {
         static let onlineRooms = "cc.onlineRooms"
         static let mutedRooms = "cc.mutedRooms"
         static let netReadout = "cc.netReadout"
-        // 二分排障用的四个开关，见 `CCStore.offStatusPanel` 那段注释。
-        static let offStatusPanel = "cc.off.statusPanel"
-        static let offRoster = "cc.off.roster"
-        static let offAgentSampler = "cc.off.agentSampler"
-        static let offBackdrop = "cc.off.backdrop"
         static let releaseMicWhenIdle = "cc.audio.releaseMicWhenIdle"
         static let voiceProcessing = "cc.voiceProcessing"
         static let backdrop = "cc.backdrop"
@@ -199,42 +194,6 @@ nonisolated enum CCStore {
     ///
     /// **默认关。** 平时它是噪音 —— 正常人不需要随时盯着丢包率。
     /// 只有「地铁上又吞字了」那一刻它才值钱，所以做成开关。
-    /// ## 二分排障开关（2026-09-20 加，定位完就删）
-    ///
-    /// 症状：**静止不动、没人操作，app 就持续满转 72% CPU，两分钟内存从
-    /// 165 MB 涨到 1049 MB**（设备 cpu_resource 报告，PID 5240）。
-    /// 采样栈跟 09-19 那次看门狗崩溃**落在同一个位置** ——
-    /// `ViewGraphRootValueUpdater.render` / `_UIHostingView.layoutSubviews`，
-    /// 说明崩溃只是这个自激循环偶尔一轮超过 20 秒的结果。
-    ///
-    /// **为什么做成开关而不是一次改一处**：每换一个猜想就要编一次、装一次、
-    /// 占一次 Chris 的手机。四个开关做进同一个包，现场拨一下就能二分，
-    /// 一次装机跑完全部实验。
-    ///
-    /// 四个候选都是「不用任何操作就一直在跑」的东西 —— 这是从
-    /// 「静止也烧」这个事实倒推出来的筛选条件：
-    /// 状态屏（1 秒一跳）、人名牌子（0.35 秒一跳，还带头像图）、
-    /// 主画面采样（0.2 秒一跳）、背景（Liquid Glass 折射）。
-    static var offStatusPanel: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.offStatusPanel) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.offStatusPanel) }
-    }
-
-    static var offRoster: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.offRoster) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.offRoster) }
-    }
-
-    static var offAgentSampler: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.offAgentSampler) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.offAgentSampler) }
-    }
-
-    static var offBackdrop: Bool {
-        get { UserDefaults.standard.bool(forKey: Key.offBackdrop) }
-        set { UserDefaults.standard.set(newValue, forKey: Key.offBackdrop) }
-    }
-
     static var netReadout: Bool {
         get { UserDefaults.standard.bool(forKey: Key.netReadout) }
         set { UserDefaults.standard.set(newValue, forKey: Key.netReadout) }

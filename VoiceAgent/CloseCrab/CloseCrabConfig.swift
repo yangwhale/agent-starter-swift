@@ -21,17 +21,6 @@ final class CloseCrabConfig: ObservableObject {
     /// 显不显示网络读数。见 `CCStore.netReadout`。
     @Published var netReadout: Bool { didSet { CCStore.netReadout = netReadout } }
 
-    // MARK: - 二分排障（临时，定位完删掉）
-    //
-    // 为什么有这四个开关：见 `CCStore.offStatusPanel` 上那段。
-    // 一句话 —— app 静止不动也在满转烧 CPU、内存两分钟涨 883 MB，
-    // 四个「不用操作就一直在跑」的组件各给一个开关，现场二分，不用反复重编。
-
-    @Published var offStatusPanel: Bool { didSet { CCStore.offStatusPanel = offStatusPanel } }
-    @Published var offRoster: Bool { didSet { CCStore.offRoster = offRoster } }
-    @Published var offAgentSampler: Bool { didSet { CCStore.offAgentSampler = offAgentSampler } }
-    @Published var offBackdrop: Bool { didSet { CCStore.offBackdrop = offBackdrop } }
-
     /// 不说话时把麦克风让出去。见 `CCStore.releaseMicWhenIdle`。
     /// **改完要重启 App 才生效。**
     @Published var releaseMicWhenIdle: Bool { didSet { CCStore.releaseMicWhenIdle = releaseMicWhenIdle } }
@@ -71,10 +60,6 @@ final class CloseCrabConfig: ObservableObject {
         room = CCStore.room
         onlineRooms = CCStore.onlineRooms
         netReadout = CCStore.netReadout
-        offStatusPanel = CCStore.offStatusPanel
-        offRoster = CCStore.offRoster
-        offAgentSampler = CCStore.offAgentSampler
-        offBackdrop = CCStore.offBackdrop
         releaseMicWhenIdle = CCStore.releaseMicWhenIdle
         voiceProcessing = CCStore.voiceProcessing
         backdrop = CCStore.backdrop
