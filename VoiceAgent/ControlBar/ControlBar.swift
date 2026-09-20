@@ -53,7 +53,7 @@ struct ControlBar: View {
             )
         )
         .font(.system(size: 17, weight: .medium))
-        .frame(height: CC.Size.controlBar)
+        .frame(height: CC.Size.bar)
         #if !os(visionOS)
             // 一整条就是一块玻璃，按钮本身不再各带背景 —— 这是系统标签栏
             // 和 App Store 底栏的做法。原来那套「描边 + 实心底 + 投影」

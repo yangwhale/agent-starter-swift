@@ -73,7 +73,7 @@ struct StartView: View {
             Text(verbatim: "开始通话")
                 .matchedGeometryEffect(id: "connect", in: button)
                 .frame(maxWidth: .infinity)
-                .frame(height: CC.Size.talkBar)
+                .frame(height: CC.Size.bar)
         } busyLabel: {
             HStack(spacing: CC.Space.snug) {
                 ProgressView()
@@ -83,7 +83,7 @@ struct StartView: View {
                     .matchedGeometryEffect(id: "connect", in: button)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: CC.Size.talkBar)
+            .frame(height: CC.Size.bar)
         }
         .font(.headline)
         // 主操作用 prominent 玻璃：它自带染色、按压形变和无障碍对比度处理，
@@ -113,7 +113,7 @@ struct StartView: View {
             }
             .font(.body.weight(.medium))
             .padding(.horizontal, CC.Space.regular)
-            .frame(height: CC.Size.talkBar)
+            .frame(height: CC.Size.bar)
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)

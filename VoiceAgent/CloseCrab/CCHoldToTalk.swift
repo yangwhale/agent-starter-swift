@@ -70,7 +70,7 @@ struct CCTalkBar: View {
         }
         .foregroundStyle(foreground)
         .frame(maxWidth: .infinity)
-        .frame(height: CC.Size.talkBar)
+        .frame(height: CC.Size.bar)
         // Liquid Glass 本体。`.interactive()` 让它在手指按下时自己产生
         // 折射和高光的形变 —— 这是系统按钮的那套反馈，自己用 scaleEffect
         // 模仿永远差一口气。
