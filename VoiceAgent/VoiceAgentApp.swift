@@ -28,6 +28,13 @@ struct VoiceAgentApp: App {
         self.rooms = rooms
         CCAvatarLink.shared.attach(rooms: rooms)
 
+        // ⭐ **要在连任何房间之前。** SDK 文档明确说
+        //    `isAutomaticConfigurationEnabled` 得在连接前设；而且连上的那一刻
+        //    就会开一次麦（见 CCAudioSessionPolicy 的类文档），晚一步就晚了。
+        #if os(iOS) || os(visionOS)
+        CCAudioSessionPolicy.shared.install()
+        #endif
+
         // 手写体自己注册一次兜底。**Font.custom 找不到字体时不报错、直接退回
         // 系统字体**，所以漏打包只会表现成「开关拨了没反应」，没有任何日志。
         // 这一步顺便把结果记下来给设置页显示。

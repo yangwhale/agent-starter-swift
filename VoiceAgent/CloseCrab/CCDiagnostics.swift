@@ -243,6 +243,16 @@ struct CCDiagnosticsView: View {
         NavigationStack {
             List {
                 Section {
+                    #if os(iOS) || os(visionOS)
+                    // 「改了没效果」和「改了但根本没跑到」长得一模一样，
+                    // 所以把最后一次实际落下去的配置显示出来。
+                    LabeledContent {
+                        Text(verbatim: CCAudioSessionPolicy.shared.lastApplied)
+                            .font(.caption).multilineTextAlignment(.trailing)
+                    } label: {
+                        Text(verbatim: "音频会话")
+                    }
+                    #endif
                     LabeledContent {
                         Text(verbatim: rooms.activeName)
                     } label: {

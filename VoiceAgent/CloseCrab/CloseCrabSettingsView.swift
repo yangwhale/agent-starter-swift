@@ -132,12 +132,20 @@ struct CloseCrabSettingsView: View {
                     Toggle(isOn: $config.netReadout) {
                         Text(verbatim: "显示网络读数")
                     }
+                    #if os(iOS) || os(visionOS)
+                    Toggle(isOn: $config.releaseMicWhenIdle) {
+                        Text(verbatim: "不说话时让出麦克风")
+                    }
+                    #endif
                 } header: {
                     Text(verbatim: "排障")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(verbatim: "在控制栏上方显示抖动缓冲深度和丢包率。信号差时用来分辨是「缓冲没涨上去」还是「整段断流」—— 这两种听起来一模一样，但处理方式完全相反。平时建议关掉。")
                         Text(verbatim: "Avatar 开关在房间里那排牌子上：双击「本人」或「语音助手」开关，开着的那个名字后面会有一个小屏幕标记。")
+                        #if os(iOS) || os(visionOS)
+                        Text(verbatim: "「让出麦克风」开着时，闭麦期间别的 App（比如语音输入法）能立刻拿到麦克风；代价是重新开口说话要多等一下引擎重启。关掉它会退回 LiveKit 原来的行为 —— 只要这次连接里录过一次音，麦克风就一直被占着直到断开。改完要重启 App 才生效。")
+                        #endif
                         if let err = avatar.lastPublishError {
                             Text(verbatim: "Avatar 开关没能报给服务端：\(err)")
                                 .foregroundStyle(.orange)

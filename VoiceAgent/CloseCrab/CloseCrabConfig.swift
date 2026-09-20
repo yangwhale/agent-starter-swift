@@ -21,6 +21,10 @@ final class CloseCrabConfig: ObservableObject {
     /// 显不显示网络读数。见 `CCStore.netReadout`。
     @Published var netReadout: Bool { didSet { CCStore.netReadout = netReadout } }
 
+    /// 不说话时把麦克风让出去。见 `CCStore.releaseMicWhenIdle`。
+    /// **改完要重启 App 才生效。**
+    @Published var releaseMicWhenIdle: Bool { didSet { CCStore.releaseMicWhenIdle = releaseMicWhenIdle } }
+
     @Published var onlineRooms: [String] { didSet { CCStore.onlineRooms = onlineRooms; syncOnline() } }
 
     /// 麦克风语音处理的实现。**全局一份**，每个房间的 `AudioOptions` 各自订阅它
@@ -56,6 +60,7 @@ final class CloseCrabConfig: ObservableObject {
         room = CCStore.room
         onlineRooms = CCStore.onlineRooms
         netReadout = CCStore.netReadout
+        releaseMicWhenIdle = CCStore.releaseMicWhenIdle
         voiceProcessing = CCStore.voiceProcessing
         backdrop = CCStore.backdrop
         pushToTalkKey = CCStore.pushToTalkKey

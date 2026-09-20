@@ -32,6 +32,7 @@ nonisolated enum CCStore {
         static let room = "cc.room"
         static let onlineRooms = "cc.onlineRooms"
         static let netReadout = "cc.netReadout"
+        static let releaseMicWhenIdle = "cc.audio.releaseMicWhenIdle"
         static let voiceProcessing = "cc.voiceProcessing"
         static let backdrop = "cc.backdrop"
         static let pushToTalkKey = "cc.pttKey"
@@ -150,6 +151,21 @@ nonisolated enum CCStore {
             return mode
         }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: Key.voiceProcessing) }
+    }
+
+    /// 不说话的时候把麦克风让给别的 App。**默认开。**
+    ///
+    /// 关掉就退回 LiveKit 自己那套 —— 它一旦录过一次音，就把音频类别钉在
+    /// 「又放又录」上直到断开，静音也不松手（原因见 `CCAudioSessionPolicy`）。
+    ///
+    /// ⚠️ **`bool(forKey:)` 在没存过的时候返回 `false`，所以这里不能用它** ——
+    /// 用了的话默认值就悄悄变成「关」，而这个功能的默认应该是「开」。
+    ///
+    /// ⚠️ 改完**要重启 App 才生效**：接管发生在启动时，中途换回去没法干净地
+    /// 把 session 还给 SDK。设置页那段说明里写了这一条。
+    static var releaseMicWhenIdle: Bool {
+        get { UserDefaults.standard.object(forKey: Key.releaseMicWhenIdle) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Key.releaseMicWhenIdle) }
     }
 
     /// 显不显示网络读数（缓冲深度 / 丢包率）。
