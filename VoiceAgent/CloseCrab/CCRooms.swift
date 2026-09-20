@@ -14,6 +14,9 @@ final class CCRoomSlot: ObservableObject, Identifiable {
     let localMedia: LocalMedia
     let audioOptions: AudioOptions
     let micPolicy: CCMicPolicy
+    /// 这个房间里 bot 在忙什么。**一房一份，槽位建的时候绑定，此后不换。**
+    /// 为什么不能是全局单例，见 `CCBotStatus` 类文档那条 ⛔。
+    let botStatus: CCBotStatus
 
     nonisolated var id: String { name }
 
@@ -58,6 +61,9 @@ final class CCRoomSlot: ObservableObject, Identifiable {
         localMedia = LocalMedia(session: session)
         audioOptions = AudioOptions(localMedia: localMedia)
         micPolicy = CCMicPolicy(session: session)
+        // ⭐ 现在就绑定，绑一次。**不要挪到界面 onAppear 里去** ——
+        //    分页界面横滑时两页同时在场，那样会一页绑一次，后来的把先来的挤掉。
+        botStatus = CCBotStatus(room: session.room)
 
         // 把连接的变化转发出去，方块才会自己刷新。
         // 包 `Task { @MainActor }`：sink 的闭包是 nonisolated 的，
@@ -70,6 +76,14 @@ final class CCRoomSlot: ObservableObject, Identifiable {
                     //    把静音从「按一下做一次」变成「一直维持住」。
                     //    新参与者、重连、重新发布 —— 都从这儿经过。
                     self.enforceMute()
+                    // 状态属性**只在变化时**才推，所以 bot 在我们连上之前发的
+                    // 那一份只能自己去扫。连上、重连、参与者进出都从这儿过。
+                    // 断开就把屏上的清掉 —— 不清的话会挂着上一次连着时的旧状态。
+                    if self.session.isConnected {
+                        self.botStatus.rescan()
+                    } else {
+                        self.botStatus.clear()
+                    }
                     self.objectWillChange.send()
                 }
             }

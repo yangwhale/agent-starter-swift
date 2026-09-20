@@ -23,7 +23,9 @@ import SwiftUI
 /// 5. **流水只留最后几行，而且淡。** 它是氛围不是信息 —— 真要看细节去看
 ///    飞书。这里多了就是刷屏，而刷屏的屏幕人会直接不看。
 struct CCBotStatusPanel: View {
-    @ObservedObject private var status = CCBotStatus.shared
+    /// **这一页那个房间的**状态。由 `AgentView` 从自己的槽位取出来传进来 ——
+    /// 曾经是 `CCBotStatus.shared`，那会让 A 房间的状态显示在 B 房间的屏上。
+    @ObservedObject var status: CCBotStatus
 
     /// 计时用。**必须自己驱动重算** —— `sec` 是服务端发的那一刻的值，
     /// 没有新属性进来它就不会变，而人要看的是「到现在多久了」。

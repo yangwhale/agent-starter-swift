@@ -26,7 +26,7 @@ enum CCBotAttr {
     nonisolated static let stepTopic = "cc.bot.step"
 }
 
-/// bot 此刻在忙什么 —— 中间那块屏的数据源。
+/// bot 此刻在忙什么 —— 中间那块屏的数据源。**一个房间一份。**
 ///
 /// ## 这块屏为什么归它
 ///
@@ -37,62 +37,87 @@ enum CCBotAttr {
 /// 所以：**数字人能放就放数字人，放不了就别空着** —— 那块地方本来就是
 /// 「这一刻 bot 在干什么」的位置，只是换了一种表达。
 ///
+/// ## ⛔ 它曾经是个单例，那是错的（2026-09-20 改）
+///
+/// 第一版写成 `CCBotStatus.shared` ＋ `attach(room:)`，两个后果：
+///
+/// 1. **数据不分房间。** bunny 发过状态之后切到 jarvis，屏上挂的还是
+///    bunny 的 —— 而那一栏写着「在读某某文件」，看的人没有任何理由怀疑
+///    它说的是另一个房间的事。
+/// 2. **`delegate` 只有一个存储位。** 这个 app 是分页的，横滑时**两页同时
+///    在场**，两个 `AgentView` 各调一次 `attach`。第二次赋值就把第一个
+///    delegate 放掉了，而第一个房间那边还挂着对它的引用。
+///
+/// 现在改成：**槽位建的时候连一次，此后再也不换。** 一个房间一个实例、
+/// 一个 delegate，生命周期跟着槽位走 —— 上面那两条都不可能再发生。
+///
 /// ## 两条数据，性质不同
 ///
 /// | | 走哪 | 为什么 |
 /// |---|---|---|
-/// | 当下状态 | 参与者属性 `cc.bot.state` | **有持久性**：你中途打开 app 立刻看到现况 |
+/// | 当下状态 | 参与者属性 `cc.bot.state` | **有持久性**：中途进房也立刻看到现况 |
 /// | 滚动流水 | 数据包 `cc.bot.step`（不可靠档） | 过期就没用，丢了无所谓，频率高 |
 ///
 /// 判据是「晚一秒还需要它吗」：需要 → 属性，不需要 → 数据包。
-/// 服务端那半边在 `closecrab/voice/livekit_out.py`。
-///
-/// ## ⚠️ 属性只在**变化时**推
-///
-/// `didUpdateAttributes` 给的是**变化的那几个键**，而且只在变化时才来。
-/// 所以 `attach` 时必须**主动扫一遍现有参与者**把当前值读进来 ——
-/// 不扫的话，进房之后到 bot 下一次动作之间那块屏是空的，
-/// 而那段时间可能有几分钟。
+/// 服务端那半边在 `closecrab/voice/livekit_out.py`，字段表在
+/// `CloseCrab/docs/bot-state-protocol.md`（**那份是协议的单一来源**）。
 @MainActor
 final class CCBotStatus: ObservableObject {
-    static let shared = CCBotStatus()
-
     @Published private(set) var snap: Snapshot?
     /// 最近几条流水。**只留几条** —— 它是氛围不是信息，多了就成了刷屏。
     @Published private(set) var steps: [String] = []
 
     private static let maxSteps = 4
 
+    /// **强持有，而且一辈子只有这一个。** 换掉它就是上面 ⛔ 那条里的 bug。
     private var delegate: Delegate?
-    private var attachedRooms = Set<ObjectIdentifier>()
+    private weak var room: Room?
+    /// 上一次解析过的原文。`rescan()` 靠它跳过重复解码 —— 见那个方法的注释。
+    private var lastRaw: String?
 
-    private init() {}
+    /// 绑定到一个房间。**由 `CCRoomSlot.init` 调，一次，此后不再调。**
+    init(room: Room) {
+        self.room = room
+        let fwd = Delegate(
+            onState: { [weak self] raw in
+                Task { @MainActor in self?.ingest(raw) }
+            },
+            onStep: { [weak self] data in
+                Task { @MainActor in self?.ingestStep(data) }
+            })
+        delegate = fwd
+        room.add(delegate: fwd)
+    }
 
-    /// 接到某个房间上。**可以重复调**（切房间、重连都会走到）。
-    func attach(room: Room) {
-        let key = ObjectIdentifier(room)
-        if !attachedRooms.contains(key) {
-            attachedRooms.insert(key)
-            let fwd = Delegate(
-                onState: { [weak self] raw in
-                    Task { @MainActor in self?.ingest(raw) }
-                },
-                onStep: { [weak self] data in
-                    Task { @MainActor in self?.ingestStep(data) }
-                })
-            delegate = fwd
-            room.add(delegate: fwd)
-        }
-        // ⭐ 补一次当前值。见类文档那条 ⚠️。
+    /// 把房间里现有的属性值扫一遍读进来。
+    ///
+    /// ⚠️ **必须有这一步。** `didUpdateAttributes` 只在**变化时**才来，所以
+    /// bot 在我们连上之前就发过的那一份，光靠回调是永远等不到的 ——
+    /// 表现是进房之后到 bot 下一次动作之间那块屏是空的，而那可能有几分钟。
+    ///
+    /// 由 `CCRoomSlot` 那条 `session.objectWillChange` 订阅驱动（连上、重连、
+    /// 参与者进出都从那儿过）。那条订阅触发得很频繁，所以这里**先比原文字符串
+    /// 再决定要不要解码** —— 没变就是一次字符串比较，够便宜。
+    func rescan() {
+        guard let room else { return }
         for p in room.remoteParticipants.values {
-            if let raw = p.attributes[CCBotAttr.state] { ingest(raw) }
+            if let raw = p.attributes[CCBotAttr.state], raw != lastRaw {
+                ingest(raw)
+            }
         }
     }
 
-    func detach() {
+    /// 房间断了/走了，把屏上的东西清掉。
+    ///
+    /// **不解绑 delegate** —— 槽位还在，重连之后还要继续收。
+    ///
+    /// ⚠️ 已经是空的就**什么都不做**。调用它的那条订阅每秒会过很多次，
+    /// 无脑写 `@Published` 等于每次都发一轮变更通知，白让界面重算。
+    func clear() {
+        guard snap != nil || !steps.isEmpty || lastRaw != nil else { return }
         snap = nil
         steps.removeAll()
-        attachedRooms.removeAll()
+        lastRaw = nil
     }
 
     // MARK: - 解析
@@ -103,6 +128,7 @@ final class CCBotStatus: ObservableObject {
         // 或者半路截断，清空会让屏幕闪一下变空 —— 那比停在旧值上更糟，
         // 因为旧值至少是真的发生过的。
         guard let s = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
+        lastRaw = raw
         snap = s
     }
 

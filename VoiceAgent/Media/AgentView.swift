@@ -15,7 +15,17 @@ struct AgentView: View {
     @EnvironmentObject private var rooms: CCRooms
     /// 只为「显示网络读数」那个排障开关订阅 —— 它同时控制柱子底下那行帧数。
     @ObservedObject private var config = CloseCrabConfig.shared
-    @ObservedObject private var botStatus = CCBotStatus.shared
+
+    /// 这一页那个房间的 bot 状态。**按 `Session` 对象身份找自己那个槽位** ——
+    /// 分页里每页注入的是自己那一页的 `Session`，拿不到槽位本身（理由见
+    /// `CCRooms.swift` 里 `ccBotParticipants` 那段注释），所以只能反查。
+    ///
+    /// ⚠️ 这里**没有** `@ObservedObject`，所以它的变化不会直接触发重算 ——
+    /// 靠下面 `sampler` 那 0.2 秒一次的轮询捎带。这跟本文件里
+    /// `ccIsSpeaking` 用轮询是同一个理由，不是偷懒。
+    private var botStatus: CCBotStatus? {
+        rooms.slots.first { $0.session === session }?.botStatus
+    }
 
     @Environment(\.namespace) private var namespace
 
@@ -46,7 +56,7 @@ struct AgentView: View {
     /// 而且**确实收到过状态**（没收到就退回柱子，别摆一块空板）。
     private var showBotStatus: Bool {
         guard !showAvatar, session.isConnected else { return false }
-        return botStatus.snap != nil
+        return botStatus?.snap != nil
     }
 
     private var showAvatar: Bool {
@@ -66,7 +76,7 @@ struct AgentView: View {
                     .padding(.horizontal, avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
                     .shadow(radius: 20, y: 10)
                     .transition(.ccLineReveal)
-            } else if showBotStatus {
+            } else if let status = botStatus, showBotStatus {
                 // 数字人放不了的时候，这块地方显示「bot 在忙什么」。
                 //
                 // Chris 2026-09-20 定的：「短时间内不会把 live avatar 打开，
@@ -76,7 +86,7 @@ struct AgentView: View {
                 // 判据是「有没有状态可显示」，**不是「数字人是不是 unavailable」** ——
                 // 后者要等服务端回话，在它回话之前这块屏会先空一会儿；
                 // 而 bot 状态是本来就在的，有就该显示。
-                CCBotStatusPanel()
+                CCBotStatusPanel(status: status)
                     .transition(.opacity)
             } else if session.isConnected {
                 // 这里原来在柱子底下写一行「在听,说吧 / 它在说 / 在想…」。
@@ -93,7 +103,9 @@ struct AgentView: View {
         //    外面再叠一条缓动会把「先快后慢」压平，又变回看不出过程。
         .ccAnimation(.linear(duration: CCLineReveal.duration), value: showAvatar)
         .ccAnimation(.snappy, value: showBotStatus)
-        .onAppear { botStatus.attach(room: session.room) }
+        // ⛔ 这儿原来有一句 `botStatus.attach(room:)`。**绑定不能放在界面里** ——
+        //    分页横滑时两页同时 onAppear，后来那次会把先来那次的 delegate 挤掉。
+        //    现在绑定在 `CCRoomSlot.init`，一房一次。
         .ccAnimation(.snappy, value: session.agent.audioTrack?.id)
         .matchedGeometryEffect(id: "agent", in: namespace!)
         .overlay { sampler }
