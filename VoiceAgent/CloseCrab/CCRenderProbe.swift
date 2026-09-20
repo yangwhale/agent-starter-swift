@@ -52,7 +52,11 @@ nonisolated enum CCProbe {
     /// 正常界面一秒重算十几次很常见（定时器 0.2 秒一跳、说话状态在变），
     /// 那些不是问题。**真正失控的会是三位数以上**，所以阈值定在这儿
     /// 既不刷屏、又不会漏掉。
-    private static let noisyPerSecond = 30
+    ///
+    /// ⚠️ 2026-09-20 从 30 提到 100：实测 `VoiceBars` 长期稳定压在 30
+    /// （它是 30 fps 的电平动画，**正常**），把真正的异常盖住了。
+    /// 真正失控的量级是三位数 —— 峰值抓到过 306。
+    private static let noisyPerSecond = 100
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var counts: [String: Int] = [:]
