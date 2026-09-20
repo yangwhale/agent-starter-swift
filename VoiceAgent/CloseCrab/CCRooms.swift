@@ -74,7 +74,6 @@ final class CCRoomSlot: Identifiable {
             .sink { [weak self] _ in
                 Task { @MainActor in
                     guard let self else { return }
-                    CCProbe.event("SlotWillChange")   // 探针：**合并前**的原始事件频率
                     self.scheduleRefresh()
                 }
             }
@@ -160,21 +159,21 @@ final class CCRoomSlot: Identifiable {
 
     /// 同一批事件只干一次活。
     ///
-    /// ⛔ 2026-09-20 探针实测：`session.objectWillChange` **峰值 306 次/秒**，
-    /// 而屏幕只有 120 Hz —— 每一帧里白跑两三轮。
+    /// ⛔ 2026-09-20 真机实测（200 秒窗口）：
+    ///   连接建立那几秒   `session.objectWillChange` 冲到 **310 次/秒**
+    ///   之后的稳态       落到 **6 ~ 18 次/秒**
     ///
-    /// 上一版（8ce009c）只解决了「变了之后通知谁」，没解决「多久算一次」：
-    /// 306 次回调就跑 306 次 `enforceMute()`（遍历全部远端音轨）、
-    /// 306 次 `rescan()`（遍历参与者读属性）、306 次逐项比对 ——
-    /// **省下的是下游重绘，省不掉上游这 306 轮遍历。**
+    /// ⚠️ 别被「稳态才 6 次」骗了去掉这个合并 —— **连接那几秒的尖峰才是要命的**。
+    /// 每一次回调都要跑一遍 `enforceMute()`（遍历全部远端音轨）、
+    /// `rescan()`（遍历参与者读属性）、以及六项逐项比对。
+    /// 不合并的话，光是建立连接那一下就要跑三百多轮遍历。
     ///
-    /// 这里做合并：第一条事件排一次活并立旗，同一批里后到的直接返回。
-    /// 排的那个 Task 在当前这批 main actor 任务排干之后才跑，
-    /// 所以一批事件无论多少条，只算一次。
+    /// （顺带记一笔方法论：之前每轮只采 20 秒，正好罩住连接那一段，
+    ///  于是把 306/504/830 当成了稳态特征 —— **窗口太短会把尖峰读成常态**。）
     ///
-    /// 探针分两个计数，**就是为了量出这一步的效果**：
-    ///   `⚡️SlotWillChange` 合并前（LiveKit 发了多少次）
-    ///   `⚡️SlotRefresh`     合并后（我们真干了多少次活）
+    /// 合并做法：第一条事件排一次活并立旗，睡满一个窗口，
+    /// 这期间来的全部被吃掉。实测尖峰段合并比 **最高 310 : 1**；
+    /// 稳态 6 : 1（上游只来 6 次，数学上就到顶了）。
     private var refreshScheduled = false
 
     /// 合并窗口。**这是「多久算一次」的唯一旋钮。**
@@ -200,7 +199,6 @@ final class CCRoomSlot: Identifiable {
             try? await Task.sleep(for: Self.refreshWindow)
             guard let self else { return }
             self.refreshScheduled = false
-            CCProbe.event("SlotRefresh")   // 探针：**合并后**真正干活的频率
             // ⭐ 每次房间有变化都补一次静音 —— 把静音从「按一下做一次」
             //    变成「一直维持住」。新参与者、重连、重新发布都从这儿过。
             self.enforceMute()

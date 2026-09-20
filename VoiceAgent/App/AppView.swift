@@ -22,8 +22,6 @@ struct AppView: View {
     @FocusState.Binding var keyboardFocus: Bool
 
     var body: some View {
-
-        let _ = CCProbe.tick("AppView")   // 探针，定位完删
         Group {
             if slot.isConnected {
                 interactions()

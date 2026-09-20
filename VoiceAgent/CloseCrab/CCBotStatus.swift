@@ -139,13 +139,11 @@ final class CCBotStatus {
         // 或者半路截断，清空会让屏幕闪一下变空 —— 那比停在旧值上更糟，
         // 因为旧值至少是真的发生过的。
         guard let s = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
-        CCProbe.event("StateAttr")   // 探针，定位完删
         lastRaw = raw
         snap = s
     }
 
     private func ingestStep(_ data: Data) {
-        CCProbe.event("StepPacket")   // 探针，定位完删
         guard let s = try? JSONDecoder().decode(StepPacket.self, from: data) else { return }
         for line in s.lines where !line.isEmpty {
             steps.append(line)

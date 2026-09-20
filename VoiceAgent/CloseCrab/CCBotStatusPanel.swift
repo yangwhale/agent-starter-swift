@@ -66,8 +66,6 @@ struct CCBotStatusPanel: View {
     }
 
     var body: some View {
-
-        let _ = CCProbe.tick("StatusPanel")   // 探针，定位完删
         VStack(alignment: .leading, spacing: 12) {
             header
             if let s = snap {
