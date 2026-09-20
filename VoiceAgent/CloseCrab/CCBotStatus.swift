@@ -191,8 +191,13 @@ final class CCBotStatus {
         var on: Bool = false
         /// 在等人（等批准 / 等回答）。空串＝没在等。
         var wait: String = ""
-        /// 主 agent 此刻在干啥
+        /// 主 agent 此刻在调哪个工具。**这是过程，不是任务** ——
+        /// 主行显示的是下面那两个，它只在没有任务可显示时兜底。
         var act: String = ""
+        /// 这一轮**被派去干什么** —— 就是用户那句话。
+        var task: String = ""
+        /// 这一轮**做成了什么** —— 回复的第一句。干完才有。
+        var sum: String = ""
         var sec: Double = 0
         var subs = Counts()
         var bg = Counts()

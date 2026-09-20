@@ -82,7 +82,7 @@ struct CCBotStatusStrip: View {
                 .font(.caption).bold()
                 .foregroundStyle(waiting ? Color.orange : .primary)
                 .fixedSize()
-            Text(verbatim: s.act.isEmpty ? "—" : s.act)
+            Text(verbatim: mainSummary(s))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -90,6 +90,23 @@ struct CCBotStatusStrip: View {
             Spacer(minLength: 6)
             clock(elapsed(s))
         }
+    }
+
+    /// 主行右边那一格：**任务，不是此刻在调哪个工具。**
+    ///
+    /// ⚠️ Chris 2026-09-20：「后面总是跟着一句『在跑命令』之类的，
+    /// 那也看不出来这个任务到底在干啥。」他说得对 —— 那一格原来填的是
+    /// `act`（此刻的工具调用），那是**过程**不是**任务**。
+    ///
+    /// 规则跟子 agent 那几行**完全一致**：
+    ///   跑着 → 被派去干什么（用户原话）
+    ///   干完 → 做成了什么（回复第一句）
+    /// `act` 只在两者都空时兜底（比如刚开始、还没拿到用户原话）。
+    private func mainSummary(_ s: CCBotStatus.Snapshot) -> String {
+        if s.on {
+            return s.task.isEmpty ? (s.act.isEmpty ? "—" : s.act) : s.task
+        }
+        return s.sum.isEmpty ? (s.task.isEmpty ? "—" : s.task) : s.sum
     }
 
     /// 左边那个短词。**只放状态，不放内容** —— 内容在它右边那一格。
@@ -191,7 +208,7 @@ struct CCBotStatusStrip: View {
     /// 触发，而流水不该重置计时基准。
     private var snapKey: String {
         guard let s = snap else { return "" }
-        return "\(s.on)|\(s.act)|\(s.wait)|\(s.sec)|\(s.tasks.count)"
+        return "\(s.on)|\(s.task)|\(s.sum)|\(s.wait)|\(s.sec)|\(s.tasks.count)"
     }
 
     // MARK: - 样式
