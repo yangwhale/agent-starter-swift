@@ -32,8 +32,9 @@ final class CCRoomSlot: Identifiable {
     /// 于是重启（或者后台待久了自动重连）之后，小喇叭图标还在，声音却回来了：
     /// 状态记住了，动作没跟上。
     ///
-    /// 记下已处理的轨道，是为了**只对新来的那几条动手** —— 读写 `volume` 会
-    /// 阻塞调用线程直到 WebRTC 信令线程应用完，不能每次刷新都全量重设一遍。
+    /// 记下已处理的**发布项**（publication，不是 track）是为了**只对新来的
+    /// 那几条动手** —— 读写 `volume` 会阻塞调用线程直到 WebRTC 信令线程应用完，
+    /// 而 `set(enabled:)` 还要走一趟信令，更不能每次刷新都全量重设一遍。
     ///
     /// 用 `ObjectIdentifier` 不用 `track.sid`：sid 那个类型来自另一个包，
     /// 它的字符串表示我在 SDK 源码里核不到 —— **核不到就不用**。
@@ -260,21 +261,45 @@ final class CCRoomSlot: Identifiable {
     ///
     /// 每次房间状态变化都会调到这儿（见 `init` 里那条订阅）。只对还没按当前
     /// 目标处理过的轨道动手，所以反复调用是廉价的。
+    /// ## ⚡️ 静音要做两件事，缺一个就只省一半
+    ///
+    /// 1. **音量拧到 0** —— 立刻生效，本地的事，不用等网络。
+    /// 2. **告诉服务端别再往下发这一路** —— `set(enabled: false)`。
+    ///
+    /// 原来只做了第 1 件，于是「静音」只是**听不见**：收包、解密、解码
+    /// 一步没少。两个房间在线就是两套完整的实时音频在跑，不管你听不听得见。
+    ///
+    /// ⚠️ 用 `set(enabled:)` **不是** `set(subscribed:)`，两者差别很重要：
+    ///   `subscribed=false`  真退订 —— 服务端删订阅、track 置 nil，
+    ///                       恢复要重新协商，切回来会有明显空白。
+    ///   `enabled=false`     只是让服务端停止下发数据，**订阅关系还在**，
+    ///                       恢复快得多。SDK 注释里的原话是给
+    ///                       「参与者滚出屏幕时省带宽」用的，正是这个场景。
+    /// （API 声明由 tommy 在 client-sdk-swift 2.17.0 源码里核过，不是猜的。）
+    ///
+    /// 所以不需要「静音 30 秒才断」那种延迟策略 —— 恢复够快，直接做就行。
     func enforceMute() {
-        let tracks = session.room.remoteParticipants.values
+        let pubs = session.room.remoteParticipants.values
             .flatMap(\.audioTracks)
-            .compactMap { $0.track as? RemoteAudioTrack }
+            .compactMap { $0 as? RemoteTrackPublication }
 
-        let live = Set(tracks.map(ObjectIdentifier.init))
+        let live = Set(pubs.map(ObjectIdentifier.init))
         handledTracks.formIntersection(live)   // 走掉的轨道别一直攒着
 
-        let pending = tracks.filter { !handledTracks.contains(ObjectIdentifier($0)) }
+        let pending = pubs.filter { !handledTracks.contains(ObjectIdentifier($0)) }
         guard !pending.isEmpty else { return }
         handledTracks.formUnion(pending.map(ObjectIdentifier.init))
 
-        let volume: Double = isMuted ? 0 : 1
+        let muted = isMuted
+        let volume: Double = muted ? 0 : 1
         Task.detached {
-            for track in pending { track.volume = volume }
+            for pub in pending {
+                // 本地先静音 —— 这一步是瞬时的，不受网络影响。
+                (pub.track as? RemoteAudioTrack)?.volume = volume
+                // 再让服务端别发了。失败不致命：音量已经是 0，
+                // 用户该听不见的还是听不见，只是没省到那份解码。
+                try? await pub.set(enabled: !muted)
+            }
         }
     }
 }
