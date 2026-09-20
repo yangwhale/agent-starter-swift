@@ -42,9 +42,19 @@ final class CloseCrabConfig {
 
     var onlineRooms: [String] { didSet { CCStore.onlineRooms = onlineRooms; syncOnline(); onSelectionChanged?() } }
 
-    /// 麦克风语音处理的实现。**全局一份**，每个房间的 `AudioOptions` 各自订阅它
-    /// 往自己那条麦克风轨上应用（见 `AudioOptions.init`）。
-    var voiceProcessing: VoiceProcessingMode { didSet { CCStore.voiceProcessing = voiceProcessing } }
+    /// 变了要通知谁 —— 由 `CCRooms` 认领，它再扇给全部槽位。
+    ///
+    /// ⚠️ **单个闭包 = 单个订阅者**，后注册的会覆盖先注册的。这里够用是因为
+    /// 只有 CCRooms 一家认领；**别让第二处也来注册**，那会静默丢掉一个。
+    var onVoiceProcessingChanged: ((VoiceProcessingMode) -> Void)?
+
+    /// 麦克风语音处理的实现。**全局一份**，改了要应用到每个房间自己那条麦克风轨上。
+    var voiceProcessing: VoiceProcessingMode {
+        didSet {
+            CCStore.voiceProcessing = voiceProcessing
+            onVoiceProcessingChanged?(voiceProcessing)
+        }
+    }
 
     // MARK: - 外观
     //

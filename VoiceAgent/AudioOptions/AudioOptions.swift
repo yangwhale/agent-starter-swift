@@ -43,7 +43,6 @@ final class AudioOptions: ObservableObject {
 
     private let localMedia: LocalMedia
     private var cancellable: AnyCancellable?
-    private var settingCancellable: AnyCancellable?
 
     init(localMedia: LocalMedia) {
         self.localMedia = localMedia
@@ -58,14 +57,11 @@ final class AudioOptions: ObservableObject {
                 apply(to: track)
             }
 
-        // 这项设置是**全局**的，但每个房间有自己的麦克风轨，所以每个槽位的
-        // `AudioOptions` 都得自己订一份、各自往自己那条轨上应用。
-        // 少了这一步，在设置里改完只有当前房间生效，滑到隔壁还是老的 ——
-        // 而这种不一致听得出来（回声消除不一样）却看不出来。
-        settingCancellable = CloseCrabConfig.shared.$voiceProcessing
-            .sink { [weak self] mode in
-                self?.apply(mode)
-            }
+        // ⚠️ 这里原来自己订阅 `CloseCrabConfig.shared.$voiceProcessing`。
+        //    config 转 @Observable 之后没有 `$` 投影了，而且**多播也不该
+        //    由每个实例各订一份** —— 现在改由 `CCRooms` 统一分发：
+        //    它本来就持有全部槽位，一个订阅者扇出，比 N 个订阅者干净。
+        //    新建的槽位不会漏：`voiceProcessingMode` 初值就是从 CCStore 读的。
     }
 
     /// The selected mode as SDK processing options.

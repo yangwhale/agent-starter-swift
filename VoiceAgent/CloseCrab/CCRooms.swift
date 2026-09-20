@@ -397,6 +397,12 @@ final class CCRooms {
         //    「即将改变」）；`didSet` 回调触发时值已经是新的，**不用跳**。
         //    而且范围收窄了：改背景图、拨震动开关不会再来跑一遍 sync()。
         config.onSelectionChanged = { [weak self] in self?.sync() }
+        // 语音处理是全局设置，但每个房间有自己的麦克风轨 —— 这里一处订阅、
+        // 扇给全部槽位。比「每个 AudioOptions 各订一份」少 N-1 个订阅者，
+        // 而且新建的槽位不会漏（它的初值本来就从 CCStore 读）。
+        config.onVoiceProcessingChanged = { [weak self] mode in
+            self?.slots.forEach { $0.audioOptions.apply(mode) }
+        }
     }
 
     // MARK: - 槽位增删
