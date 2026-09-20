@@ -34,6 +34,8 @@ struct CCRoomTileRow: View {
     @State private var iconEditing: CCRoomRef?
 
     var body: some View {
+
+        let _ = CCProbe.tick("TileRow")   // 探针，定位完删
         ScrollViewReader { scroller in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {

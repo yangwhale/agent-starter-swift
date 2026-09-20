@@ -237,6 +237,8 @@ struct CCVoiceBars: View {
     var glow: CGFloat = 1
 
     var body: some View {
+
+        let _ = CCProbe.tick("VoiceBars")   // 探针，定位完删
         VStack(spacing: CC.Space.snug) {
             metal
                 .mask { bars }

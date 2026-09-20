@@ -71,6 +71,8 @@ struct CCRosterRow: View {
     static let height: CGFloat = 44
 
     var body: some View {
+
+        let _ = CCProbe.tick("RosterRow")   // 探针，定位完删
         // 这里的 `from: .now` **是安全的**，不要照着另外两处一起改。
         // 闭包参数是 `_`（不看刻度值），而且里面**不回写任何 `@State`** ——
         // 那个自激环要「定时器回写状态、状态又被 body 读到」两头都成立才闭合。

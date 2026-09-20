@@ -85,6 +85,8 @@ struct AgentView: View {
     }
 
     var body: some View {
+
+        let _ = CCProbe.tick("AgentView")   // 探针，定位完删
         ZStack {
             // ⚠️ 走 `ccAvatarVideoTrack` 不走 `session.agent.avatarVideoTrack` ——
             //    我们的数字人挂在播报旁路名下，SDK 那条关联查不到。

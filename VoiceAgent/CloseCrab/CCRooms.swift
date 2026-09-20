@@ -84,6 +84,7 @@ final class CCRoomSlot: ObservableObject, Identifiable {
                     } else {
                         self.botStatus.clear()
                     }
+                    CCProbe.event("SlotWillChange")   // 探针，定位完删
                     self.objectWillChange.send()
                 }
             }

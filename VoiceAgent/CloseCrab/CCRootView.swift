@@ -48,6 +48,8 @@ struct CCRootView: View {
     @Namespace private var namespace
 
     var body: some View {
+
+        let _ = CCProbe.tick("RootView")   // 探针，定位完删
         Group {
             if let active = rooms.active {
                 CCShell(rooms: rooms, active: active)
@@ -138,6 +140,8 @@ private struct CCShell: View {
     @FocusState private var keyboardFocus: Bool
 
     var body: some View {
+
+        let _ = CCProbe.tick("Shell")   // 探针，定位完删
         ZStack {
             if active.session.isConnected {
                 connected()
@@ -181,6 +185,7 @@ private struct CCShell: View {
                 Color.clear.frame(height: CCTileConnector.height)
             }
             .overlayPreferenceValue(CCTileAnchorKey.self) { anchors in
+                let _ = CCProbe.tick("TileNeckPref")   // 探针，定位完删
                 CCTileNeckView(
                     anchors: anchors,
                     activeName: rooms.activeName,
