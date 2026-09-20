@@ -307,10 +307,16 @@ struct CloseCrabSettingsView: View {
         switch config.voiceProcessing {
         case .software:
             "WebRTC 软件处理，关掉 Apple 的那套。默认，回声消除最干净。"
+            + "\n⚡️ 但它**跑在 CPU 上**，而且只在你说话时启动 —— "
+            + "「一开口手机就热」多半是它。想省电就试试下面两档。"
         case .platform:
             "只用 Apple 的系统语音处理。设备不支持时会应用失败。"
+            + "\n⚡️ 走专用芯片，**最省电**。代价是回声可能没软件那套消得干净 —— "
+            + "bot 的声音从扬声器出来又被麦克风收回去时最容易听出差别。"
         case .automatic:
             "SDK 默认：优先 Apple，不可用时退回 WebRTC。"
+            + "\n⚡️ 省电介于两者之间，但**你不知道此刻用的是哪套** —— "
+            + "排查回声问题时先切到上面两档中的一个，别用这档。"
         }
     }
 }
