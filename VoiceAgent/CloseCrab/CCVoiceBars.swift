@@ -102,7 +102,7 @@ final class CCVoiceMeter: AudioRenderer {
     /// 30fps 把电平推进柱子里。
     ///
     /// **不在 `render` 里直接改 `levels`。** 音频回调是每 10ms 一次、在音频线程上，
-    /// 每次都跳一趟主线程改 `@Published` 会让 SwiftUI 一秒重绘一百次，
+    /// 每次都跳一趟主线程改 `levels` 会让 SwiftUI 一秒重绘一百次，
     /// 而屏幕只有 60Hz。泵把两边解耦：音频那头只管往 `incoming` 里塞最新值。
     private func startPump() {
         pump?.cancel()

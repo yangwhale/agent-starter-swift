@@ -34,9 +34,13 @@ import SwiftUI
 /// 只在**每次新连接建立的那一刻**强制闭一次。之后你点控制栏的麦克风按钮常开，
 /// 它不管 —— 否则用户会觉得「这破按钮点了就弹回去」。
 @MainActor
-final class CCMicPolicy: ObservableObject {
+@Observable
+final class CCMicPolicy {
     /// 按住说话期间为 true。用来给界面上那片区域画高亮，也用来挡住重复触发。
-    @Published private(set) var isHolding = false
+    ///
+    /// **属性级追踪**：读它的那条说话栏会自己更新，别的地方不受影响。
+    /// 原来是 `@Published` —— 对象级通知，这个类里随便改点什么都要惊动订阅者。
+    private(set) var isHolding = false
 
     private let session: Session
     private var cancellable: AnyCancellable?
@@ -50,6 +54,13 @@ final class CCMicPolicy: ObservableObject {
         // `receive(on:)` 只保证在主**线程**，编译器并不知道那就是 MainActor ——
         // Swift 6 严格并发下直接调 `connectionChanged()` 会报跨 actor 调用。
         // 包一层 `Task { @MainActor in }` 把隔离说清楚。
+        //
+        // 📌 **这是全 app 最后一个没做合并的 `session.objectWillChange` 订阅。**
+        //    `CCRooms` 那条有 80 ms 合并窗口，这条没有 —— 连接建立那几秒上游
+        //    能到 310 次/秒，这里就会起 310 个 Task，而其中只有一个会真干活。
+        //    **它到底占多少电没量过**，所以先只记下来，不凭感觉改：
+        //    真要改的话，难点是 sink 闭包里读不到 MainActor 上的状态，
+        //    没法在进 Task 之前就把无关通知挡掉。
         cancellable = session.objectWillChange
             .sink { [weak self] _ in
                 Task { @MainActor in self?.connectionChanged() }

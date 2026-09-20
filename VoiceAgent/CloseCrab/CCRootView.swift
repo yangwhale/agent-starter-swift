@@ -24,11 +24,15 @@ import SwiftUI
 ///
 /// ## 环境对象怎么给
 ///
-/// 全 app 有 19 处从环境里读 `Session` / `LocalMedia` / `AudioOptions` /
-/// `CCMicPolicy`，改多房间时**一处都没动**。这里保持那个契约：
+/// 界面各处从环境里读 `Session` / `LocalMedia` / `CCMicPolicy` / `CCRoomSlot`，
+/// 改多房间时**一处都没动**。这里保持那个契约：
 ///
 /// - chrome（控制栏、说话条）拿的是**当前槽位**的那一份
 /// - 每一页在自己子树里再注入**自己槽位**的那一份，就近覆盖外层
+///
+/// **两种注入方式并存，不是没统一**：`Session` / `LocalMedia` 是 LiveKit SDK
+/// 的类型，仍然是 `ObservableObject`，只能走 `.environmentObject`；我们自己的
+/// 类型全部是 `@Observable`，走 `.environment`。SDK 换代之前这条线就在这儿。
 ///
 /// 所以页面里的 `AgentView` 读到的永远是本页那个房间，哪怕它此刻不是当前页。
 struct CCRootView: View {
@@ -142,10 +146,11 @@ private struct CCShell: View {
             errors()
         }
         // chrome 读当前槽位。每一页会在自己子树里覆盖成本页的。
+        // `session` / `localMedia` 是 LiveKit SDK 的类型，还是 ObservableObject，
+        // 只能走 `.environmentObject`。我们自己的一律走 `.environment`。
         .environmentObject(active.session)
         .environmentObject(active.localMedia)
-        .environmentObject(active.audioOptions)
-        .environmentObject(active.micPolicy)
+        .environment(active.micPolicy)
         .environment(active)
         .ccAnimation(.default, value: active.isConnected)
         .ccAnimation(.default, value: chat)
@@ -294,8 +299,7 @@ private struct CCShell: View {
         AppView(chat: chat, keyboardFocus: $keyboardFocus)
             .environmentObject(slot.session)
             .environmentObject(slot.localMedia)
-            .environmentObject(slot.audioOptions)
-            .environmentObject(slot.micPolicy)
+            .environment(slot.micPolicy)
             // ⭐ 给这一页的几何动画 id 分区。**不分区的话相邻页会抢同一个 id** ——
             //    理由写在 `EnvironmentValues.geoScope` 上，那条是承重的。
             .environment(\.geoScope, slot.name)

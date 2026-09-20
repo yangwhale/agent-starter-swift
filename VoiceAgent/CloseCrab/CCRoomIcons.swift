@@ -25,8 +25,8 @@ import SwiftUI
 final class CCRoomIcons {
     static let shared = CCRoomIcons()
 
-    /// 键是房间名。用 `@Published` 整份替换而不是逐键改 ——
-    /// SwiftUI 对字典的逐键变更不保证发通知。
+    /// 键是房间名。**整份替换而不是逐键改** ——
+    /// 观察是挂在 `map` 这个属性上的，逐键改动不保证被看见。
     private(set) var map: [String: String]
 
     /// 传过图的房间 → 那张图。**跟 emoji 分开两份**，因为它们的取舍不同：

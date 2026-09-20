@@ -77,8 +77,11 @@ unproven and likely fights the morph animation*。
 
 ## 三、`ObservableObject` —— ✅ 2026-09-20 已迁移（本节原来的结论已作废）
 
-**现状：15 个类型用 `@Observable`，只剩 4 个 `ObservableObject`**
-（`CCStore` / `CCMicPolicy` / `CCHaptics` / `AudioOptions`）。
+**现状：我们自己的类型 `ObservableObject` 已经清零。**
+
+还剩两个 `.environmentObject` 注入点，那是 LiveKit SDK 的 `Session` 和
+`LocalMedia` —— 它们是 SDK 的类型，改不了，**只能不读**（见下面第 3 阶段）。
+SDK 哪天自己迁到 `@Observable`，这两行才能跟着换。
 
 ### 当初的判断对，但「不要顺手迁移」那句被现实推翻了
 

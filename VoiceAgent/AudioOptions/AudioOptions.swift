@@ -35,11 +35,19 @@ nonisolated enum VoiceProcessingMode: String, CaseIterable, Identifiable {
 /// To guarantee that the very first captured frames already use custom
 /// processing options, pass them as room defaults instead. See the comment
 /// on `RoomOptions` in `VoiceAgentApp`.
-final class AudioOptions: ObservableObject {
-    @Published private(set) var voiceProcessingMode: VoiceProcessingMode = CCStore.voiceProcessing
+/// ⚠️ **它不在环境里。** 曾经用 `.environmentObject` 注入过两处，但全 app
+/// 没有一个 `@EnvironmentObject` 读它 —— 唯一的真实用法是 `CCRooms` 收到
+/// 配置变化后直接对每个槽位调 `apply(_:)`。留着那两行注入只会让人以为
+/// 「界面某处在读它」，所以 2026-09-20 一并拆掉了。
+@Observable
+final class AudioOptions {
+    private(set) var voiceProcessingMode: VoiceProcessingMode = CCStore.voiceProcessing
 
     /// The last error from applying the selection, if any.
-    @Published private(set) var applyError: Swift.Error?
+    ///
+    /// ⚠️ 目前**没有任何界面读它**。留着是因为它是唯一记下失败的地方，
+    /// 但这意味着切换失败对用户是静默的 —— 真要修得在设置页把它显示出来。
+    private(set) var applyError: Swift.Error?
 
     private let localMedia: LocalMedia
     private var cancellable: AnyCancellable?

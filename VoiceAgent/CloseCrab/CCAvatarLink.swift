@@ -77,7 +77,7 @@ final class CCAvatarLink {
     private init() {
         let forwarder = CCAvatarDelegate { [weak self] raw in
             // ⚠️ delegate 回调**不保证在主线程**（SDK 文档原话）。
-            //    这一跳不能省，`serverState` 是 @Published、要在主线程改。
+            //    这一跳不能省，`serverState` 是被观察的属性、要在主线程改。
             Task { @MainActor in
                 self?.serverState = CCAvatarServerState.parse(raw)
             }
@@ -90,7 +90,7 @@ final class CCAvatarLink {
     /// 这个房间现在开着哪几个角色。
     ///
     /// ⚠️ **这是个纯读，不写任何东西。** 它会在 SwiftUI 的 body 里被调到
-    /// （牌子要画那个小屏幕标记），在读的过程中改 `@Published` 会触发
+    /// （牌子要画那个小屏幕标记），在读的过程中改被观察的属性会触发
     /// 「Modifying state during view update」——那是运行时警告加未定义刷新行为。
     /// 所以没被翻动过的房间就地从 `CCStore` 读，不回填缓存。
     func wants(room: String) -> CCAvatarWants {

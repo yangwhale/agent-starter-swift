@@ -29,7 +29,7 @@ import SwiftUI
 /// 手指按住后小幅滑动也不会中断。
 struct CCTalkBar: View {
     @EnvironmentObject private var localMedia: LocalMedia
-    @EnvironmentObject private var mic: CCMicPolicy
+    @Environment(CCMicPolicy.self) private var mic
     #if os(iOS) || os(visionOS)
     private var audio: CCAudioSessionPolicy { .shared }
     #endif
