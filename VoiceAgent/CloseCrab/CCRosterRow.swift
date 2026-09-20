@@ -53,14 +53,18 @@ import SwiftUI
 /// 通知** —— 不通知就不重算 body，牌子会停在旧状态上。所以定时采样。
 
 struct CCRosterRow: View {
-    @EnvironmentObject private var session: Session
+    /// ⚠️ **故意不用 `@EnvironmentObject`。** 这排牌子本来就靠下面那个
+    /// 0.35 秒的 `TimelineView` 定时重算（因为 `isSpeaking` 不保证发通知），
+    /// 所以它**不需要订阅** —— 订阅只会让它额外被 Session 的每一条变化叫醒，
+    /// 实测那是 306 次/秒。读槽位上的 `session` 拿数据，刷新交给定时器。
+    @Environment(CCRoomSlot.self) private var slot
     private var persona: CCPersona { .shared }
     /// Avatar 开关住在这儿（每房间、每角色），顺带拿服务端回报来给标记上色。
     private var link: CCAvatarLink { .shared }
     /// 正在放大看谁的形象。nil = 没在看。
     @State private var previewing: CCPersonaRole?
 
-    private var roomName: String { session.room.name ?? "" }
+    private var roomName: String { slot.session.room.name ?? "" }
 
     /// 这排牌子有多高。
     ///
@@ -99,12 +103,12 @@ struct CCRosterRow: View {
 
     private func roster() -> [CCRosterMember] {
         var out: [CCRosterMember] = []
-        let local = session.room.localParticipant
+        let local = slot.session.room.localParticipant
         out.append(CCRosterMember(
             id: local.identity?.stringValue ?? "me",
             role: .me, title: "我", speaking: local.isSpeaking))
         // 排序按角色，不按加入顺序 —— 顺序稳定，眼睛才不用每次重新找。
-        out.append(contentsOf: session.room.remoteParticipants.values
+        out.append(contentsOf: slot.session.room.remoteParticipants.values
             .map { CCRosterMember(participant: $0) }
             .sorted { $0.role.rank < $1.role.rank })
         return out

@@ -12,7 +12,9 @@ import SwiftUI
 /// 它的字幕、它的摄像头预览。每一页在自己子树里注入自己槽位的环境对象，
 /// 所以这里读到的 `session` 永远是本页那个房间 —— 哪怕它此刻不是当前页。
 struct AppView: View {
-    @EnvironmentObject private var session: Session
+    /// 这一页的槽位。**显示状态一律读它的镜像**，不读 `session` ——
+    /// `@EnvironmentObject` 会订阅 Session 的全部变化（实测峰值 306 次/秒）。
+    @Environment(CCRoomSlot.self) private var slot
     @EnvironmentObject private var localMedia: LocalMedia
 
     /// 字幕开关。**由 chrome 持有**，跨房间共享，所以这里是只读的值不是 `@State`。
@@ -23,7 +25,7 @@ struct AppView: View {
 
         let _ = CCProbe.tick("AppView")   // 探针，定位完删
         Group {
-            if session.isConnected {
+            if slot.isConnected {
                 interactions()
                     // 房间成员条挂在**这一页**的顶上，不提到 chrome 里 ——
                     // 每页的成员不一样，跟着页面走才对得上。
@@ -36,7 +38,7 @@ struct AppView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ccAnimation(.default, value: session.isConnected)
+        .ccAnimation(.default, value: slot.isConnected)
         .ccAnimation(.default, value: localMedia.isCameraEnabled)
         .ccAnimation(.default, value: localMedia.isScreenShareEnabled)
     }

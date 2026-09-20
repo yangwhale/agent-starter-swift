@@ -150,6 +150,7 @@ private struct CCShell: View {
         .environmentObject(active.localMedia)
         .environmentObject(active.audioOptions)
         .environmentObject(active.micPolicy)
+        .environment(active)
         .ccAnimation(.default, value: active.isConnected)
         .ccAnimation(.default, value: chat)
         // 预热 Taptic Engine。不热身的话第一下手势会明显迟半拍 ——
@@ -303,6 +304,10 @@ private struct CCShell: View {
             // ⭐ 给这一页的几何动画 id 分区。**不分区的话相邻页会抢同一个 id** ——
             //    理由写在 `EnvironmentValues.geoScope` 上，那条是承重的。
             .environment(\.geoScope, slot.name)
+            // ⭐ 把**槽位本身**注入这一页。界面读它的 @Observable 镜像属性，
+            //    不再 `@EnvironmentObject` 订阅 LiveKit 那个 Session ——
+            //    后者是老式对象，**读它任何一个属性就等于订阅它全部变化**。
+            .environment(slot)
     }
 
     /// 分页选中项。

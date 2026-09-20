@@ -11,7 +11,8 @@ import LiveKitComponents
 /// 所以显示条件不是「有没有视频轨」而是「**这一刻在不在说**」：开口展开、
 /// 说完收走。收尾留了一小段宽限期，不然句子之间的换气会让画面一闪一闪。
 struct AgentView: View {
-    @EnvironmentObject private var session: Session
+    /// 这一页的槽位。**显示一律读它的镜像**（见 `CCRoomSlot` 里那段 ⛔）。
+    @Environment(CCRoomSlot.self) private var slot
     @Environment(CCRooms.self) private var rooms
     /// 只为「显示网络读数」那个排障开关订阅 —— 它同时控制柱子底下那行帧数。
     @ObservedObject private var config = CloseCrabConfig.shared
@@ -23,9 +24,7 @@ struct AgentView: View {
     /// ⚠️ 这里**没有** `@ObservedObject`，所以它的变化不会直接触发重算 ——
     /// 靠下面 `sampler` 那 0.2 秒一次的轮询捎带。这跟本文件里
     /// `ccIsSpeaking` 用轮询是同一个理由，不是偷懒。
-    private var botStatus: CCBotStatus? {
-        rooms.slots.first { $0.session === session }?.botStatus
-    }
+    private var botStatus: CCBotStatus { slot.botStatus }
 
     @Environment(\.namespace) private var namespace
     /// 几何 id 按页分区。**多房间分页时不分区会跨页撞 id**，见 `geoScope` 的注释。
@@ -62,7 +61,7 @@ struct AgentView: View {
     /// `onChange` 不会被触发，环断开。
     @State private var epoch = Date.now
 
-    private var avatarTrack: (any VideoTrack)? { session.ccAvatarVideoTrack }
+    private var avatarTrack: (any VideoTrack)? { slot.avatarVideoTrack }
 
     /// 现在该不该显示数字人。
     ///
@@ -74,8 +73,8 @@ struct AgentView: View {
     /// 两个条件：数字人这会儿播不了（否则数字人优先，它才是这块屏的正主），
     /// 而且**确实收到过状态**（没收到就退回柱子，别摆一块空板）。
     private var showBotStatus: Bool {
-        guard !showAvatar, session.isConnected else { return false }
-        return botStatus?.snap != nil
+        guard !showAvatar, slot.isConnected else { return false }
+        return botStatus.snap != nil
     }
 
     private var showAvatar: Bool {
@@ -97,7 +96,7 @@ struct AgentView: View {
                     .padding(.horizontal, avatarVideoTrack.aspectRatio == 1 ? 4 * .grid : .zero)
                     .shadow(radius: 20, y: 10)
                     .transition(.ccLineReveal)
-            } else if let status = botStatus, showBotStatus {
+            } else if showBotStatus {
                 // 数字人放不了的时候，这块地方显示「bot 在忙什么」。
                 //
                 // Chris 2026-09-20 定的：「短时间内不会把 live avatar 打开，
@@ -107,9 +106,9 @@ struct AgentView: View {
                 // 判据是「有没有状态可显示」，**不是「数字人是不是 unavailable」** ——
                 // 后者要等服务端回话，在它回话之前这块屏会先空一会儿；
                 // 而 bot 状态是本来就在的，有就该显示。
-                CCBotStatusPanel(status: status)
+                CCBotStatusPanel(status: botStatus)
                     .transition(.opacity)
-            } else if session.isConnected {
+            } else if slot.isConnected {
                 // 这里原来在柱子底下写一行「在听,说吧 / 它在说 / 在想…」。
                 // 2026-09-18 Chris 让去掉 —— 同样的信息现在在顶部那排
                 // `CCRosterRow` 的助手牌子上（而且那儿还顺带告诉你
@@ -127,7 +126,7 @@ struct AgentView: View {
         // ⛔ 这儿原来有一句 `botStatus.attach(room:)`。**绑定不能放在界面里** ——
         //    分页横滑时两页同时 onAppear，后来那次会把先来那次的 delegate 挤掉。
         //    现在绑定在 `CCRoomSlot.init`，一房一次。
-        .ccAnimation(.snappy, value: session.agent.audioTrack?.id)
+        .ccAnimation(.snappy, value: slot.agentAudioTrack?.id)
         // ⭐ id 必须带页分区。横滑时相邻页同时在场，不分区就是 N 个 view
         //    在同一个 group 里都当 source —— SwiftUI 对此的行为是未定义的，
         //    而 09-19 那次看门狗崩溃的栈正卡在 preference 传递上
@@ -154,7 +153,7 @@ struct AgentView: View {
                 .allowsHitTesting(false)
                 .onChange(of: ctx.date, initial: true) { _, t in
                     now = t
-                    if session.ccIsSpeaking { lastSpokeAt = t }
+                    if slot.isSpeaking { lastSpokeAt = t }
                     // 轨没了就立刻清掉，不用等宽限期 ——
                     // 那不是「说完了」，是「走了」。
                     if avatarTrack == nil { lastSpokeAt = nil }
@@ -175,8 +174,8 @@ struct AgentView: View {
     /// （这行状态提示一直在变就是证据），可以拿它跑兜底动画。
     private var voiceBars: some View {
         CCVoiceBars(
-            tracks: session.ccBotAudioTracks,
-            isSpeaking: session.ccIsSpeaking,
+            tracks: slot.botAudioTracks,
+            isSpeaking: slot.isSpeaking,
             tint: CCIdentityColor.color(for: rooms.activeName),
             showsDebug: config.netReadout
         )
