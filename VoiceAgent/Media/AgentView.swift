@@ -45,6 +45,23 @@ struct AgentView: View {
     /// 采样间隔。跟 `CCRosterRow` 同一个量级，别更密 —— 这两处会同时重算。
     private static let tick: TimeInterval = 0.2
 
+    /// 定时器的起点。**必须是存下来的固定值，不能每次写 `.now`。**
+    ///
+    /// ⛔ 这是 2026-09-20「一从空闲变在忙就卡死、而且再也回不来」的真因：
+    ///
+    /// `.periodic(from:by:)` 的**第一个刻度就是 `from` 本身**。写成 `from: .now`
+    /// 的话，每次重算 body 都会取一次当前时间当起点 —— 于是**每次重建都立刻
+    /// 触发一跳**，那一跳又回写 `@State`，回写又触发重建。闭环，而且是死的。
+    ///
+    /// 为什么只在「在忙」时才发作：SwiftUI 按**读取**建依赖。空闲时那个时刻值
+    /// 根本没被读到，写它不会让 body 失效，环就合不上；一变在忙就读了，
+    /// 环当场闭合。`AgentView` 那个采样器是**一模一样的形状**，
+    /// 只是它的条件（数字人正在说话）平时不成立，所以一直没发作。
+    ///
+    /// 存成 `@State` 之后起点不动了：重建之后当前刻度还是同一个值，
+    /// `onChange` 不会被触发，环断开。
+    @State private var epoch = Date.now
+
     private var avatarTrack: (any VideoTrack)? { session.ccAvatarVideoTrack }
 
     /// 现在该不该显示数字人。
@@ -132,7 +149,7 @@ struct AgentView: View {
     /// 放在 `overlay` 里而不是包住整个 body：`TimelineView` 每个 tick 都会重算
     /// 它的内容，包住主画面的话 `SwiftUIVideoView` 会跟着每秒被重算五次。
     private var sampler: some View {
-        TimelineView(.periodic(from: .now, by: Self.tick)) { ctx in
+        TimelineView(.periodic(from: epoch, by: Self.tick)) { ctx in
             Color.clear
                 .allowsHitTesting(false)
                 .onChange(of: ctx.date, initial: true) { _, t in

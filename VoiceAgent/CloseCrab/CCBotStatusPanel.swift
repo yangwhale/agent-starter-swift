@@ -35,6 +35,23 @@ struct CCBotStatusPanel: View {
 
     private static let tick: TimeInterval = 1.0
 
+    /// 定时器的起点。**必须是存下来的固定值，不能每次写 `.now`。**
+    ///
+    /// ⛔ 这是 2026-09-20「一从空闲变在忙就卡死、而且再也回不来」的真因：
+    ///
+    /// `.periodic(from:by:)` 的**第一个刻度就是 `from` 本身**。写成 `from: .now`
+    /// 的话，每次重算 body 都会取一次当前时间当起点 —— 于是**每次重建都立刻
+    /// 触发一跳**，那一跳又回写 `@State`，回写又触发重建。闭环，而且是死的。
+    ///
+    /// 为什么只在「在忙」时才发作：SwiftUI 按**读取**建依赖。空闲时那个时刻值
+    /// 根本没被读到，写它不会让 body 失效，环就合不上；一变在忙就读了，
+    /// 环当场闭合。`AgentView` 那个采样器是**一模一样的形状**，
+    /// 只是它的条件（数字人正在说话）平时不成立，所以一直没发作。
+    ///
+    /// 存成 `@State` 之后起点不动了：重建之后当前刻度还是同一个值，
+    /// `onChange` 不会被触发，环断开。
+    @State private var epoch = Date.now
+
     private var snap: CCBotStatus.Snapshot? { status.snap }
 
     /// 服务端给的秒数 ＋ 从收到那一刻到现在。
@@ -275,7 +292,7 @@ struct CCBotStatusPanel: View {
     /// 放 overlay 里而不是包住 body：包住的话每秒整块重建，
     /// 子视图的动画会被打断。
     private var sampler: some View {
-        TimelineView(.periodic(from: .now, by: Self.tick)) { ctx in
+        TimelineView(.periodic(from: epoch, by: Self.tick)) { ctx in
             Color.clear
                 .onChange(of: ctx.date) { _, d in now = d }
                 .onChange(of: snapKey) { _, _ in
