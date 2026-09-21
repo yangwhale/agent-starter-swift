@@ -79,8 +79,41 @@
             ///
             /// 这是目前唯一**有希望**区分「真麦克风」和「扬声器回采通道」的字段 ——
             /// 声道数区分不了（扬声器报 4ch），传输类型也区分不了（两者都是 `bltn`）。
-            /// 先打进日志攒证据，**还没拿它做过滤**。
+            /// 先打进日志攒证据。2026-09-21 证据够了，见 `isOutputOnly`。
             let terminals: [String]
+
+            /// **有正面证据表明这台只能放、不能录。**
+            ///
+            /// 注意这个命名和写法：判的是「**确定是输出**」，不是「不确定是输入」。
+            /// 方向很关键 —— 见下面那张实测表。
+            ///
+            /// | 设备 | 声道 | term | 真身 |
+            /// |---|---|---|---|
+            /// | AirPods `:input` | 1ch | `micr` | 麦克风 |
+            /// | AirPods `:output` | 2ch | `hdph` | **耳机** |
+            /// | AU05 / 罗技摄像头 | 2ch | `micr` | 麦克风 |
+            /// | Unknown USB Audio Device | 2ch | `spkr` | **扬声器** |
+            /// | MacBook Air Microphone | 1ch | **空** | 麦克风 |
+            /// | iPhone 连续互通麦 | 1ch | **空** | 麦克风 |
+            /// | MacBook Air Speakers | 4ch | **空** | **扬声器** |
+            /// | 两个聚合设备 | 4ch | `micr,spkr` | 系统内部 |
+            ///
+            /// ⚠️ **`term` 是「有则可信、无则无信息」的字段。**
+            /// 空的那一档里**真麦克风和扬声器混在一起**（内置麦 和 内置扬声器
+            /// 都是空），所以**不能**反过来用「没有 micr 就扔」——
+            /// 那会把内置麦克风滤掉。
+            ///
+            /// ⇒ 只在**有明确输出终端、且没有麦克风终端**时才判定为输出。
+            /// 判不出来的一律留着：**漏掉一台能用的麦克风，比多列一台没用的更糟。**
+            var isOutputOnly: Bool {
+                guard !terminals.isEmpty else { return false }
+                // 四字符码用**实测到的字面量**，不用常量名。
+                // 理由：这三个串是我们自己的 `fourCC()` 打出来、被日志记录下来的，
+                // 属于观察结果；而常量名是我凭记忆写的，属于推测。
+                // 这里观察比记忆可靠。
+                let outputs: Set<String> = ["spkr", "hdph"]
+                return !terminals.contains("micr") && terminals.allSatisfy(outputs.contains)
+            }
         }
 
         /// 系统（CoreAudio）认得的输入设备。**只用来对账和打日志，不驱动界面。**
@@ -154,9 +187,26 @@
         func refresh() {
             let before = devices.map(\.deviceId)
 
-            devices = AudioManager.shared.inputDevices
             systemInputs = Self.coreAudioInputs()
             selectedID = AudioManager.shared.inputDevice.deviceId
+
+            // 把**确定只能放音**的那几台踢出去。
+            //
+            // 这条过滤是 2026-09-21 Chris「怎么开麦都没声」之后加的。
+            // LiveKit 那份清单会**间歇性**混进两台非录音设备
+            //（AirPods 的 `:output` 和一台 term 为 `spkr` 的 USB 设备），
+            // 而菜单里选中它们的结果就是**静音，且没有任何提示**。
+            //
+            // ⚠️ 在此之前菜单里只有一条，想选错都选不了。
+            // **是我把清单从 1 条放开到 6 条时，顺带把这两颗地雷也放了进来** ——
+            // 「让用户能选」和「保证每个选项都能用」是两件事，我只做了前一件。
+            let outputOnly = Set(systemInputs.filter(\.isOutputOnly).map(\.uid))
+            devices = AudioManager.shared.inputDevices.filter {
+                // ⚠️ 只在**认得出来**的时候滤。`id=default` 那条伪条目
+                //    在 CoreAudio 里查不到，自然留下 —— 这正是我们要的，
+                //    它是用户选错之后回到安全状态的那条路。
+                !outputOnly.contains($0.deviceId)
+            }
 
             let after = devices.map(\.deviceId)
             guard before != after || !listening else { return }
@@ -212,6 +262,10 @@
                 let term = s.terminals.isEmpty ? "-" : s.terminals.joined(separator: ",")
                 print("[CCAudioInputs]   \(s.name)  \(s.channels)ch \(s.transport) term=\(term)\(flags)  uid=\(s.uid)")
             }
+            let dropped = systemInputs.filter(\.isOutputOnly)
+            if !dropped.isEmpty {
+                print("[CCAudioInputs] 已滤掉（只能放音）: \(dropped.map(\.name).joined(separator: " / "))")
+            }
             print("[CCAudioInputs] 当前选中 id=\(selectedID)")
         }
 
@@ -247,12 +301,19 @@
         /// ⇒ **用户在不同时机打开菜单，看到的条目数可能不同。**
         /// 这比「只有一条」更难查，因为它**间歇性正确**。
         ///
-        /// ⛔ **现在没有证据支持任何一种过滤规则**，所以一条都不写。
-        /// 差的两条（AirPods 的 `:output`、`Unknown USB Audio Device`）
-        /// 靠 UID 后缀或名字能认出来，但那是字符串启发式，
-        /// 跟我在 `coreAudioInputs` 上面写的「别拿名字做匹配」是同一个坑。
-        /// 日志里多打了**输入流的终端类型**，那才是能区分
-        /// 「麦克风」和「扬声器回采」的字段 —— 等下次有人回来看这块时用。
+        /// ## 后来证据到了，于是有了**一条**过滤规则
+        ///
+        /// 加打了输入流的终端类型（`term`）之后，抖进来的那两台露了原形：
+        /// AirPods 的 `:output` 是 `hdph`、那台 Unknown USB 是 `spkr`。
+        /// 所以现在按 `SystemInput.isOutputOnly` 把它们踢掉 —— 规则只有一条，
+        /// 而且是**单向**的：只在有正面证据时踢，判不出来一律留。
+        ///
+        /// ⛔ 仍然**没有**按 `grup`（聚合设备）或名字前缀去筛。
+        /// 前者 LiveKit 那份压根没报过，筛了是空转；
+        /// 后者是字符串启发式，跟「别拿名字做匹配」同一个坑。
+        ///
+        /// 而 `MacBook Air Speakers`（4ch 假输入、term 为空）**也没被这条规则覆盖** ——
+        /// 它不需要：**LiveKit 那份从没报过它。** 我们只筛实际会出现在菜单里的东西。
         private static func coreAudioInputs() -> [SystemInput] {
             deviceIDs().compactMap { id in
                 let channels = inputChannels(of: id)
