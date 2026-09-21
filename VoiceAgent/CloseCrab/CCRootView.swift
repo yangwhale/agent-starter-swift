@@ -135,10 +135,19 @@ private struct CCShell: View {
     @State private var roomsPresented = false
     @FocusState private var keyboardFocus: Bool
 
+    /// 屏幕亮着吗。**两端都要** —— 省电闸门（`CCRenderGate`）读它决定要不要画。
+    ///
+    /// ⚠️ 它 2026-09-22 之前被关在下面那个 `#if os(macOS)` 里，
+    /// 跟两个 macOS 专用的窗口环境值挤在一块。省电那轮在**没有平台条件**的
+    /// 代码里用了它 ⇒ **macOS 编得过、iOS 报「cannot find 'scenePhase' in scope」**。
+    ///
+    /// ⇒ 这是判据的一个新缺口：我们那条「改动行在不在平台块内」的行级判据，
+    /// **管的是「我改的东西属于谁」，管不了「我改的东西依赖谁」。**
+    @Environment(\.scenePhase) private var scenePhase
+
     #if os(macOS)
         /// 工具栏那两颗要开独立场景。**名字不跟 SwiftUI 的环境键同名** ——
         /// 同名读起来像是覆盖了它。
-        @Environment(\.scenePhase) private var scenePhase
         @Environment(\.openWindow) private var openDiagWindow
         @Environment(\.openSettings) private var openSettingsWindow
     #endif
