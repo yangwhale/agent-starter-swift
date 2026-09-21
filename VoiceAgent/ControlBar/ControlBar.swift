@@ -123,11 +123,18 @@ struct ControlBar: View {
                         .glassEffect(.identity.interactive(), in: .capsule)
                     #endif
             }
-            #if os(macOS)
-                separator()
-                AudioDeviceSelector()
-                    .frame(height: Constants.buttonHeight)
-            #endif
+            // ⛔ 这里曾经有个**麦克风输入设备下拉**（2026-09-21 当天加、当天删）。
+            //
+            // 删掉的直接原因：**选任何一个设备，输入立刻失效** ——
+            // 而这个原因到删除为止都没定位。Chris 拍板「别让我选了，
+            // 跟随系统设置就行」。
+            //
+            // 跟输出那一头现在一致了：Mac 上换麦克风去系统设置。
+            //
+            // ⚠️ 别顺手加回来。那一下午实测出来的东西（SDK 那份清单为什么
+            //    不能直接用、声道数为什么判不了输入设备、清单为什么会抖）
+            //    全在 `docs/mac-audio-input-devices.md`，
+            //    里面也写了要重做的话该先过哪几关。
             Spacer()
         }
         .frame(width: Constants.buttonWidth)
