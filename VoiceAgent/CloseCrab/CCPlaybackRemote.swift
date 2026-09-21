@@ -28,8 +28,22 @@ import Observation
 @MainActor
 @Observable
 final class CCPlaybackRemote {
-    /// 服务端此刻在不在播。**只有它为真时界面才该出现。**
+    /// 播放器里**有没有东西**。⚠️ **暂停时它也是 true** ——
+    /// 服务端那一位是 `state != IDLE`，暂停时播放器还咬着这段音频。
+    /// 所以它只能用来判断「要不要显示这条控制栏」，
+    /// **不能用来画暂停/播放按钮**（那是 `isPaused`）。
     private(set) var isActive = false
+
+    /// 停住了、但随时能继续。
+    ///
+    /// ⚠️ **这一位必须从服务端单独拿，不能用 `!isActive` 推。**
+    /// 2026-09-22 第一版就是用 `isActive` 画的按钮，
+    /// 结果**暂停之后图标不变**，Chris 的原话是
+    /// 「我上哪去找播放按钮去？等于现在只能暂停，不能再恢复播放」。
+    ///
+    /// ⇒ 一般化：**一个布尔值的名字告诉你它叫什么，不告诉你它排除了什么。**
+    /// `active` 排除的是「空」，不是「暂停」—— 这得去读服务端实现才知道。
+    private(set) var isPaused = false
     /// 已播秒数。
     private(set) var played: Double = 0
     /// 总秒数。
@@ -83,6 +97,7 @@ final class CCPlaybackRemote {
     func refresh() async {
         guard let json = await invoke("progress") else { return }
         isActive = json["active"] as? Bool ?? false
+        isPaused = json["paused"] as? Bool ?? false
         played = json["played"] as? Double ?? 0
         // `total` 可能是 JSON null ⇒ `as? Double` 自然得到 nil，正是我们要的。
         total = json["total"] as? Double

@@ -75,17 +75,26 @@ struct CCPlaybackBar: View {
 
     private var buttons: some View {
         HStack(spacing: CC.Space.snug) {
+            // ⚠️ 重播、后退、前进**不能都用转圈箭头**。
+            //    第一版是 `arrow.counterclockwise` / `gobackward` / `goforward`，
+            //    三个都是圆弧箭头，在 13pt 下几乎分不出来
+            //    —— Chris 那张截图里前两颗看着就是同一个东西。
+            //    现在拖动用双三角（所有播放器的通用语汇），只有重播是圆弧。
             key("arrow.counterclockwise", "重播") { await remote.replay() }
-            key("gobackward", "后退") { await remote.seek(-step) }
+            key("backward.fill", "后退") { await remote.seek(-step) }
 
             // 中间这颗大一号，见类型注释。
-            key(remote.isActive ? "pause.fill" : "play.fill",
-                remote.isActive ? "暂停" : "继续",
+            //
+            // ⚠️ **读 `isPaused`，不是 `!isActive`。** 服务端的 `active`
+            //    在暂停时**仍然为真**（播放器还咬着那段音频）。
+            //    第一版用它画图标 ⇒ 暂停之后图标不变 ⇒ 找不到继续的入口。
+            key(remote.isPaused ? "play.fill" : "pause.fill",
+                remote.isPaused ? "继续" : "暂停",
                 size: 18) {
-                if remote.isActive { await remote.pause() } else { await remote.resume() }
+                if remote.isPaused { await remote.resume() } else { await remote.pause() }
             }
 
-            key("goforward", "前进") { await remote.seek(step) }
+            key("forward.fill", "前进") { await remote.seek(step) }
             key("xmark", "停止") { await remote.stop() }
         }
     }
