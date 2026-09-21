@@ -291,8 +291,29 @@ nonisolated enum CCStore {
     /// 这把密钥能换到任意白名单房间的 token，等于一把进所有助理房间的钥匙，
     /// 所以不放 UserDefaults（那是明文 plist，iTunes 备份里能直接看到）。
     /// `AfterFirstUnlock` 而不是 `WhenUnlocked`：锁屏状态下后台要能续 token。
+    /// 读到之后**在内存里留一份**。
+    ///
+    /// ## 为什么非缓存不可
+    ///
+    /// `CCEndpoint.signedHeaders` 每发一个请求就读一次 —— 拉房间列表一次、
+    /// 每个房间换 token 各一次。于是**每装一次新版本，macOS 要弹四次
+    /// 「Always Allow」**（Chris 2026-09-21 实测四次）。
+    ///
+    /// 为什么重装就会重弹：Keychain 条目的授权是**绑在代码签名上**的，
+    /// 而 Mac 版是 ad-hoc 签名（不能用企业证书签，签了 Santa 直接杀，
+    /// 见那条记忆）。每次重编签名都不一样 → 系统认为是**另一个 app**
+    /// 在读同一条密钥 → 重新问一遍。
+    ///
+    /// **缓存不解决「重装要点一次」，但把四次变成一次。**
+    /// 这是纯赚的那一半：读一次和读四次没有任何安全差别。
+    ///
+    /// ⚠️ 缓存必须在 `set` 里同步更新 —— 不然用户在设置页改了密钥，
+    /// 后续请求还在用旧的，表现是「改了密钥还是 401」。
+    private nonisolated(unsafe) static var secretCache: String?
+
     static var sharedSecret: String {
         get {
+            if let secretCache { return secretCache }
             let query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: keychainService,
@@ -304,7 +325,14 @@ nonisolated enum CCStore {
             guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
                   let data = item as? Data,
                   let value = String(data: data, encoding: .utf8)
-            else { return "" }
+            else {
+                // ⚠️ **取不到也要缓存空串。** 不缓存的话「没设过密钥」
+                //    这种情况每次请求都会再去敲一次 Keychain ——
+                //    而那正是最容易触发弹窗的路径（没有条目时系统也要查一遍）。
+                secretCache = ""
+                return ""
+            }
+            secretCache = value
             return value
         }
         set {
@@ -318,6 +346,8 @@ nonisolated enum CCStore {
             SecItemDelete(base as CFDictionary)
 
             let value = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 先更新缓存再落盘：这两步之间要是有人读，读到的必须是新值。
+            secretCache = value
             guard !value.isEmpty else { return }
 
             var add = base
