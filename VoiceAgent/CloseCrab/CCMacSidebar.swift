@@ -40,7 +40,8 @@
             List(selection: selection) {
                 Section {
                     ForEach(rooms.slots) { slot in
-                        CCMacRoomRow(slot: slot,
+                        CCMacRoomRow(rooms: rooms,
+                                     slot: slot,
                                      isActive: slot.name == rooms.activeName,
                                      isConnecting: rooms.connecting.contains(slot.name))
                             .tag(slot.name)
@@ -99,6 +100,9 @@
 
     /// 侧栏里的一行。
     private struct CCMacRoomRow: View {
+        /// **自己接管单击就要能切房间** —— 所以这一行需要 `rooms`。
+        /// 不能走 `List` 的 selection：那条路被双击手势挡住了（见 body 里那段）。
+        let rooms: CCRooms
         let slot: CCRoomSlot
         let isActive: Bool
         let isConnecting: Bool
@@ -138,19 +142,44 @@
                     .fill(hovering && !isActive ? Color.primary.opacity(0.06) : .clear)
                     .padding(.horizontal, -4)
             )
-            // ⛔ **这里原来挂了一个「双击静音」的 `.onTapGesture(count: 2)`，
-            //    它把 List 的选中点击整个吃掉了** —— 表现是「点侧栏里别的房间
-            //    根本切不过去」。Chris 2026-09-21 第一眼就撞上了。
+            // ⭐ **单击切房间 ＋ 双击静音，两个我们自己接管。**
             //
-            //    原因：`List(selection:)` 的选中是 List 自己的命中测试在处理的，
-            //    而往**行内容**上挂 `onTapGesture` 会抢在它前面。
-            //    `count: 2` 听起来「只管双击」，但手势识别器要先**等一下**
-            //    看会不会有第二下 —— 那一等就把单击也拦下来了。
+            //    ## 这里来回过一次，把两次的理由都留着
             //
-            //    **不用 `.simultaneousGesture` 去救**：那能不能解决取决于
-            //    手势优先级的细节，而我验不了。静音这个功能右键菜单里本来就有，
-            //    而右键是 Mac 上更对的入口 —— **删掉一个会打架的手势，
-            //    比留着它再想办法让它不打架划算。**
+            //    第一版：只挂 `.onTapGesture(count: 2)` 静音。
+            //    **结果把 List 的选中点击吃掉了** —— 点别的房间切不过去。
+            //    原因：`count: 2` 听起来只管双击，但手势识别器要先**等一下**
+            //    看有没有第二下，那一等就把单击也拦下来了。
+            //    ⚠️ 这跟平台无关 —— **任何平台上「双击」都必须等一个时间窗**，
+            //    所以注册了双击，单击就必然被延迟；区别只在框架补不补发。
+            //
+            //    第二版：删掉双击，静音只留右键菜单。**功能在，手感没了。**
+            //    Chris 2026-09-21：「双击来 mute 和 unmute 还是挺好用的，
+            //    你能给我弄回来。」—— 他要的是手感，不是可达性。
+            //
+            //    第三版（现在）：**两个都自己接管，不依赖 List 的命中测试。**
+            //    声明顺序 `count: 2` 在前、`count: 1` 在后 ——
+            //    SwiftUI 按声明顺序定优先级。
+            //
+            //    ⚠️ **这不是赌**：`CCRoomTileRow.gestures` 里早就是这个写法
+            //    （`long.exclusively(before: double.exclusively(before: single))`），
+            //    而且那儿的注释专门写着「双击必须声明在单击前面」。
+            //    **同一个问题这个仓库解过一次，我第一版没去找先例。**
+            //
+            //    为什么不用 `.simultaneousGesture` 去和 List 抢：
+            //    那是**让两套命中测试共存**，行为取决于优先级细节；
+            //    自己接管是**只剩一套**，确定得多。
+            //    选中高亮不受影响 —— `selection` 的 getter 读的是
+            //    `rooms.activeName`，我们调 `activate()` 它自然就跟上了。
+            .onTapGesture(count: 2) {
+                guard slot.session.isConnected else { return }
+                slot.applyMute(!slot.isMuted)
+            }
+            .onTapGesture(count: 1) {
+                // 点已经选中的那个不做事 —— 避免误触时白白重连一次。
+                guard !isActive else { return }
+                rooms.activate(slot.name)
+            }
             //
             // 右键菜单：鼠标用户的入口。手机上这些功能藏在长按里，
             // Mac 上长按不是一个存在的动作。
