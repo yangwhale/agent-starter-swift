@@ -90,6 +90,18 @@
         let rooms: CCRooms
         @FocusedValue(\.ccRoomDrawer) private var drawer
 
+        /// 往前/往后挪一个房间。**环形** —— 到头了回到另一头，
+        /// 而不是「到头就不动了」。顺序浏览的用法里，走到尽头卡住
+        /// 会让人以为快捷键失灵了。
+        private func step(_ delta: Int) {
+            let names = rooms.slots.map(\.name)
+            guard names.count > 1 else { return }
+            let i = names.firstIndex(of: rooms.activeName) ?? 0
+            // `%` 对负数会返回负值，先加一个 count 再取模。
+            let next = ((i + delta) % names.count + names.count) % names.count
+            rooms.activate(names[next])
+        }
+
         var body: some View {
             // ⌘K —— 「去哪个房间」。
             //
@@ -114,6 +126,26 @@
             }
             .keyboardShortcut("m", modifiers: [.command, .shift])
             .disabled(rooms.active == nil)
+
+            Divider()
+
+            // ⌥↑ / ⌥↓ —— 上一个 / 下一个房间。
+            //
+            // Chris 2026-09-21 点名要这个（「用 Option 加上下来切换房间」）。
+            // 它跟 ⌘1…⌘9 是**两种不同的用法**，不是重复：
+            //   ⌘1…⌘9  我知道我要去第几个 —— **随机访问**
+            //   ⌥↑ / ⌥↓ 我想挨个看看 —— **顺序浏览**
+            // 房间多到记不住第几个是谁的时候，只有后者能用。
+            //
+            // 为什么是 ⌥ 不是 ⌘：⌘↑/⌘↓ 在 Mac 上有既定含义
+            // （列表跳到首/末、Finder 进出目录），抢它会弄坏一个标准行为。
+            // ⌥ 加方向键在多数 app 里是「在同级之间移动」，语义正好对上。
+            Button("上一个房间") { step(-1) }
+                .keyboardShortcut(.upArrow, modifiers: .option)
+                .disabled(rooms.slots.count < 2)
+            Button("下一个房间") { step(1) }
+                .keyboardShortcut(.downArrow, modifiers: .option)
+                .disabled(rooms.slots.count < 2)
 
             Divider()
 

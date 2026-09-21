@@ -106,6 +106,8 @@
         /// 指针悬停。**Mac 上这不是锦上添花** —— 一个鼠标划过去毫无反应的
         /// 列表，用起来的感觉是「死的」，而那个印象比布局不对更早形成。
         @State private var hovering = false
+        /// 换图标选择器开着没有。
+        @State private var iconPicking = false
 
         private var icons: CCRoomIcons { .shared }
         private var identity: Color { CCIdentityColor.color(for: slot.name) }
@@ -136,11 +138,20 @@
                     .fill(hovering && !isActive ? Color.primary.opacity(0.06) : .clear)
                     .padding(.horizontal, -4)
             )
-            // 双击静音 —— 跟方块那边同一个手势，肌肉记忆通用。
-            .onTapGesture(count: 2) {
-                guard slot.session.isConnected else { return }
-                slot.applyMute(!slot.isMuted)
-            }
+            // ⛔ **这里原来挂了一个「双击静音」的 `.onTapGesture(count: 2)`，
+            //    它把 List 的选中点击整个吃掉了** —— 表现是「点侧栏里别的房间
+            //    根本切不过去」。Chris 2026-09-21 第一眼就撞上了。
+            //
+            //    原因：`List(selection:)` 的选中是 List 自己的命中测试在处理的，
+            //    而往**行内容**上挂 `onTapGesture` 会抢在它前面。
+            //    `count: 2` 听起来「只管双击」，但手势识别器要先**等一下**
+            //    看会不会有第二下 —— 那一等就把单击也拦下来了。
+            //
+            //    **不用 `.simultaneousGesture` 去救**：那能不能解决取决于
+            //    手势优先级的细节，而我验不了。静音这个功能右键菜单里本来就有，
+            //    而右键是 Mac 上更对的入口 —— **删掉一个会打架的手势，
+            //    比留着它再想办法让它不打架划算。**
+            //
             // 右键菜单：鼠标用户的入口。手机上这些功能藏在长按里，
             // Mac 上长按不是一个存在的动作。
             .contextMenu {
@@ -148,6 +159,21 @@
                     slot.applyMute(!slot.isMuted)
                 }
                 .disabled(!slot.session.isConnected)
+
+                Divider()
+
+                // Chris 2026-09-21：「这个列表的小方块长按的时候
+                // 也不给我激活那个换图标的功能。」
+                // Mac 上长按不存在，右键才是 —— 所以入口放这儿。
+                Button {
+                    iconPicking = true
+                } label: {
+                    Text(verbatim: "换图标…")
+                }
+            }
+            .sheet(isPresented: $iconPicking) {
+                // 房间方块那套选择器，key 就是房间名。
+                CCIconPickerSheet(room: slot.name)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(verbatim: "\(slot.name)，\(statusLine)"))
