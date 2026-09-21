@@ -12,6 +12,26 @@ struct StartView: View {
     @State private var settingsPresented = false
     @State private var roomsPresented = false
 
+    /// 启动页那一列的最大宽度。**跟登录框、表单一个量级** ——
+    /// 这一屏的信息量就是「选谁 ＋ 开始」，给它整屏宽度只会让两个控件
+    /// 各自拉成一条，彼此的关系反而看不出来。
+    private static let columnMax: CGFloat = 360
+
+    /// 这一屏那几个控件的高度。
+    ///
+    /// ⚠️ **Mac 不能照抄 56。** 那个数是按「拇指按得准」来的 ——
+    /// 手指的接触面积约 44pt，主操作再大一号才好按。
+    /// 鼠标是个像素级的指针，**它不需要这个余量**；
+    /// Mac 的标准按钮高度在 28–32 一带，摆一个 56pt 高的按钮在旁边，
+    /// 它跟系统控件根本不在一个尺度上。
+    ///
+    /// 这跟「按钮太大」是同一件事的两个面：横向是 columnMax 收的，纵向是这里。
+    #if os(macOS)
+        private static let controlHeight: CGFloat = 34
+    #else
+        private static let controlHeight: CGFloat = CC.Size.bar
+    #endif
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -40,8 +60,24 @@ struct StartView: View {
 
             Spacer()
         }
+        // ⭐ **整列限宽居中 —— 这是这一屏最要命的一条。**
+        //
+        //    Chris 2026-09-21：「这个开屏巨大的紫色按钮，我非常不满意，
+        //    跟现代化的应用格格不入。」
+        //
+        //    他指的是颜色，但**面积才是主因**。同一个紫色，
+        //    做成 320pt 宽的按钮是「主操作」，铺满 1500pt 就是「一堵墙」——
+        //    强调色的用量规则是：**小到你会想去点它，而不是大到你无法忽视它。**
+        //
+        //    满宽 CTA 不是没有出处：iOS 底部那种「继续 / 购买」就是满宽的。
+        //    但那是**钉在底部安全区上方**的固定位置，靠屏幕边缘框住它。
+        //    浮在屏幕正中间的满宽色块没有任何东西框着，
+        //    读起来就是一条网页横幅。
+        //
+        //    360 是按「一行按钮字数」取的，跟登录框、表单一个量级。
+        .frame(maxWidth: Self.columnMax)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, horizontalSizeClass == .regular ? CC.Space.section * 2 : CC.Space.screen)
+        .padding(.horizontal, CC.Space.screen)
         #if os(visionOS)
         .glassBackgroundEffect()
         .frame(maxWidth: 175 * .grid)
@@ -77,7 +113,7 @@ struct StartView: View {
             Text(verbatim: "开始通话")
                 .matchedGeometryEffect(id: "connect", in: button)
                 .frame(maxWidth: .infinity)
-                .frame(height: CC.Size.bar)
+                .frame(height: Self.controlHeight)
         } busyLabel: {
             HStack(spacing: CC.Space.snug) {
                 ProgressView()
@@ -87,13 +123,28 @@ struct StartView: View {
                     .matchedGeometryEffect(id: "connect", in: button)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: CC.Size.bar)
+            .frame(height: Self.controlHeight)
         }
         .font(.headline)
-        // 主操作用 prominent 玻璃：它自带染色、按压形变和无障碍对比度处理，
-        // 比自己拿一个蓝色矩形加圆角要「像系统的东西」。
-        .buttonStyle(.glassProminent)
-        .tint(.fgAccent)
+        #if os(macOS)
+            // Mac：**用系统的主按钮样式，不要自己画。**
+            //
+            // `.borderedProminent` 自带系统强调色、系统圆角、系统按压态，
+            // 而且会跟着「提高对比度」「减少透明度」这些辅助功能开关变。
+            // 自己拿一块饱和紫铺满，在那些设置下就跟旁边的系统控件对不上 ——
+            // 这正是「看着不像原生」最常见的来源。
+            //
+            // ⚠️ **不写 `.tint(.fgAccent)`** —— 让它跟随系统强调色。
+            //    用户在系统设置里把强调色改成绿色，这个按钮就该是绿的。
+            //    写死一个紫色等于告诉系统「你的偏好我不认」。
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        #else
+            // iOS：保留 prominent 玻璃（那是 iOS 26 的主操作语言），
+            // 但面积已经被上面那条 columnMax 收住了。
+            .buttonStyle(.glassProminent)
+            .tint(.fgAccent)
+        #endif
     }
 
     /// 进谁的房间。
@@ -117,7 +168,7 @@ struct StartView: View {
             }
             .font(.body.weight(.medium))
             .padding(.horizontal, CC.Space.regular)
-            .frame(height: CC.Size.bar)
+            .frame(height: Self.controlHeight)
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
