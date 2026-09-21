@@ -95,7 +95,7 @@ enum CC {
 
     /// **字阶比拉到 3 倍以上**。之前最大 `.headline` 最小 `.caption2`,
     /// 差不到 2 倍,整屏没有视觉焦点 —— 这是「看着廉价」的第二大来源
-    /// (第一是背景,见 CCAuroraBackground)。
+    /// (第一是背景,见 `CCBackdrop`)。
     ///
     /// 一个中文的硬约束:**PingFang SC 只有 6 个字重,最粗到 Semibold,
     /// 没有 Bold 也没有 Black**,而 SF Pro 有到 900。所以中文要「大」

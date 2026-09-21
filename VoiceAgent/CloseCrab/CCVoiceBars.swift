@@ -60,7 +60,13 @@ final class CCVoiceMeter: AudioRenderer {
     /// 持有的是强引用：轨那头只弱引用我们（`MulticastDelegate` 用 `NSHashTable`），
     /// 不构成环。`detach()` 会清干净。
     private var attached: [any AudioTrack] = []
+    /// 界面**想**挂的那几条。`attached` 是**此刻真的挂着**的那几条 ——
+    /// 安静的时候我们会把渲染器摘下来（见 `idleAfterSettle`），
+    /// 但下次开口还得挂回去，所以要把「想挂什么」单独记住。
+    private var desired: [any AudioTrack] = []
     private var pump: Task<Void, Never>?
+    /// 停止说话之后那一小段「等柱子落下去」的计时。
+    private var settle: Task<Void, Never>?
     /// 最近一次算出来的电平，等泵去消费。
     private var incoming: Float = 0
     private var isSpeaking = false
@@ -76,26 +82,87 @@ final class CCVoiceMeter: AudioRenderer {
     /// 换音轨时调。传空数组 ＝ 只断开。
     func attach(_ tracks: [any AudioTrack]) {
         detach()
+        desired = tracks
         guard !tracks.isEmpty else { return }
-        attached = tracks
-        for track in tracks { track.add(audioRenderer: self) }
         frames = 0
         isFallback = false
-        startPump()
+        // 挂上来的那一刻先**不**接渲染器 —— 等真的有人说话再接。
+        // 见 `engage` 上面那段。
+        if isSpeaking { engage() }
     }
 
     func detach() {
-        pump?.cancel()
-        pump = nil
+        settle?.cancel(); settle = nil
+        disengage()
+        desired = []
+    }
+
+    /// 界面告诉我们这个房间在不在出声。
+    ///
+    /// ## ⚡️ 这是整个省电改动里最要紧的一处
+    ///
+    /// 原来它只管「没泵就起一个」，**从不停**。于是：
+    ///
+    /// - 泵是 30fps 的 `Task` 循环，挂上音轨就开始跑，到视图消失才停
+    /// - 更贵的是渲染器：`track.add(audioRenderer:)` 之后 SDK
+    ///   **每 10ms 回调一次**，而 `render` 每次都 `Task { @MainActor }`
+    ///   跳一趟主线程
+    ///
+    /// 而方块行**每个房间一份**、常驻在界面上。五个房间、每个房间两条音轨
+    /// （语音助手 ＋ bot 本体旁路）＝ **十个渲染器，每秒一千次主线程跳转**，
+    /// 安静的时候也一样在跳。
+    ///
+    /// 现在：说话才接，安静就摘。
+    ///
+    /// ⚠️ **不立刻摘** —— 留 `settleSec` 让柱子自己落回静止，
+    /// 否则会定在半高上，像卡住了。
+    ///
+    /// ⚠️ 迟滞也顺带防抖：`isSpeaking` 是采样出来的，
+    /// 说话间隙会短暂变假，立刻摘再立刻挂比不摘还贵。
+    func setSpeaking(_ speaking: Bool) {
+        guard speaking != isSpeaking else { return }
+        isSpeaking = speaking
+        if speaking {
+            settle?.cancel(); settle = nil
+            engage()
+        } else {
+            idleAfterSettle()
+        }
+    }
+
+    /// 接上渲染器并开泵。**幂等。**
+    private func engage() {
+        guard !desired.isEmpty else { return }
+        if attached.isEmpty {
+            attached = desired
+            for track in attached { track.add(audioRenderer: self) }
+        }
+        if pump == nil { startPump() }
+    }
+
+    /// 摘掉渲染器并停泵，柱子归零。
+    private func disengage() {
+        pump?.cancel(); pump = nil
         for track in attached { track.remove(audioRenderer: self) }
         attached = []
         incoming = 0
+        isFallback = false
+        if levels.contains(where: { $0 > 0 }) {
+            levels = Array(repeating: 0, count: barCount)
+        }
     }
 
-    func setSpeaking(_ speaking: Bool) {
-        isSpeaking = speaking
-        if speaking, pump == nil { startPump() }
+    private func idleAfterSettle() {
+        settle?.cancel()
+        settle = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.settleSec))
+            guard let self, !Task.isCancelled, !isSpeaking else { return }
+            disengage()
+        }
     }
+
+    /// 停说之后再跑多久。够柱子落回静止，又不至于让安静的房间白跑。
+    private static let settleSec: Double = 0.6
 
     // MARK: - 泵
 

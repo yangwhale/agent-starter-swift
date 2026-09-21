@@ -214,11 +214,18 @@ private struct CCShell: View {
     /// 花括号**（那不是合法 Swift）。这条坑 `VoiceAgentApp` 里也记过一次。
     @ViewBuilder
     private func connected() -> some View {
-        #if os(macOS)
-            macLayout()
-        #else
-            touchLayout()
-        #endif
+        Group {
+            #if os(macOS)
+                macLayout()
+            #else
+                touchLayout()
+            #endif
+        }
+        // ⭐ **chrome 也要管。** 方块行不在分页里，它常驻在这一层 ——
+        //    而每个方块各有一份 `CCVoiceBars`（＝ 一个音频渲染器 ＋ 一个 30fps 泵）。
+        //    这里只判「屏幕亮着吗」；「是不是当前页」那一层在 `page()` 上，
+        //    子树上的 `.ccRendering` 会覆盖这一层，两者是收紧关系不是冲突。
+        .ccRendering(scenePhase == .active)
     }
 
     #if os(macOS)
