@@ -94,4 +94,7 @@
 /// —— `#if` 不能把 `WindowGroup {` 的花括号劈开，所以 id 也不能只给 macOS。
 enum CCWindowID {
     static let main = "cc.main"
+    /// 诊断窗口。**Mac 上它是独立窗口不是 sheet** —— 仪表盘的用法是
+    /// 「一边看它一边操作主窗口」，盖成一张纸就只能二选一。
+    static let diagnostics = "cc.diagnostics"
 }

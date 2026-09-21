@@ -177,6 +177,7 @@ private struct CCShell: View {
         // **用 focusedSceneValue 而不是单例**：值跟着当前获得焦点的窗口走，
         // 将来一个房间一个窗口时才不会作用错对象。理由写在 CCMacCommands 里。
         .focusedSceneValue(\.ccRoomDrawer, $roomsPresented)
+        .focusedSceneValue(\.ccChatVisible, $chat)
         #endif
     }
 

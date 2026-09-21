@@ -84,6 +84,8 @@ struct VoiceAgentApp: App {
             // 包一层 View 才订阅得到 —— 直接在这里读 `rooms.slots`，
             // 菜单只会在 App 构建那一刻取一次值，房间列表加载完不会刷新。
             CommandMenu("房间") { CCRoomMenuCommands(rooms: rooms) }
+            // 「通话」菜单：⌘T 字幕、⌘⌥D 诊断、⌘⇧H 挂断全部。
+            CommandMenu("通话") { CCCallMenuCommands(rooms: rooms) }
         }
         #endif
         #if os(visionOS)
@@ -108,6 +110,24 @@ struct VoiceAgentApp: App {
                     // 出现「主界面深色、设置浅色」那种拼接感。
                     .preferredColorScheme(config.appearance.colorScheme)
             }
+
+            // 诊断盘 —— **独立窗口，⌘⌥D**。
+            //
+            // 它在 iOS 上是 sheet，因为手机只有一块屏。Mac 上盖成一张纸是错的：
+            // 仪表盘的用法本来就是「一边盯着它、一边在主窗口里操作」，
+            // 而 sheet 恰恰把这两件事变成二选一。
+            //
+            // `Window` 场景自动出现在「窗口」菜单里，`.keyboardShortcut`
+            // 挂的就是那一条 —— 快捷键最大的问题从来不是不好用，是没人发现它存在。
+            Window("诊断", id: CCWindowID.diagnostics) {
+                CCDiagnosticsView()
+                    // ⚠️ 独立场景**不继承主窗口的环境**，`rooms` 要自己注入。
+                    //    漏了是运行时 trap 不是编译错误。
+                    .environment(rooms)
+                    .preferredColorScheme(config.appearance.colorScheme)
+            }
+            .defaultSize(width: 720, height: 600)
+            .keyboardShortcut("d", modifiers: [.command, .option])
 
             // 菜单栏常驻。Mac 的模型是「它一直在那儿」，不是「打开→用→退出」——
             // 窗口该能关掉而助手还活着。详见 CCMenuBar.swift。

@@ -17,11 +17,66 @@
         typealias Value = Binding<Bool>
     }
 
+    /// 字幕（转写）面板开着没有。同样跟着焦点窗口走。
+    struct CCChatVisibleKey: FocusedValueKey {
+        typealias Value = Binding<Bool>
+    }
+
     extension FocusedValues {
         /// 「把房间抽屉打开」。当前窗口自己挂上来。
         var ccRoomDrawer: Binding<Bool>? {
             get { self[CCRoomDrawerKey.self] }
             set { self[CCRoomDrawerKey.self] = newValue }
+        }
+
+        /// 字幕面板开关。
+        var ccChatVisible: Binding<Bool>? {
+            get { self[CCChatVisibleKey.self] }
+            set { self[CCChatVisibleKey.self] = newValue }
+        }
+    }
+
+    /// 「通话」菜单 —— 挂断、字幕、诊断。
+    ///
+    /// ## 为什么这些非进菜单不可
+    ///
+    /// 它们在界面上都已经有按钮了（控制栏那一排），所以「功能已经有了」。
+    /// 但在 Mac 上**菜单栏是这个 app 对用户的 API** ——
+    /// 不在菜单里的功能，老手会当它不存在，也永远不会发现它有快捷键。
+    ///
+    /// 换句话说：控制栏那排按钮解决的是「能不能做」，
+    /// 菜单解决的是「**知不知道能做、以及不用鼠标怎么做**」。
+    /// 这两件事在手机上是一回事，在 Mac 上不是。
+    struct CCCallMenuCommands: View {
+        let rooms: CCRooms
+        @FocusedValue(\.ccChatVisible) private var chat
+        @Environment(\.openWindow) private var openWindow
+
+        var body: some View {
+            // ⌘T —— 字幕/转写。T = Transcript。
+            Button(chat?.wrappedValue == true ? "隐藏字幕" : "显示字幕") {
+                chat?.wrappedValue.toggle()
+            }
+            .keyboardShortcut("t", modifiers: .command)
+            .disabled(chat == nil)
+
+            // ⌘⌥D —— 诊断盘。它是独立窗口，不是 sheet（理由见 VoiceAgentApp）。
+            Button("诊断…") { openWindow(id: CCWindowID.diagnostics) }
+                .keyboardShortcut("d", modifiers: [.command, .option])
+
+            Divider()
+
+            // ⌘⇧H —— 挂断。**挂全部**，跟控制栏那颗一致。
+            // 只挂当前那个的话，别的房间还连着、还在烧 Gemini，
+            // 而界面已经回到启动页 —— 用户以为断干净了。
+            //
+            // 不用 ⌘W：那是「关窗口」，而 Mac 上关窗**不该**挂断
+            // （菜单栏还在，助手还活着）。把这两件事绑在一起是最典型的移植味。
+            Button("挂断全部") {
+                Task { await rooms.endAll() }
+            }
+            .keyboardShortcut("h", modifiers: [.command, .shift])
+            .disabled(rooms.active == nil)
         }
     }
 

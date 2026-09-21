@@ -20,6 +20,11 @@ struct CCRoomListView: View {
     @State private var switchingTo: String?
     @State private var settingsPresented = false
     @State private var diagPresented = false
+    #if os(macOS)
+        /// 开诊断窗口。**名字不叫 `openWindow`** —— 那样跟 SwiftUI 自己的
+        /// 环境键同名，读起来像是覆盖了它。
+        @Environment(\.openWindow) private var openDiagnostics
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -64,9 +69,20 @@ struct CCRoomListView: View {
                 }
                 // Mac 走 ⌘, 那个独立窗口，其它平台弹 sheet。见 CCSettingsPresenter。
                 .ccSettingsSheet(isPresented: $settingsPresented)
-                .sheet(isPresented: $diagPresented) {
-                    CCDiagnosticsView()
-                }
+                // Mac 上诊断是**独立窗口**（⌘⌥D），不是 sheet ——
+                // 仪表盘要能跟主窗口并排看，盖成一张纸就只能二选一。
+                // 理由和 `ccSettingsSheet` 那条一样，见 CCSettingsPresenter。
+                #if os(macOS)
+                    .onChange(of: diagPresented) { _, want in
+                        guard want else { return }
+                        diagPresented = false        // 只是个「请打开」的脉冲
+                        openDiagnostics(id: CCWindowID.diagnostics)
+                    }
+                #else
+                    .sheet(isPresented: $diagPresented) {
+                        CCDiagnosticsView()
+                    }
+                #endif
         }
     }
 
