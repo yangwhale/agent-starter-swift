@@ -137,8 +137,16 @@
                 // 说话时套一圈绿 —— 跟方块那边同一个约定（所有会议软件都这么干），
                 // 不在 Mac 上自创一套。
                 if slot.isSpeaking {
+                    // ⚠️ **必须写 `Color.ccSpeaking`，不能用打点简写。**
+                    //    `ccSpeaking` 定义在 `extension Color` 上，而
+                    //    `strokeBorder(_:)` 收的是 `some ShapeStyle` ——
+                    //    打点简写会去 `ShapeStyle` 上找同名成员，找不到，
+                    //    报的是 `type 'ShapeStyle' has no member 'ccSpeaking'`，
+                    //    **完全不提「你该写全类型名」**。
+                    //    仓库里其它用它的地方都在能推断出 `Color` 的位置
+                    //    （三元返回值、`shadow(color:)`），所以这个形状没有先例。
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(.ccSpeaking, lineWidth: 2)
+                        .strokeBorder(Color.ccSpeaking, lineWidth: 2)
                 }
             }
             .frame(width: 22, height: 22)
