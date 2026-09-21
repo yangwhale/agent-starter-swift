@@ -84,6 +84,21 @@ struct CCRoomListView: View {
                     }
                 #endif
         }
+        // ⛔ **macOS 的 sheet 必须自己给尺寸，否则会塌成一条。**
+        //
+        //    iOS 的 sheet 默认占满屏幕，所以里面放什么都撑得开。
+        //    Mac 的 sheet **按内容的固有尺寸自适应** —— 而 `List` 是可滚动容器，
+        //    它的固有高度是 0。结果就是：数据全在，界面上什么都没有。
+        //
+        //    Chris 2026-09-21 报的「bot 列表一直是空的」就是这个。
+        //    ⚠️ 注意它的伪装：**「列表是空的」和「列表没被画出来」长得一模一样**，
+        //    而前者会让人去查数据源、查网络、查密钥 —— 全是白查。
+        //    这里数据不可能为空：`CCStore.roomsCSV` 取不到值时回落到
+        //    `defaultRooms`（六个名字写死在代码里），所以 `directory.rooms`
+        //    **至少有六条**。看不见就只能是布局。
+        #if os(macOS)
+            .frame(minWidth: 480, idealWidth: 540, minHeight: 440, idealHeight: 560)
+        #endif
     }
 
     // MARK: - 行
