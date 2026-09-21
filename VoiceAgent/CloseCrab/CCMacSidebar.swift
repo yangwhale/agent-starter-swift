@@ -101,7 +101,12 @@
     /// 侧栏里的一行。
     private struct CCMacRoomRow: View {
         /// **自己接管单击就要能切房间** —— 所以这一行需要 `rooms`。
-        /// 不能走 `List` 的 selection：那条路被双击手势挡住了（见 body 里那段）。
+        ///
+        /// ⚠️ 当初自己接管是因为双击手势挡住了 `List` 的 selection。
+        /// 双击已经删了（见 body 那段），所以**这个理由现在不成立了** ——
+        /// 但先不改回去：`List(selection:)` 那条路还在（键盘上下键走的就是它），
+        /// 两条并存目前没冲突，而**在同一轮里既删手势又换选中通路，
+        /// 出问题就分不清是哪一下**。留成已知的可简化项。
         let rooms: CCRooms
         let slot: CCRoomSlot
         let isActive: Bool
@@ -142,39 +147,40 @@
                     .fill(hovering && !isActive ? Color.primary.opacity(0.06) : .clear)
                     .padding(.horizontal, -4)
             )
-            // ⭐ **单击切房间 ＋ 双击静音，两个我们自己接管。**
+            // ⭐ **只剩单击切房间。双击静音删掉了 —— 这是第四版。**
             //
-            //    ## 这里来回过一次，把两次的理由都留着
+            //    ## 三版的来回，理由全留着（因为每一版都是被上一版逼出来的）
             //
-            //    第一版：只挂 `.onTapGesture(count: 2)` 静音。
-            //    **结果把 List 的选中点击吃掉了** —— 点别的房间切不过去。
+            //    **第一版**：只挂 `.onTapGesture(count: 2)` 静音。
+            //    结果把 List 的选中点击吃掉了 —— 点别的房间切不过去。
             //    原因：`count: 2` 听起来只管双击，但手势识别器要先**等一下**
             //    看有没有第二下，那一等就把单击也拦下来了。
-            //    ⚠️ 这跟平台无关 —— **任何平台上「双击」都必须等一个时间窗**，
-            //    所以注册了双击，单击就必然被延迟；区别只在框架补不补发。
             //
-            //    第二版：删掉双击，静音只留右键菜单。**功能在，手感没了。**
-            //    Chris 2026-09-21：「双击来 mute 和 unmute 还是挺好用的，
-            //    你能给我弄回来。」—— 他要的是手感，不是可达性。
+            //    **第二版**：删掉双击，静音只留右键菜单。功能在，手感没了。
+            //    Chris 要「双击 mute 还是挺好用的，弄回来」。
             //
-            //    第三版（现在）：**两个都自己接管，不依赖 List 的命中测试。**
-            //    声明顺序 `count: 2` 在前、`count: 1` 在后 ——
-            //    SwiftUI 按声明顺序定优先级。
+            //    **第三版**：单击和双击都自己接管，不依赖 List 的命中测试，
+            //    双击声明在单击前面（`CCRoomTileRow.gestures` 里的先例）。
+            //    两个功能都在了 —— **但代价一直在那儿，只是我当时只当它是实现细节。**
             //
-            //    ⚠️ **这不是赌**：`CCRoomTileRow.gestures` 里早就是这个写法
-            //    （`long.exclusively(before: double.exclusively(before: single))`），
-            //    而且那儿的注释专门写着「双击必须声明在单击前面」。
-            //    **同一个问题这个仓库解过一次，我第一版没去找先例。**
+            //    **第四版（现在）**：Chris 2026-09-21 16:56：
+            //    「双击来切换静音，让单击切换房间增加了 1 秒的延迟，
+            //    没那么灵活，感觉比较卡顿，就算了。」
             //
-            //    为什么不用 `.simultaneousGesture` 去和 List 抢：
-            //    那是**让两套命中测试共存**，行为取决于优先级细节；
-            //    自己接管是**只剩一套**，确定得多。
-            //    选中高亮不受影响 —— `selection` 的 getter 读的是
-            //    `rooms.activeName`，我们调 `activate()` 它自然就跟上了。
-            .onTapGesture(count: 2) {
-                guard slot.session.isConnected else { return }
-                slot.applyMute(!slot.isMuted)
-            }
+            //    ## 我第一版就写下了这个代价，却没把它当成代价
+            //
+            //    上面那句「注册了双击，单击就必然被延迟」——
+            //    **是我自己写的，而且写对了。** 我把它当成一条「解释为什么会冲突」
+            //    的知识，用完就放下了；没想到它在冲突解决之后**依然成立**：
+            //    手势不打架了，那一个时间窗还在，每一次切房间都要交这笔钱。
+            //
+            //    ⇒ **「为了让 A 能用而付的代价」，在 A 能用之后不会自动消失。**
+            //    冲突解决 ≠ 成本消失。判据：一个权衡写进注释时，
+            //    要顺带写清「谁在为它持续付钱」——
+            //    这里是「每一次单击的人」，而那是最高频的操作。
+            //
+            //    静音现在走右边那颗按钮（单击即切）＋ 右键菜单，
+            //    两个入口都不需要等时间窗。
             .onTapGesture(count: 1) {
                 // 点已经选中的那个不做事 —— 避免误触时白白重连一次。
                 guard !isActive else { return }
@@ -204,7 +210,11 @@
                 // 房间方块那套选择器，key 就是房间名。
                 CCIconPickerSheet(room: slot.name)
             }
-            .accessibilityElement(children: .combine)
+            // ⚠️ **`.combine` 不能再用了。** 它把整行压成一个元素，
+            //    而行里现在有一颗**能点的按钮** —— 压扁之后 VoiceOver
+            //    就摸不到它了，静音对读屏用户直接消失。
+            //    `.contain` 保留子元素可达，同时行本身仍有一个概括标签。
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(Text(verbatim: "\(slot.name)，\(statusLine)"))
         }
 
@@ -241,22 +251,72 @@
             .frame(width: 22, height: 22)
         }
 
+        /// 行尾：计时/转圈 ＋ **静音按钮**。
+        ///
+        /// 原来这里是三选一（转圈 / 静音图标 / 计时），静音那个只是**指示灯**，
+        /// 切换靠双击整行。第四版把它改成了按钮 —— 见 body 里那段。
         @ViewBuilder
         private var trailing: some View {
-            if isConnecting {
-                ProgressView().controlSize(.mini)
-            } else if slot.isMuted {
-                // 斜杠图标不是纯色圆点：一个红点的全部信息都在「红」上，
-                // 色觉障碍用户看到的是个灰点。形状自己会说话。
-                Image(systemName: "speaker.slash.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            } else if let sec = runningSeconds {
-                Text(verbatim: clock(sec))
-                    .font(.system(size: 10, design: .monospaced))
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
+            HStack(spacing: CC.Space.tight) {
+                if isConnecting {
+                    ProgressView().controlSize(.mini)
+                } else if let sec = runningSeconds {
+                    Text(verbatim: clock(sec))
+                        .font(.system(size: 10, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(.tertiary)
+                }
+                muteButton
             }
+        }
+
+        /// 单击即切静音。
+        ///
+        /// ## 为什么是喇叭不是麦克风
+        ///
+        /// Chris 的原话是「放一个小麦克风的图标」，**这里故意没照做**：
+        /// 这个开关管的是 `slot.applyMute`，也就是**这个房间的 bot 说的话要不要
+        /// 放给我听**（拧音量 ＋ 让服务端停发那一路），跟我自己的麦克风无关。
+        ///
+        /// 而控制栏里**真的有**一个管自己麦克风的按钮。两处都画麦克风，
+        /// 就变成「同一个图标管两件相反的事」——
+        /// 那种错认不会报错，只会让人某天纳闷「我明明静音了它怎么还在听」。
+        ///
+        /// ⇒ **图标要跟它控制的东西一致，不跟叫法一致。**
+        /// 真想要麦克风那个样子的话一句话的事，但得先确认语义没歧义。
+        ///
+        /// ## 为什么不是纯色圆点
+        ///
+        /// 一个红点的全部信息都在「红」上，色觉障碍用户看到的是个灰点。
+        /// 斜杠是形状，形状自己会说话。
+        ///
+        /// ## 常态也占位
+        ///
+        /// 没静音时画的是**低透明度的喇叭**，不是留白。留白的话这颗按钮
+        /// 只在静音时出现 —— 而「怎么静音」就又变成一个要靠猜的东西了。
+        /// 悬停时提亮，告诉你它能点。
+        private var muteButton: some View {
+            Button {
+                slot.applyMute(!slot.isMuted)
+            } label: {
+                Image(systemName: slot.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 11))
+                    // 只用一种颜色 ＋ 透明度分层。
+                    // **不要写成 `.secondary : .tertiary` 的三元** ——
+                    // 那两个是 `HierarchicalShapeStyle`，三元要求两支同类型，
+                    // 得套 `AnyShapeStyle` 才编得过，而那只是为了绕类型系统，
+                    // 视觉上跟直接调透明度没区别。
+                    .foregroundStyle(.secondary)
+                    .opacity(slot.isMuted ? 1 : (hovering ? 0.8 : 0.4))
+                    .frame(width: 18, height: 18)
+                    // 图标本身只有十来个点，**命中区要撑到 18pt** ——
+                    // 不然得瞄准才点得中，那就跟双击一样难用了。
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!slot.session.isConnected)
+            .help(slot.isMuted ? "取消静音" : "静音这个房间")
+            .accessibilityLabel(Text(verbatim: slot.isMuted ? "取消静音" : "静音"))
         }
 
         // MARK: - 状态那一行
