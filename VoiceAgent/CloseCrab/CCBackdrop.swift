@@ -32,7 +32,13 @@ import SwiftUI
 /// 睡那么久再醒一次。定时器每分钟醒一次去比对相位，一天白醒 1436 次，
 /// 而它等的事一天只发生 4 次。
 struct CCBackdrop: View {
-    /// 当前 bot 的主题色，透给极光那一层。
+    /// 当前 bot 的主题色。**是可选的** —— 一个房间都没连上时没有当前 bot。
+    ///
+    /// ⚠️ 用它之前必须解包。`Optional<Color>` 自己 **conform `View`**，
+    /// 所以 `tint.opacity(0.3)` 编得过 —— 但命中的是 `View.opacity`，
+    /// 返回 `some View` 而不是 `Color`。报错会是莫名其妙的
+    /// 「some View 不能转成 Color」，而不是「没有这个方法」。
+    /// （2026-09-22 新写 `ambient` 时就栽在这儿。）
     var tint: Color?
 
     private var config: CloseCrabConfig { .shared }
@@ -157,8 +163,13 @@ struct CCBackdrop: View {
     /// 它接替的是极光「背后不能是纯黑」那份职责 —— 而那份职责本来就不需要动画。
     /// 保留身份色是因为切 bot 时整片环境色跟着转，那个信号有用且零成本。
     private var ambient: some View {
-        LinearGradient(
-            colors: [tint.opacity(0.28), .bg1, tint.opacity(0.14)],
+        // ⚠️ **必须先解包。** `tint` 是 `Color?`，而 `Optional<Color>` 本身
+        //    conform `View` —— 直接 `tint.opacity(...)` 会命中 `View.opacity`
+        //    返回 `some View`，编译器报的是「some View 不能转成 Color」。
+        //    一个房间都没连上时退成中性灰，不假装有身份色。
+        let hue = tint ?? .fg3
+        return LinearGradient(
+            colors: [hue.opacity(0.28), .bg1, hue.opacity(0.14)],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
