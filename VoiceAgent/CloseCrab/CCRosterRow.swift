@@ -249,6 +249,27 @@ private struct CCRosterChip: View {
 
     /// 这个牌子有没有自己的一张脸。没有的（我 / Avatar / 访客）就还画图标。
     private var personaRole: CCPersonaRole? { member.role.personaRole }
+
+    /// 没设过形象图时画什么。
+    ///
+    /// **「本人」那块牌子用 bot 自己的图标**（emoji / 首字母）——
+    /// 那块牌子上显示的本来就是 bot 的名字（Bunny），
+    /// 而这个图标跟侧栏、方块行上的是**同一个**，一眼对得上是谁。
+    /// 用 `megaphone.fill`（角色默认符号）反而不知道在说哪个 bot。
+    ///
+    /// 其余角色用各自的语义符号（语音助手＝波形）。
+    @ViewBuilder
+    private var defaultFace: some View {
+        if member.role == .broadcast {
+            Text(verbatim: CCRoomIcons.shared.icon(for: room))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.fg1)
+        } else {
+            Image(systemName: member.role.symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.fg2)
+        }
+    }
     private var thumb: Image? {
         personaRole.flatMap { persona.images[$0.key(room: room)] }
     }
@@ -281,15 +302,28 @@ private struct CCRosterChip: View {
             // 只判「有没有脸」，不需要解包出来的值 —— 里面用的是 thumb / busy，
             // `if let` 会留一个没人用的绑定，编译器直接报 warning。
             if personaRole != nil {
-                // ⭐ 有脸的角色画缩略图，没设过就画一个「加图」的占位 ——
-                //    占位本身就是在告诉用户「这儿能传图」，比任何提示文案都省地方。
+                // ⭐ 有脸的角色画缩略图，**没设过画这个角色自己的默认图标**。
+                //
+                //    ⛔ 原来画的是 `photo.badge.plus`（「加图」占位），
+                //    理由写的是「占位本身就在告诉用户这儿能传图」。
+                //    那条在手机上勉强成立，但 Chris 2026-09-21 指出来了：
+                //    「这三个 agent 在没有设置图片的情况下，默认你都得选一个
+                //     default 的图标。」
+                //
+                //    他说得对。那个占位的问题是：**它把「常态」画成了「缺失」** ——
+                //    绝大多数房间根本不会去传形象图，于是一排牌子上永远挂着
+                //    两个「未完成」的符号，看起来像是有什么东西坏了或者没配好。
+                //    一个功能的**默认状态不该长得像错误状态**。
+                //
+                //    传图的入口没有丢：长按那块牌子仍然可以传（提示文案在
+                //    预览页里写着）。**发现性换成了默认状态的正确性**，
+                //    这笔交易值得 —— 前者影响少数想换图的人一次，
+                //    后者影响每个人每一眼。
                 ZStack {
                     if let thumb {
                         thumb.resizable().scaledToFill()
                     } else {
-                        Image(systemName: "photo.badge.plus")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.fg3)
+                        defaultFace
                     }
                     if busy {
                         // 上传中要挡住重复点击，也要让人看出「在传」——
