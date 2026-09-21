@@ -115,3 +115,9 @@ ViewBuilder 那些得到 Xcode 里才知道。
 git fetch upstream
 git merge upstream/main    # 改动集中在 VoiceAgent/CloseCrab/，冲突面很小
 ```
+
+## 文档
+
+- [`docs/mac-audio-input-devices.md`](docs/mac-audio-input-devices.md) — Mac 上为什么没有麦克风输入设备切换（2026-09-21 做了又删，实测结论存档）
+- [`docs/apple-platform-notes-2026.md`](docs/apple-platform-notes-2026.md)
+- [`docs/visual-redesign-2026.md`](docs/visual-redesign-2026.md)
