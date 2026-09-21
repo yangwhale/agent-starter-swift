@@ -18,6 +18,9 @@ final class CCRoomSlot: Identifiable {
     /// 这个房间里 bot 在忙什么。**一房一份，槽位建的时候绑定，此后不换。**
     /// 为什么不能是全局单例，见 `CCBotStatus` 类文档那条 ⛔。
     let botStatus: CCBotStatus
+    /// 遥控服务端那个播放器（bot 说话时那条控制栏）。
+    /// **每个房间一份** —— 五个房间各播各的，共用一个就会控错人。
+    let playback: CCPlaybackRemote
 
     nonisolated var id: String { name }
 
@@ -66,6 +69,9 @@ final class CCRoomSlot: Identifiable {
         // ⭐ 现在就绑定，绑一次。**不要挪到界面 onAppear 里去** ——
         //    分页界面横滑时两页同时在场，那样会一页绑一次，后来的把先来的挤掉。
         botStatus = CCBotStatus(room: session.room)
+        // 目标参与者是 `<房间名>-speaker`，名字在这儿就定死了，
+        // 不用等连上 —— `CCPlaybackRemote` 每次调用前自己查它在不在。
+        playback = CCPlaybackRemote(room: session.room, roomName: name)
 
         // 把连接的变化转发出去，方块才会自己刷新。
         // 包 `Task { @MainActor }`：sink 的闭包是 nonisolated 的，

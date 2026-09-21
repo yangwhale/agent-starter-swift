@@ -42,6 +42,23 @@ struct AppView: View {
                             CCBotStatusStrip(status: slot.botStatus)
                         }
                     }
+                    // 播放控制。**跟服务端那个播放器是同一个** ——
+                    // 手机上按暂停，飞书卡片的进度条会跟着停。
+                    //
+                    // ⚠️ 显示条件是 `isSpeaking || isActive`，两个都要：
+                    //   · `isSpeaking` 负责**把它叫出来** —— `isActive` 要靠轮询才知道，
+                    //     而轮询只在这条栏出现之后才开，光靠它会互相等着谁都不出现
+                    //   · `isActive` 负责**让它留住** —— 暂停之后 `isSpeaking` 就假了，
+                    //     但播放器还咬着那段音频，这时候正是最需要「继续」那颗按钮的时刻
+                    .overlay(alignment: .bottom) {
+                        if slot.isSpeaking || slot.playback.isActive {
+                            CCPlaybackBar(remote: slot.playback)
+                                .padding(.bottom, CC.Space.snug)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                    .ccAnimation(.default, value: slot.isSpeaking)
+                    .ccAnimation(.default, value: slot.playback.isActive)
             } else {
                 notConnected()
             }
