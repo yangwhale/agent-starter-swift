@@ -27,8 +27,24 @@ struct CCPlaybackBar: View {
 
     var body: some View {
         VStack(spacing: CC.Space.tight) {
-            progress
-            buttons
+            // 播完之后收成一颗「重播」。
+            //
+            // ## 为什么不是保留整条
+            //
+            // 播完之后暂停/前进/后退都没有意义（按下去服务端会回 `ok:false`），
+            // 摆五颗灰按钮只是在告诉人「这儿有四个不能用的东西」。
+            // 而**重播是这时候唯一有意义、而且最高频的动作** ——
+            // Chris 的原话是「刚才那一段没听懂，我再点重播，再听一遍」。
+            //
+            // ⚠️ 它会一直挂在那儿直到下一段开始或者被停掉。
+            // 这看起来违反「默认状态不该长得像待办」，但这里是反的：
+            // **它不是待办，它是一个随时可用的入口**，而且是被明确要过的。
+            if !remote.isActive, remote.canReplay {
+                replayOnly
+            } else {
+                progress
+                buttons
+            }
             if let err = remote.lastError {
                 // ⚠️ **失败必须看得见。** 遥控失败如果是静默的，
                 //    用户只会觉得「这按钮有时候不灵」，而那种印象修不回来。
@@ -46,6 +62,30 @@ struct CCPlaybackBar: View {
     }
 
     // MARK: -
+
+    /// 播完之后那一颗。带上时长 —— 光一个图标看不出「重播多久的东西」。
+    private var replayOnly: some View {
+        Button {
+            Task { await remote.replay() }
+        } label: {
+            HStack(spacing: CC.Space.tight) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 13, weight: .medium))
+                Text(verbatim: "重播")
+                    .font(.system(size: 12, weight: .medium))
+                if let total = remote.total, total > 0 {
+                    Text(verbatim: clock(total))
+                        .font(.system(size: 11, design: .monospaced))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(height: 30)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "重播刚才那一段"))
+    }
 
     /// 进度。
     ///

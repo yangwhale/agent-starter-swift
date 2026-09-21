@@ -55,6 +55,22 @@ final class CCPlaybackRemote {
     private(set) var total: Double?
     /// 当前这段的 id。重播用得上，但一般不用自己传（不传就是重播当前段）。
     private(set) var fid = ""
+
+    /// **播完了，但还能再听一遍。**
+    ///
+    /// 服务端播完时是这么收尾的（`player.py` 里的原话）：
+    /// 「播完保留 fid 和位置，只把 active 翻成 False —— 卡片要靠这个
+    ///  显示『已播完』并且让重播按钮还知道播的是哪一段」。
+    ///
+    /// ⇒ **飞书卡片一直用对了，是我这边把它扔了。** 第一版界面挂在
+    /// `isActive` 上，播完就整条消失 —— Chris 2026-09-22：
+    /// 「现在最高频的操作就是『刚才那一段没听懂，我再点重播』，
+    ///  但一段音频播完后控制面板就消失了，没有地方让用户点重播。」
+    ///
+    /// ⚠️ 教训：**「播完了」和「没有东西」是两回事**，
+    /// 而我用同一个 `isActive` 去判了两者。服务端特意把它们分开了
+    /// （active 翻假、fid 保留），信息就在那儿，是我没接。
+    var canReplay: Bool { !fid.isEmpty }
     /// 最近一次调用失败的原因；成功时清空。**界面要显示它** ——
     /// 遥控失败如果是静默的，用户只会觉得「这按钮有时候不灵」。
     private(set) var lastError: String?
@@ -116,7 +132,10 @@ final class CCPlaybackRemote {
                 //    **它不防「泄漏循环」**，这两件事得分开处理。
                 guard let self else { return }
                 await refresh()
-                try? await Task.sleep(for: .seconds(1))
+                // 在播的时候 1 秒一次（进度要动）；播完之后 4 秒一次 ——
+                // 那时候服务端不会自己变，**唯一的变化来自用户按按钮或者
+                // 新的一段开始**，前者按完立刻会刷，后者几秒内跟上够用了。
+                try? await Task.sleep(for: .seconds(isActive ? 1 : 4))
             }
         }
     }

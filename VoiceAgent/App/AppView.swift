@@ -45,13 +45,19 @@ struct AppView: View {
                     // 播放控制。**跟服务端那个播放器是同一个** ——
                     // 手机上按暂停，飞书卡片的进度条会跟着停。
                     //
-                    // ⚠️ 显示条件是 `isSpeaking || isActive`，两个都要：
+                    // ⚠️ 显示条件是**三个**，各管一段生命周期：
                     //   · `isSpeaking` 负责**把它叫出来** —— `isActive` 要靠轮询才知道，
                     //     而轮询只在这条栏出现之后才开，光靠它会互相等着谁都不出现
-                    //   · `isActive` 负责**让它留住** —— 暂停之后 `isSpeaking` 就假了，
-                    //     但播放器还咬着那段音频，这时候正是最需要「继续」那颗按钮的时刻
+                    //   · `isActive`   负责**暂停期间留住** —— 暂停时 `isSpeaking` 假了，
+                    //     但播放器还咬着音频，那正是最需要「继续」的时刻
+                    //   · `canReplay`  负责**播完之后留住** —— 播完 fid 还在，
+                    //     而「刚才那段再听一遍」是这块最高频的操作
                     .overlay(alignment: .bottom) {
-                        if slot.isSpeaking || slot.playback.isActive {
+                        // ⚠️ 第三个条件 `canReplay` 是 2026-09-22 补的：
+                        //    播完之后 `isSpeaking` 和 `isActive` 都假了，
+                        //    整条消失 —— 而那正是最想按重播的时刻。
+                        if slot.isSpeaking || slot.playback.isActive
+                            || slot.playback.canReplay {
                             CCPlaybackBar(remote: slot.playback)
                                 .padding(.bottom, CC.Space.snug)
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -59,6 +65,7 @@ struct AppView: View {
                     }
                     .ccAnimation(.default, value: slot.isSpeaking)
                     .ccAnimation(.default, value: slot.playback.isActive)
+                    .ccAnimation(.default, value: slot.playback.canReplay)
             } else {
                 notConnected()
             }
