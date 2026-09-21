@@ -38,19 +38,20 @@
     /// 所以我们看到的和 Chris 在系统里看到的必然是同一批设备。
     /// 监听是进程级的、跟房间数量无关，不存在被谁覆盖的问题。
     ///
-    /// ## 它同时是一个对账工具
+    /// ## 它也曾是个判别工具，那个问题已经答完了
     ///
-    /// 2026-09-21 现场：系统认得 5 个输入设备（AirPods / USB 声卡 AU05 /
-    /// 罗技摄像头 / 内置麦 / iPhone 连续互通），而菜单里**只有一条**，
-    /// 正好是默认那个。原因当时有两种可能分不开：
+    /// 2026-09-21 现场：系统认得 5 个输入设备，而菜单里**只有一条**。
+    /// 当时有两种可能分不开：快照太早（我们的问题） vs WebRTC 只报一个（底层的问题）。
     ///
-    /// - 快照太早 ／ 回调被吃掉 ⇒ 是**我们**的问题
-    /// - WebRTC 那层本身只报一个 ⇒ 是**SDK/底层**的问题
+    /// 冷启动日志给了答案：**同一个 SDK 调用，前后两次分别报 1 个和 6 个** ——
+    /// 是快照太早，不是底层缺斤少两。
     ///
-    /// 所以这里**两份清单都留着**：`devices` 是 LiveKit 那份（菜单必须用它，
-    /// 因为切设备只能走 LiveKit），`systemInputs` 是 CoreAudio 那份（真相）。
-    /// 两份对不上就打日志、并在菜单底下显示一行提示 ——
-    /// **让下一张截图自己带上证据**，不用再让人接调试器。
+    /// 所以两份清单还都留着，但分工变了：
+    /// - `devices`（LiveKit）—— **界面只用这份**，切设备也只能走它
+    /// - `systemInputs`（CoreAudio）—— **只进日志**，用来解释异常
+    ///
+    /// ⚠️ 别再把 `systemInputs` 当「真相」用。实测它**比 LiveKit 那份还脏**
+    /// （扬声器会报 4 个输入声道），详见 `coreAudioInputs` 上面那段。
     @MainActor
     @Observable
     final class CCAudioInputs {
@@ -74,6 +75,12 @@
             let transport: String
             /// CoreAudio 自己标的「别给用户看」。系统设置就是靠它藏东西的。
             let hidden: Bool
+            /// 这台设备**输入流**的终端类型（四字符码，一台设备可能有多条流）。
+            ///
+            /// 这是目前唯一**有希望**区分「真麦克风」和「扬声器回采通道」的字段 ——
+            /// 声道数区分不了（扬声器报 4ch），传输类型也区分不了（两者都是 `bltn`）。
+            /// 先打进日志攒证据，**还没拿它做过滤**。
+            let terminals: [String]
         }
 
         /// 系统（CoreAudio）认得的输入设备。**只用来对账和打日志，不驱动界面。**
@@ -103,6 +110,41 @@
         //    ⚠️ **一个会报错数的诊断，比没有诊断更坏。** 它会被当成事实引用，
         //    而且下次真出问题时没人信它。所以留日志、撤界面 ——
         //    日志是给知道上下文的人看的，界面上那行是给会拿它下结论的人看的。
+
+        /// LiveKit 清单里那条**伪条目**的 id。
+        ///
+        /// 2026-09-21 实测：`AudioManager.shared.inputDevices` 的第一条
+        /// **永远是 `id=default`**，`name` 借用当前默认设备的名字。
+        /// 它不是一台设备，是「跟随系统默认」这个选项。
+        ///
+        /// ⇒ **菜单里那个"重复的 AirPods"就是它** —— 一条是 `default`
+        ///   （名字借的 AirPods），一条是真的 `AC-C9-06-4D-33-EA:input`。
+        ///   不是枚举重了，是两条**语义不同**的条目撞了名字。
+        ///   所以修法是**改标签**，不是去重 —— 去重会把一个有用的选项删掉。
+        static let followSystemID = "default"
+
+        /// 菜单上显示什么。
+        static func label(for device: AudioDevice) -> String {
+            device.deviceId == followSystemID
+                ? "跟随系统默认（\(device.name)）"
+                : device.name
+        }
+
+        /// 这条是不是当前在用的。
+        ///
+        /// ⚠️ **`selectedID` 会是空串。** 冷启动那次日志里
+        /// `AudioManager.shared.inputDevice.deviceId` 就是空的 ——
+        /// 此时没有任何一条能匹配上，菜单里**一个勾都不打**，
+        /// 看起来像「哪个都没选中」。
+        ///
+        /// 空串时按「在跟随系统默认」处理。**这是个假设**，推导链：
+        /// 我们从没主动调过 `select`，而 app 确实在录音，
+        /// 所以它用的只能是系统默认那一路。
+        func isSelected(_ device: AudioDevice) -> Bool {
+            selectedID.isEmpty
+                ? device.deviceId == Self.followSystemID
+                : device.deviceId == selectedID
+        }
 
         private var listening = false
 
@@ -150,11 +192,15 @@
 
         /// 把两份清单**连 ID 一起**打出来。
         ///
-        /// ⚠️ ID 是这轮日志的重点，不是附带信息。下一步想做的过滤是
-        /// 「拿 CoreAudio 判断哪些 UID 是真输入设备，再照着筛 LiveKit 那份」——
-        /// 而这一步成立的前提是**两边的 ID 是同一个东西**。
-        /// LiveKit 的 `deviceId` 是不是 CoreAudio 的 UID，**我没有证据**
-        /// （WebRTC 那层是二进制，扒不到），所以先打出来看，不先写代码。
+        /// ✅ **两边的 ID 是同一个东西** —— 2026-09-21 实测逐字相同
+        /// （`AppleUSBAudioEngine:AU05:…`、`BuiltInMicrophoneDevice`、
+        /// iPhone 那个 UUID 都对得上）。所以理论上可以拿一边去筛另一边。
+        ///
+        /// **但现在没这么做**，因为「拿哪一边去筛」这个问题的答案是反直觉的：
+        /// 该被筛掉的是 CoreAudio 那份，不是 LiveKit 那份。
+        ///
+        /// 唯一的例外是 LiveKit 的第一条 `id=default` —— 它不是设备，
+        /// 见 `followSystemID`。
         private func log() {
             print("[CCAudioInputs] ── LiveKit \(devices.count) 个 ──")
             for d in devices {
@@ -163,7 +209,8 @@
             print("[CCAudioInputs] ── 系统 \(systemInputs.count) 个 ──")
             for s in systemInputs {
                 let flags = s.hidden ? " HIDDEN" : ""
-                print("[CCAudioInputs]   \(s.name)  \(s.channels)ch \(s.transport)\(flags)  uid=\(s.uid)")
+                let term = s.terminals.isEmpty ? "-" : s.terminals.joined(separator: ",")
+                print("[CCAudioInputs]   \(s.name)  \(s.channels)ch \(s.transport) term=\(term)\(flags)  uid=\(s.uid)")
             }
             print("[CCAudioInputs] 当前选中 id=\(selectedID)")
         }
@@ -174,23 +221,38 @@
         /// "Microphone" —— 名字是人起的（"AU05"、"Chris-AirPods3"），
         /// 拿它做匹配迟早出错。
         ///
-        /// ## ⚠️ 这个筛选目前**不可靠**，日志里带着旁证是故意的
+        /// ## ⚠️ 这份清单**只进日志，不驱动界面** —— 它比 LiveKit 那份还脏
         ///
-        /// 2026-09-21 实测同一份代码两次跑出两个口径：
-        /// 冷启动那次说 10 个（混进了扬声器、重复的 AirPods、两个聚合设备），
-        /// 稍后那次说 6 个、且不含扬声器。真实值是 5。
+        /// 2026-09-21 打了 ID 和声道数之后，事实是这样的：
         ///
-        /// tommy 推测是「ADM 还没初始化时流配置查询返回了非预期结果」。
-        /// **那只是推测，我核不了** —— CoreAudio 在那一刻为什么认为扬声器有输入流，
-        /// 从我们这一侧看不见。
+        /// **「声道数 > 0 ＝ 输入设备」这条判据本身就错。**
+        /// `MacBook Air Speakers`（`uid=BuiltInSpeakerDevice`）在**每一次**采样里
+        /// 都报 **4 个输入声道**。不是查询失效、不是时序问题 ——
+        /// 它在 CoreAudio 里确实声明了输入流（回声消除参考通道那类东西）。
         ///
-        /// 所以这里**不去赌一个机制**，改成把判断依据全部打进日志：
-        /// 声道数、传输类型、`IsHidden`。下一次冷启动的日志就能直接回答
-        /// 「那 10 个里每一个是凭什么进来的」—— 到时候再决定过滤规则。
+        /// > 我和 tommy 当时各猜了一个机制（「ADM 没热」「查询返回非预期结果」），
+        /// > **两个都错**。这是「不肯乱写过滤」的直接回报：
+        /// > 真按「声道数 > 0」去筛，扬声器照样进来，而我们会以为过滤生效了。
         ///
-        /// ⛔ 特别不要现在就按 `kAudioDevicePropertyIsHidden` 或
-        ///    「传输类型是聚合就扔」去筛：**那是在用一个没验证的规则，
-        ///    去修一个没定位的现象**，两个未知乘在一起。
+        /// **而 LiveKit 那份反而干净些**：它从没报过扬声器、也没报过聚合设备。
+        /// 所以**不要拿这份去筛那份** —— 会把好的换成坏的。
+        ///
+        /// ## 已知未解：清单在持续抖动
+        ///
+        /// 60 秒内四次采样，系统侧 10 / 6 / 10 / 10，LiveKit 侧 1 / 6 / 8 / 6，
+        /// 没人插拔任何设备。`VPAUAggregateAudioDevice` 的地址每次都变，
+        /// 说明语音处理单元在反复建销聚合设备。
+        /// 连 `CADefaultDeviceAggregate-<pid>` 自己的声道数都在 1ch / 2ch 之间跳。
+        ///
+        /// ⇒ **用户在不同时机打开菜单，看到的条目数可能不同。**
+        /// 这比「只有一条」更难查，因为它**间歇性正确**。
+        ///
+        /// ⛔ **现在没有证据支持任何一种过滤规则**，所以一条都不写。
+        /// 差的两条（AirPods 的 `:output`、`Unknown USB Audio Device`）
+        /// 靠 UID 后缀或名字能认出来，但那是字符串启发式，
+        /// 跟我在 `coreAudioInputs` 上面写的「别拿名字做匹配」是同一个坑。
+        /// 日志里多打了**输入流的终端类型**，那才是能区分
+        /// 「麦克风」和「扬声器回采」的字段 —— 等下次有人回来看这块时用。
         private static func coreAudioInputs() -> [SystemInput] {
             deviceIDs().compactMap { id in
                 let channels = inputChannels(of: id)
@@ -200,7 +262,8 @@
                     name: name,
                     channels: channels,
                     transport: fourCC(uint32Property(id, kAudioDevicePropertyTransportType)),
-                    hidden: (uint32Property(id, kAudioDevicePropertyIsHidden) ?? 0) != 0
+                    hidden: (uint32Property(id, kAudioDevicePropertyIsHidden) ?? 0) != 0,
+                    terminals: inputTerminalTypes(of: id)
                 )
             }
         }
@@ -252,6 +315,30 @@
                 raw.assumingMemoryBound(to: AudioBufferList.self)
             )
             return list.reduce(0) { $0 + Int($1.mNumberChannels) }
+        }
+
+        /// 这台设备所有**输入流**的终端类型。
+        ///
+        /// 终端类型挂在**流**上不是挂在设备上 —— 一台设备可以既有麦克风流
+        /// 又有回采流，这正是我们想分开的那种情况。所以要先列流再逐条问。
+        private static func inputTerminalTypes(of id: AudioObjectID) -> [String] {
+            var address = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioObjectPropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var size: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(id, &address, 0, nil, &size) == noErr,
+                  size > 0
+            else { return [] }
+
+            var streams = [AudioStreamID](
+                repeating: 0, count: Int(size) / MemoryLayout<AudioStreamID>.size
+            )
+            guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &streams) == noErr
+            else { return [] }
+
+            return streams.map { fourCC(uint32Property($0, kAudioStreamPropertyTerminalType)) }
         }
 
         private static func name(of id: AudioObjectID) -> String? {

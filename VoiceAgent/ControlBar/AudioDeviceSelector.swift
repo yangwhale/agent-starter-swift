@@ -33,8 +33,8 @@ import SwiftUI
                         inputs.refresh()
                     } label: {
                         HStack {
-                            Text(device.name)
-                            if device.deviceId == inputs.selectedID {
+                            Text(verbatim: CCAudioInputs.label(for: device))
+                            if inputs.isSelected(device) {
                                 Image(systemName: "checkmark")
                             }
                         }
