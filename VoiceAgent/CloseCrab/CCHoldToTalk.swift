@@ -133,19 +133,44 @@ struct CCTalkBar: View {
         } else if mic.isHolding {
             .regular.tint(.green).interactive()
         } else if isAlwaysOn {
-            .regular.tint(.green.opacity(0.5)).interactive()
+            // ⚠️ 原来是 `.green.opacity(0.5)`。**跟 Mac 那边同一个错** ——
+            //    「已经开着」是个**已达成**的状态，不该画成半透明。
+            //    淡色留给中间态（上面那档黄）。
+            .regular.tint(.green).interactive()
         } else {
             .clear.interactive()
         }
     }
 
     #if os(macOS)
-        /// Mac 上那条的填充色。**比 iOS 淡得多** —— 玻璃的染色本来就是
-        /// 半透明叠加，换成实色填充时照搬饱和度会刺眼。
+        /// Mac 上那条的填充色。
+        ///
+        /// ## ⛔ 上一版的饱和度是错的，而且错在**语义**上不是好看不好看
+        ///
+        /// 我按「实色填充要比玻璃染色淡」把三档全调淡了（0.35 / 0.30 / **0.15**）。
+        /// Chris 2026-09-21 一眼看出问题：
+        ///
+        /// > 这种比较模糊的，是**中间状态**该有的，也就是在开麦的过程中。
+        /// > 一旦打开了，就是**完全饱和的绿色**。
+        ///
+        /// 他说的是一条**通用的视觉语法**，不是这个 app 的偏好：
+        /// **淡 ＝ 未完成 / 过渡；饱和 ＝ 已达成。**
+        /// 我把「已经开着」画成了最淡的一档（0.15），
+        /// 于是最确定的状态看起来最不确定 —— 正好反过来。
+        ///
+        /// ⚠️ 而且它还带了个可读性 bug：0.15 的绿上面压**白字**，
+        /// 基本读不出来（截图里就是这样）。
+        /// **降饱和这件事不能只看填充，要连着前景色一起算对比度。**
+        ///
+        /// 现在的映射：
+        ///   接通中   → 黄，中等饱和（**这一档才该是"模糊"的**）＋ 黑字
+        ///   按住说话 → 饱和绿 ＋ 白字
+        ///   麦克风常开 → 饱和绿 ＋ 白字（**跟按住同档** —— 两者都是"麦开着"，
+        ///                区别由文案说，不由颜色说）
         private var macTint: Color? {
-            if isWarmingUp { return .yellow.opacity(0.35) }
-            if mic.isHolding { return .green.opacity(0.30) }
-            if isAlwaysOn { return .green.opacity(0.15) }
+            if isWarmingUp { return .yellow.opacity(0.55) }
+            if mic.isHolding { return .ccSpeaking }
+            if isAlwaysOn { return .ccSpeaking }
             return nil          // 待机＝系统控件底色
         }
     #endif
