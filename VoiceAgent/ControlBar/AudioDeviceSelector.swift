@@ -40,14 +40,11 @@ import SwiftUI
                         }
                     }
                 }
-
-                // 对不上的时候把差额摆出来。**这一行是给截图看的** ——
-                // 这台机器附不了调试器，Chris 随手一张截图就是证据。
-                // 两份对得上时整行不出现，不打扰。
-                if let mismatch = inputs.mismatch {
-                    Divider()
-                    Text(verbatim: mismatch)
-                }
+                // ⛔ 这里**曾经**有一行「系统有 N 个输入设备，这里只拿到 M 个」。
+                //    它做完了它该做的事（证明了漏报在我们这侧、不在 WebRTC），
+                //    但实测它冷启动时报的 N 是错的（说 10，真值 5）。
+                //    **一个会报错数的诊断比没有诊断更坏** —— 它会被当成事实引用。
+                //    对账挪进了 `[CCAudioInputs]` 日志，界面上不留。
             } label: {
                 Image(systemName: "chevron.down")
                     .frame(height: 11 * .grid)

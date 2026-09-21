@@ -60,8 +60,24 @@
         /// LiveKit 的 `AudioDevice` 交回给它，拿 CoreAudio 的 ID 去凑没用。
         private(set) var devices: [AudioDevice] = []
 
-        /// 系统（CoreAudio）认得的输入设备名。**只用来对账**，不驱动界面。
-        private(set) var systemInputs: [String] = []
+        /// CoreAudio 侧的一条设备记录。**字段是为了对账，不是为了显示。**
+        struct SystemInput {
+            let uid: String
+            let name: String
+            let channels: Int
+            /// 传输类型的四字符码，`grup` = 聚合设备、`virt` = 虚拟设备、
+            /// `bltn` = 内置、`usb ` = USB、`blue` = 蓝牙、`unkn` = 未知。
+            ///
+            /// ⚠️ **`unkn` 不等于假货** —— iPhone 连续互通那个麦就是 `unkn`，
+            /// 是真设备。所以过滤只能挑明确该排除的（聚合/虚拟），
+            /// 不能用「不认识的一律扔掉」。
+            let transport: String
+            /// CoreAudio 自己标的「别给用户看」。系统设置就是靠它藏东西的。
+            let hidden: Bool
+        }
+
+        /// 系统（CoreAudio）认得的输入设备。**只用来对账和打日志，不驱动界面。**
+        private(set) var systemInputs: [SystemInput] = []
 
         /// 当前真正在用的那个设备。
         ///
@@ -79,11 +95,14 @@
         /// 这里读 `inputDevice`（当前的），不读 `defaultInputDevice`（开机时的）。
         private(set) var selectedID: String = ""
 
-        /// 两份清单对不上时给界面看的一句话；一致时是 nil。
-        var mismatch: String? {
-            guard !systemInputs.isEmpty, devices.count < systemInputs.count else { return nil }
-            return "系统有 \(systemInputs.count) 个输入设备，这里只拿到 \(devices.count) 个"
-        }
+        // ⛔ 这里**曾经**有个 `mismatch`，把「系统 N 个 / 这里 M 个」显示在菜单底下。
+        //    它的任务已经完成了（见类型注释里那段判别），而且**它给出的数是错的**：
+        //    冷启动那一次报「系统有 10 个输入设备」，真实值是 5 —— 里面混进了
+        //    扬声器、重复的 AirPods、还有 CoreAudio 给本进程建的聚合设备。
+        //
+        //    ⚠️ **一个会报错数的诊断，比没有诊断更坏。** 它会被当成事实引用，
+        //    而且下次真出问题时没人信它。所以留日志、撤界面 ——
+        //    日志是给知道上下文的人看的，界面上那行是给会拿它下结论的人看的。
 
         private var listening = false
 
@@ -94,7 +113,7 @@
             let before = devices.map(\.deviceId)
 
             devices = AudioManager.shared.inputDevices
-            systemInputs = Self.coreAudioInputNames()
+            systemInputs = Self.coreAudioInputs()
             selectedID = AudioManager.shared.inputDevice.deviceId
 
             let after = devices.map(\.deviceId)
@@ -129,23 +148,61 @@
             }
         }
 
+        /// 把两份清单**连 ID 一起**打出来。
+        ///
+        /// ⚠️ ID 是这轮日志的重点，不是附带信息。下一步想做的过滤是
+        /// 「拿 CoreAudio 判断哪些 UID 是真输入设备，再照着筛 LiveKit 那份」——
+        /// 而这一步成立的前提是**两边的 ID 是同一个东西**。
+        /// LiveKit 的 `deviceId` 是不是 CoreAudio 的 UID，**我没有证据**
+        /// （WebRTC 那层是二进制，扒不到），所以先打出来看，不先写代码。
         private func log() {
-            let lk = devices.isEmpty ? "（空）" : devices.map(\.name).joined(separator: " / ")
-            let sys = systemInputs.isEmpty ? "（空）" : systemInputs.joined(separator: " / ")
-            print("[CCAudioInputs] LiveKit \(devices.count) 个: \(lk)")
-            print("[CCAudioInputs] 系统     \(systemInputs.count) 个: \(sys)")
-            if let mismatch { print("[CCAudioInputs] ⚠️ \(mismatch)") }
+            print("[CCAudioInputs] ── LiveKit \(devices.count) 个 ──")
+            for d in devices {
+                print("[CCAudioInputs]   \(d.name)  id=\(d.deviceId)")
+            }
+            print("[CCAudioInputs] ── 系统 \(systemInputs.count) 个 ──")
+            for s in systemInputs {
+                let flags = s.hidden ? " HIDDEN" : ""
+                print("[CCAudioInputs]   \(s.name)  \(s.channels)ch \(s.transport)\(flags)  uid=\(s.uid)")
+            }
+            print("[CCAudioInputs] 当前选中 id=\(selectedID)")
         }
 
         // MARK: - CoreAudio
 
-        /// 系统认得的输入设备名。判据是**有没有输入声道**，不是设备名字里有没有
+        /// 系统认得的输入设备。判据是**有没有输入声道**，不是设备名字里有没有
         /// "Microphone" —— 名字是人起的（"AU05"、"Chris-AirPods3"），
         /// 拿它做匹配迟早出错。
-        private static func coreAudioInputNames() -> [String] {
-            deviceIDs()
-                .filter { inputChannels(of: $0) > 0 }
-                .compactMap { name(of: $0) }
+        ///
+        /// ## ⚠️ 这个筛选目前**不可靠**，日志里带着旁证是故意的
+        ///
+        /// 2026-09-21 实测同一份代码两次跑出两个口径：
+        /// 冷启动那次说 10 个（混进了扬声器、重复的 AirPods、两个聚合设备），
+        /// 稍后那次说 6 个、且不含扬声器。真实值是 5。
+        ///
+        /// tommy 推测是「ADM 还没初始化时流配置查询返回了非预期结果」。
+        /// **那只是推测，我核不了** —— CoreAudio 在那一刻为什么认为扬声器有输入流，
+        /// 从我们这一侧看不见。
+        ///
+        /// 所以这里**不去赌一个机制**，改成把判断依据全部打进日志：
+        /// 声道数、传输类型、`IsHidden`。下一次冷启动的日志就能直接回答
+        /// 「那 10 个里每一个是凭什么进来的」—— 到时候再决定过滤规则。
+        ///
+        /// ⛔ 特别不要现在就按 `kAudioDevicePropertyIsHidden` 或
+        ///    「传输类型是聚合就扔」去筛：**那是在用一个没验证的规则，
+        ///    去修一个没定位的现象**，两个未知乘在一起。
+        private static func coreAudioInputs() -> [SystemInput] {
+            deviceIDs().compactMap { id in
+                let channels = inputChannels(of: id)
+                guard channels > 0, let name = name(of: id) else { return nil }
+                return SystemInput(
+                    uid: stringProperty(id, kAudioDevicePropertyDeviceUID) ?? "?",
+                    name: name,
+                    channels: channels,
+                    transport: fourCC(uint32Property(id, kAudioDevicePropertyTransportType)),
+                    hidden: (uint32Property(id, kAudioDevicePropertyIsHidden) ?? 0) != 0
+                )
+            }
         }
 
         private static func deviceIDs() -> [AudioObjectID] {
@@ -198,8 +255,14 @@
         }
 
         private static func name(of id: AudioObjectID) -> String? {
+            stringProperty(id, kAudioObjectPropertyName)
+        }
+
+        private static func stringProperty(
+            _ id: AudioObjectID, _ selector: AudioObjectPropertySelector
+        ) -> String? {
             var address = AudioObjectPropertyAddress(
-                mSelector: kAudioObjectPropertyName,
+                mSelector: selector,
                 mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
@@ -210,6 +273,33 @@
             }
             guard status == noErr, let value else { return nil }
             return value as String
+        }
+
+        private static func uint32Property(
+            _ id: AudioObjectID, _ selector: AudioObjectPropertySelector
+        ) -> UInt32? {
+            var address = AudioObjectPropertyAddress(
+                mSelector: selector,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var size = UInt32(MemoryLayout<UInt32>.size)
+            var value: UInt32 = 0
+            let status = AudioObjectGetPropertyData(id, &address, 0, nil, &size, &value)
+            return status == noErr ? value : nil
+        }
+
+        /// 四字符码转可读串。CoreAudio 里传输类型、编码格式这类常量都是
+        /// `'grup'`、`'blue'` 这种四个 ASCII 字节塞进一个 UInt32。
+        /// 打成十进制没法看，所以还原成字符。
+        private static func fourCC(_ value: UInt32?) -> String {
+            guard let value else { return "----" }
+            let bytes = [
+                UInt8((value >> 24) & 0xFF), UInt8((value >> 16) & 0xFF),
+                UInt8((value >> 8) & 0xFF), UInt8(value & 0xFF),
+            ]
+            // 不可打印的字节用 `.` 顶替，免得日志里蹦出控制字符。
+            return String(bytes.map { (0x20 ... 0x7E).contains($0) ? Character(UnicodeScalar($0)) : "." })
         }
     }
 
