@@ -260,7 +260,17 @@ private struct CCRosterChip: View {
     /// 其余角色用各自的语义符号（语音助手＝波形）。
     @ViewBuilder
     private var defaultFace: some View {
-        if member.role == .broadcast {
+        // 先看这块牌子自己有没有设过本地图标（emoji 或图）。
+        // 优先级：**数字人形象图 > 本地图标 > 角色默认符号**。
+        // 形象图排最前是因为它是「这张脸真的长这样」，
+        // 本地图标只是个标签。
+        let localKey = personaRole?.key(room: room)
+        if let localKey, let img = CCRoomIcons.shared.image(for: localKey) {
+            img.resizable().scaledToFill()
+        } else if let localKey, CCRoomIcons.shared.hasCustomIcon(localKey) {
+            Text(verbatim: CCRoomIcons.shared.icon(for: localKey))
+                .font(.system(size: 13))
+        } else if member.role == .broadcast {
             Text(verbatim: CCRoomIcons.shared.icon(for: room))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.fg1)
@@ -400,10 +410,10 @@ private struct CCChipGestures: ViewModifier {
     let link: CCAvatarLink
     let onPreview: () -> Void
 
-    #if os(iOS)
-        @State private var pick: PhotosPickerItem?
-        @State private var showing = false
-    #endif
+    /// 图标选择器开着没有。**全平台都有** —— 原来只有 iOS，
+    /// 因为那时长按直接弹的是 `PhotosPicker`（iOS 独有）。
+    /// 现在中间隔了一层选择器，平台差异被关进那个 sheet 里了。
+    @State private var picking = false
 
     // ⚠️ 两个分支返回的类型不一样（挂了手势的 vs 原样），必须 @ViewBuilder。
     @ViewBuilder
@@ -424,33 +434,44 @@ private struct CCChipGestures: ViewModifier {
             }
             .onTapGesture(count: 1, perform: onPreview)
 
-        #if os(iOS)
-            tapped
-                .onLongPressGesture(minimumDuration: 0.4) {
-                    CCHaptics.reveal()
-                    showing = true
+        // ⭐ 长按/右键 → **图标选择器**（emoji ＋ 传图），不再直接弹相册。
+        //
+        //    Chris 2026-09-21：「我也希望能不光是上传图片，就跟最上边那个
+        //    代表房间的小方块一样，既可以选择 emoji，又可以选择上传图片。」
+        //
+        //    复用的就是房间方块那个 `CCIconPickerSheet` —— 它从头到尾
+        //    只把 `room` 当一个字符串键用，所以把 `"房间|角色"` 传进去，
+        //    一行都不用改就能给成员牌子用。**键是字符串**这个设计在这儿回本了。
+        //
+        //    ⚠️ 两张图去处不同，选择器靠 `onPickImage` 分流：
+        //      emoji → 只存本地（数字人用不了 emoji）
+        //      图片  → **上服务端**，那是数字人真正拿去生成脸的素材
+        let gestured = tapped
+            .onLongPressGesture(minimumDuration: 0.4) {
+                CCHaptics.reveal()
+                picking = true
+            }
+            // Mac 上长按不是一个存在的动作 —— 右键才是。
+            // 两个都挂：触控板长按能用，鼠标右键也能用。
+            .contextMenu {
+                Button {
+                    picking = true
+                } label: {
+                    Text(verbatim: "换图标…")
                 }
-                .photosPicker(isPresented: $showing, selection: $pick,
-                              matching: .images, photoLibrary: .shared())
-                .onChange(of: pick) { _, item in
-                    guard let item else { return }
-                    Task {
-                        // 拿原始字节，**不要先转成 UIImage 再编码** ——
-                        // 那会多一次有损重编码，而参考图的清晰度直接决定
-                        // 生成出来那张脸的清晰度。
-                        guard let data = try? await item.loadTransferable(type: Data.self),
-                              let ctype = CCPersona.sniff(data)
-                        else { return }
-                        await MainActor.run {
-                            persona.upload(room: room, role: role,
-                                           data: data, contentType: ctype)
-                        }
-                    }
-                    pick = nil
+            }
+            .sheet(isPresented: $picking) {
+                CCIconPickerSheet(room: role.key(room: room)) { data in
+                    // 拿原始字节，**不要先转成 UIImage 再编码** ——
+                    // 那会多一次有损重编码，而参考图的清晰度直接决定
+                    // 生成出来那张脸的清晰度。
+                    guard let ctype = CCPersona.sniff(data) else { return }
+                    persona.upload(room: room, role: role,
+                                   data: data, contentType: ctype)
                 }
-        #else
-            tapped
-        #endif
+            }
+
+        gestured
     }
 }
 

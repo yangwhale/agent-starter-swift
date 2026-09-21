@@ -4,6 +4,10 @@ import SwiftUI
     import PhotosUI
     import UIKit
 #endif
+#if os(macOS)
+    import AppKit
+    import UniformTypeIdentifiers
+#endif
 
 /// 每个房间的小图标 —— 存在本机，一个 emoji 而已。
 ///
@@ -130,7 +134,22 @@ final class CCRoomIcons {
 
 /// 长按方块弹出来的图标选择器。
 struct CCIconPickerSheet: View {
+    /// 这套图标的键。房间方块传房间名；成员牌子传 `"房间|角色"`。
+    ///
+    /// ⚠️ 参数名仍叫 `room` 是**故意不改的** —— 改名要动所有调用点，
+    /// 而这个类型从头到尾只把它当一个字符串键用（`map[room]` / `images[room]`），
+    /// 换个键进来它一行都不用改。这正是「键就是个字符串」带来的复用。
     let room: String
+
+    /// 选了图片之后交给谁。
+    ///
+    /// - `nil`（房间方块）→ 存本地（`CCRoomIcons.setImage`），只影响这台设备。
+    /// - 非 nil（成员牌子）→ 交给调用方，它会**传到服务端**当数字人的形象图。
+    ///
+    /// 为什么要分开：这两张图是两个东西。房间方块那张是**本机的一个标签**；
+    /// 成员牌子那张是**数字人真正拿去生成脸的素材**，必须上服务端。
+    /// emoji 两边都只存本地 —— 数字人用不了 emoji。
+    var onPickImage: ((Data) -> Void)?
 
     private var icons: CCRoomIcons { .shared }
     @Environment(\.dismiss) private var dismiss
@@ -275,12 +294,53 @@ struct CCIconPickerSheet: View {
                     // 分散到调用点迟早会出现「有的缩了有的没缩」。
                     let data = try? await item.loadTransferable(type: Data.self)
                     await MainActor.run {
-                        if let data { icons.setImage(data, for: room) }
+                        if let data {
+                            if let onPickImage {
+                                onPickImage(data)          // 成员牌子：上服务端
+                            } else {
+                                icons.setImage(data, for: room)   // 房间方块：存本地
+                            }
+                        }
                         pick = nil
                     }
                 }
             }
             Divider().padding(.top, 8)
+        #elseif os(macOS)
+            // ⚠️ **只在有外部处理方时才给这一行。**
+            //    `CCRoomIcons.setImage` 的图片解码那段是 `#if os(iOS)` 的 ——
+            //    Mac 上它是个空实现。所以房间方块在 Mac 上仍然只有 emoji，
+            //    给个点了没反应的按钮比没有按钮糟。
+            //    成员牌子那条走 `onPickImage`（上服务端），跟本地存储无关，
+            //    所以它在 Mac 上是通的。
+            if let onPickImage {
+                HStack(spacing: 10) {
+                    Button {
+                        // `NSOpenPanel` 是 Mac 的选图方式。iOS 那套 `PhotosPicker`
+                        // 在 Mac 上不存在 —— 这不是「同一个 API 两个平台默认不同」，
+                        // 是**真的没有这个 API**，编译器会喊，所以不会静默出错。
+                        let panel = NSOpenPanel()
+                        panel.allowedContentTypes = [.image]
+                        panel.allowsMultipleSelection = false
+                        panel.canChooseDirectories = false
+                        guard panel.runModal() == .OK,
+                              let url = panel.url,
+                              let data = try? Data(contentsOf: url) else { return }
+                        onPickImage(data)
+                        dismiss()
+                    } label: {
+                        Label {
+                            Text(verbatim: "用自己的图片…")
+                        } icon: {
+                            Image(systemName: "photo")
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+                Divider().padding(.top, 8)
+            }
         #else
             EmptyView()
         #endif
