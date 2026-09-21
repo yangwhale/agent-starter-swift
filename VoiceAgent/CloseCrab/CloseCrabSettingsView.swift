@@ -21,8 +21,39 @@ struct CloseCrabSettingsView: View {
     #endif
 
     var body: some View {
-        NavigationStack {
-            Form {
+        #if os(macOS)
+            // Mac 上设置是**独立窗口**（⌘,），不是从底下弹出来的一张纸。
+            //
+            // 所以两样东西要去掉：
+            // - `NavigationStack` —— 它是给「推进去、再退回来」准备的，
+            //   而这一页只有一层，套上只是白添一条标题栏
+            // - 「完成」按钮 —— 窗口自己有关闭键，再放一个是同一件事说两遍
+            //
+            // 尺寸写死是故意的：设置窗口该是**可预期的**，每次打开都一样大。
+            // 让它跟着内容长的话，切到不同分段窗口会自己跳一下。
+            form
+                .formStyle(.grouped)
+                .frame(width: 560, height: 640)
+        #else
+            NavigationStack {
+                form
+                    .navigationTitle(Text(verbatim: "设置"))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button { dismiss() } label: { Text(verbatim: "完成") }
+                        }
+                    }
+            }
+        #endif
+    }
+
+    /// 内容本体。**抽出来是因为两个平台的外壳不一样** ——
+    /// iOS 要 NavigationStack ＋ 完成按钮（它是 sheet），Mac 两个都不要。
+    /// `#if` 劈不开 `NavigationStack {` 那对花括号，所以只能把里子抽成属性。
+    @ViewBuilder
+    private var form: some View {
+        Form {
                 // 外观放最上面：这是唯一一组「想起来就会去调一下」的设置。
                 // 下面那几段（服务器、密钥、信令）是装一次就再也不碰的东西。
                 #if os(macOS)
@@ -267,16 +298,6 @@ struct CloseCrabSettingsView: View {
                             .foregroundStyle(.orange)
                     } else {
                         Text(verbatim: "从 <服务器>/api/rooms 拉，和后端换 token 用的是同一份白名单，所以不会出现「这里列得出、那里连不上」。")
-                    }
-                }
-            }
-            .navigationTitle(Text(verbatim: "设置"))
-            #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-            #endif
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button { dismiss() } label: { Text(verbatim: "完成") }
                     }
                 }
         }

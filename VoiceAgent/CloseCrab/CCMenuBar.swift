@@ -42,6 +42,7 @@
     struct CCMenuBarContent: View {
         let rooms: CCRooms
         @Environment(\.openWindow) private var openWindow
+        @Environment(\.openSettings) private var openSettings
 
         var body: some View {
             if let active = rooms.active {
@@ -70,28 +71,20 @@
 
             Divider()
             Button("打开窗口") { openWindow(id: CCWindowID.main) }
+            // 设置也放进来：**窗口关着的时候菜单栏是唯一入口**。
+            // 没有这一条的话，你得先开窗、再进抽屉、再点齿轮 —— 而 Mac 上
+            // 「窗口关着但助手活着」恰恰是常态。
+            Button("设置…") { openSettings() }
+                .keyboardShortcut(",", modifiers: .command)
             Button("退出") { NSApplication.shared.terminate(nil) }
                 .keyboardShortcut("q", modifiers: .command)
         }
     }
 
-    /// 菜单命令里的房间列表。
-    ///
-    /// 必须是个 `View` 而不是直接在 `.commands { }` 里展开 ——
-    /// `App` 不是 View，在那一层读 `rooms.slots` 拿到的是构建那一刻的快照，
-    /// **房间列表异步加载完之后菜单不会刷新**（会一直是空的）。
-    struct CCRoomCommands: View {
-        let rooms: CCRooms
-
-        var body: some View {
-            ForEach(Array(rooms.slots.prefix(9).enumerated()), id: \.element.id) { index, slot in
-                Button(slot.name) { rooms.activate(slot.name) }
-                    .keyboardShortcut(
-                        KeyEquivalent(Character("\(index + 1)")), modifiers: .command
-                    )
-            }
-        }
-    }
+    // ⛔ 这里原来有个 `CCRoomCommands` —— 只有 ⌘1…⌘9 的那一版。
+    //    2026-09-21 并进了 `CCMacCommands.swift` 的 `CCRoomMenuCommands`
+    //    （多了 ⌘K 去哪个房间、⌘⇧M 静音），那边是唯一一份。
+    //    「必须是 View 不能直接在 .commands 里展开」那条坑记在那个文件里。
 
 #endif
 

@@ -62,9 +62,8 @@ struct CCRoomListView: View {
                             .disabled(switchingTo != nil)
                     }
                 }
-                .sheet(isPresented: $settingsPresented) {
-                    CloseCrabSettingsView()
-                }
+                // Mac 走 ⌘, 那个独立窗口，其它平台弹 sheet。见 CCSettingsPresenter。
+                .ccSettingsSheet(isPresented: $settingsPresented)
                 .sheet(isPresented: $diagPresented) {
                     CCDiagnosticsView()
                 }

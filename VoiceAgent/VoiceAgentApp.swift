@@ -71,16 +71,19 @@ struct VoiceAgentApp: App {
                 .onChange(of: scenePhase) { _, phase in avatar.note(phase: phase) }
         }
         #if os(macOS)
-        .defaultSize(width: 900, height: 900)
+        // ⛔ 原来是 `900 × 900`。**正方形窗口在 Mac 上是个信号** ——
+        //    它说明这个尺寸不是按内容排出来的，是随手写的。
+        //    1100 × 720 大致是 3:2，跟 MacBook 屏幕一族同向，
+        //    而且刚好放得下「侧栏 ＋ 内容」这个两栏结构。
+        .defaultSize(width: 1100, height: 720)
         // 内容有最大宽度（`CC.Size.contentMax`），窗口拉太宽会变成
         // 中间一条、两边全是背景图。给个下限免得被压扁，上限交给用户。
         .windowResizability(.contentMinSize)
         .commands {
-            // ⌘1…⌘9 直切房间。横滑那个手势是给触摸做的，
-            // Mac 上触控板能用但鼠标用户没有入口。
+            // 「房间」菜单：⌘K 去哪个房间、⌘⇧M 静音、⌘1…⌘9 直切。
             // 包一层 View 才订阅得到 —— 直接在这里读 `rooms.slots`，
             // 菜单只会在 App 构建那一刻取一次值，房间列表加载完不会刷新。
-            CommandMenu("房间") { CCRoomCommands(rooms: rooms) }
+            CommandMenu("房间") { CCRoomMenuCommands(rooms: rooms) }
         }
         #endif
         #if os(visionOS)
@@ -90,6 +93,22 @@ struct VoiceAgentApp: App {
         #endif
 
         #if os(macOS)
+            // ⌘, —— **Mac 用户的肌肉记忆里，设置就在这个键上。**
+            //
+            // 原来设置只有一个入口：房间抽屉里往下翻，点一下，弹一张 sheet。
+            // 那是手机的路子。Mac 上 `Settings {}` 是一个**独立窗口** ——
+            // 它跟主窗口平级，可以一直开着，也不会挡住你正在看的东西。
+            //
+            // ⚠️ 这个场景**必须挂在 App 这一层**。写在 View 里是没有的 ——
+            //    `Settings` 是 Scene 不是 View，SwiftUI 靠它自动接上
+            //    「App 菜单 › 设置…」那一条和 ⌘, 这个快捷键。
+            Settings {
+                CloseCrabSettingsView()
+                    // 跟主窗口同一套深浅色。不加的话设置窗口会跟系统走，
+                    // 出现「主界面深色、设置浅色」那种拼接感。
+                    .preferredColorScheme(config.appearance.colorScheme)
+            }
+
             // 菜单栏常驻。Mac 的模型是「它一直在那儿」，不是「打开→用→退出」——
             // 窗口该能关掉而助手还活着。详见 CCMenuBar.swift。
             MenuBarExtra {

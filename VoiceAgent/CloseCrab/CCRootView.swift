@@ -172,12 +172,56 @@ private struct CCShell: View {
         #if os(iOS)
         .sensoryFeedback(.impact, trigger: active.isConnected)
         #endif
+        #if os(macOS)
+        // 把「打开房间抽屉」这个开关交给菜单（⌘K）。
+        // **用 focusedSceneValue 而不是单例**：值跟着当前获得焦点的窗口走，
+        // 将来一个房间一个窗口时才不会作用错对象。理由写在 CCMacCommands 里。
+        .focusedSceneValue(\.ccRoomDrawer, $roomsPresented)
+        #endif
     }
 
     // MARK: - 连上之后
 
+    /// 连上之后的主体。**两个平台是两种布局，不是一种布局的两个尺寸。**
+    ///
+    /// 手机竖着拿，横向是唯一的富余方向 —— 所以房间排成一排、靠滑动翻页，
+    /// 内容一列到底。Mac 正好反过来：竖向有的是空间，横向是拿来放内容的。
+    /// 所以 Mac 走侧栏 ＋ 内容两栏，方块行和那截颈部在 Mac 上整个不出现。
+    ///
+    /// ⚠️ 拆成两个函数而不是在里面插 `#if`：`#if` **劈不开 `VStack {` 那对
+    /// 花括号**（那不是合法 Swift）。这条坑 `VoiceAgentApp` 里也记过一次。
     @ViewBuilder
     private func connected() -> some View {
+        #if os(macOS)
+            macLayout()
+        #else
+            touchLayout()
+        #endif
+    }
+
+    #if os(macOS)
+        /// Mac：左边房间侧栏，右边这个房间的全部。
+        @ViewBuilder
+        private func macLayout() -> some View {
+            NavigationSplitView {
+                CCMacRoomSidebar(rooms: rooms)
+            } detail: {
+                pager()
+                    // 说话条 ＋ 控制栏仍然在底部。
+                    //
+                    // **没有跟着挪进工具栏**：说话条是这个 app 里按得最频繁的
+                    // 东西，而且全局热键（右 Option）读的就是它那套状态 ——
+                    // 把它挪到窗口顶上，手和眼睛都要多跑一趟。
+                    // 静音 / 字幕 / 挂断那几个是候选，等侧栏落地之后再说。
+                    .safeAreaInset(edge: .bottom) {
+                        if !keyboardFocus { bottomBar() }
+                    }
+            }
+        }
+    #endif
+
+    @ViewBuilder
+    private func touchLayout() -> some View {
         VStack(spacing: 0) {
             // 方块行 + 颈部。绑在一起是因为颈部要读方块的位置：
             // preference 只能从子树往上冒，overlay 必须挂在**包住方块行**的那一层。
