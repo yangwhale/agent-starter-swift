@@ -31,9 +31,26 @@ struct CloseCrabSettingsView: View {
             //
             // 尺寸写死是故意的：设置窗口该是**可预期的**，每次打开都一样大。
             // 让它跟着内容长的话，切到不同分段窗口会自己跳一下。
+            // ⭐ `.formStyle(.grouped)` **是这一页在 Mac 上的成败所在**，不是装饰。
+            //
+            //    macOS 上 `Form` 的默认样式是 `.columns` —— 左边标签右对齐、
+            //    右边控件一列，**而分段标题会退化成一行普通文字**。
+            //    于是「外观」「细节」「排障」这些 header 看起来像是上一段
+            //    说明文字的续行，整页变成一锅粥：Chris 2026-09-21 的原话是
+            //    「这个界面糊了」，说的就是这个。
+            //
+            //    iOS 上看不出来，因为 iOS 的默认就是 grouped。
+            //    **一个不写默认值的 API，在两个平台上给的默认不一样** ——
+            //    这类差异只有在第二个平台上真跑一次才会暴露。
             form
                 .formStyle(.grouped)
-                .frame(width: 560, height: 640)
+                // 说明文字（footer）是整段的话。`.columns` 下它们被截成
+                // 「……背后是一块纯色…」那样，而**截断的说明比没有说明更糟**：
+                // 它看起来像是写完了。这两条保证它们换行而不是截断。
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                // 560 太窄 —— 那几段说明本来就长，窄了就是逼它们换五行。
+                .frame(width: 620, height: 680)
         #else
             NavigationStack {
                 form
