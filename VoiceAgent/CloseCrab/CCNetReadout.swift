@@ -59,13 +59,21 @@ final class CCNetStats {
         // 而且这是给人看的读数，不是给算法用的。
         timer = Task { [weak self] in
             while !Task.isCancelled {
-                self?.sample()
+                // ⚠️ `guard let self`，不是 `self?.sample()` ——
+                //    后者在对象没了之后不报错也不停，每秒空转一次转到天荒地老。
+                //    **弱引用防的是泄漏对象，不防泄漏循环。**
+                guard let self else { return }
+                sample()
                 try? await Task.sleep(for: .seconds(1))
             }
         }
     }
 
     func stop() {
+        // 统计也要关掉。**只 cancel 定时器不够** —— `reportStatistics`
+        // 开着的时候 WebRTC 一直在算，那部分比我们这个 1 秒循环贵，
+        // 而且它不在我们的进程控制里，看不见。
+        if let t = track { Task { await t.set(reportStatistics: false) } }
         timer?.cancel()
         timer = nil
     }
@@ -106,6 +114,9 @@ final class CCNetStats {
 struct CCNetReadout: View {
     @Environment(CCRooms.self) private var rooms
     @State private var stats = CCNetStats()
+    /// 看不见就别采样 —— 见 `CCRenderGate`。
+    @Environment(\.ccRendering) private var rendering
+
 
     var body: some View {
         Group {
@@ -131,9 +142,21 @@ struct CCNetReadout: View {
         // `onChange` 收普通同步闭包，在这个工程（默认 MainActor 隔离）下必然继承。
         // `initial: true` 补上「第一次出现时也跑一次」，语义和 task 一样。
         .onChange(of: rooms.activeName, initial: true) { _, _ in
-            stats.watch(rooms.active?.agentAudioTrack)
+            syncWatch()
         }
+        // ⭐ 锁屏/切后台就停。它不只是一个 1 秒定时器 ——
+        //    `watch` 里那句 `set(reportStatistics: true)` 会让 WebRTC
+        //    **持续计算统计**，那部分比我们这个循环贵。
+        .onChange(of: rendering) { _, _ in syncWatch() }
         .onDisappear { stats.stop() }
+    }
+
+    private func syncWatch() {
+        if rendering {
+            stats.watch(rooms.active?.agentAudioTrack)
+        } else {
+            stats.stop()
+        }
     }
 
     /// 缓冲深度的颜色只是个粗判：
