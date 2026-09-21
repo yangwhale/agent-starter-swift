@@ -125,34 +125,16 @@ struct StartView: View {
             .frame(maxWidth: .infinity)
             .frame(height: Self.controlHeight)
         }
-        .font(.headline)
-        #if os(macOS)
-            // Mac：**用系统的主按钮样式，不要自己画。**
-            //
-            // `.borderedProminent` 自带系统强调色、系统圆角、系统按压态，
-            // 而且会跟着「提高对比度」「减少透明度」这些辅助功能开关变。
-            // 自己拿一块饱和紫铺满，在那些设置下就跟旁边的系统控件对不上 ——
-            // 这正是「看着不像原生」最常见的来源。
-            //
-            // ⛔ **我上一版在这儿写错了一句**，记下来免得再犯：
-            //    我写的是「不写 `.tint` 就会跟随系统强调色」。**不会。**
-            //
-            //    工程里设了 `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = fgAccent`
-            //    —— **app 自己的强调色资产覆盖了系统偏好**。
-            //    所以 `.borderedProminent` 拿到的一直是 `fgAccent`，
-            //    不管用户在系统设置里选了什么色。
-            //    Chris 2026-09-21 一句话戳破：「我什么时候把紫色设成系统颜色？」
-            //
-            //    ⇒ 想改这颗按钮的颜色，**改的是那个资产，不是这一行**。
-            //      已经把 fgAccent 从电紫（#5B3DF5）换成低饱和蓝。
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-        #else
-            // iOS：保留 prominent 玻璃（那是 iOS 26 的主操作语言），
-            // 但面积已经被上面那条 columnMax 收住了。
-            .buttonStyle(.glassProminent)
-            .tint(.fgAccent)
-        #endif
+        // ⭐ **主操作不用品牌色，用近黑实心胶囊。**
+        //    Chris 2026-09-21 拿 Perplexity 登录页当参照定的。
+        //    完整理由写在 `CCPrimaryButtonStyle` 上 —— 一句话：
+        //    **强调色靠稀缺生效，铺在最大的那块上它就不再是强调色了。**
+        //
+        //    ⚠️ 这里**不再分平台**。上一版 Mac 走 `.borderedProminent`、
+        //    iOS 走 `.glassProminent`，那是「各自跟随平台默认」的思路；
+        //    现在是「这颗按钮该长什么样」由我们定，两个平台长一样才对 ——
+        //    否则同一个 app 在两台设备上主操作是两个颜色。
+        .buttonStyle(CCPrimaryButtonStyle())
     }
 
     /// 进谁的房间。
