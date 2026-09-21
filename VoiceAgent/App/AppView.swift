@@ -56,7 +56,10 @@ struct AppView: View {
     private func interactions() -> some View {
         #if os(visionOS)
             VisionInteractionView(chat: chat, keyboardFocus: $keyboardFocus)
+        #elseif os(macOS)
+            macInteractions()
         #else
+            // 手机上只能二选一 —— 屏幕就那么大，两样并排谁都看不清。
             if chat {
                 TextInteractionView(keyboardFocus: $keyboardFocus)
             } else {
@@ -64,6 +67,64 @@ struct AppView: View {
             }
         #endif
     }
+
+    #if os(macOS)
+        /// Mac：**波形和字幕并排，不是二选一。**
+        ///
+        /// ## 这是「大屏」真正的意思
+        ///
+        /// 手机上那个 `if chat { 文字 } else { 波形 }` 不是设计选择，
+        /// 是**屏幕逼出来的**：两样并排谁都看不清，所以只能切。
+        ///
+        /// 大屏上这个约束不存在了，而切换的代价还在 —— 你想一边听它说、
+        /// 一边看它把你的话听成了什么，在手机上做不到，在 Mac 上没有理由做不到。
+        /// 出问题时「它到底听成了什么」正是最要紧的那个信息。
+        ///
+        /// 所以 ⌘T 在 Mac 上的语义也变了：**不是「换一个视图」，
+        /// 是「多开/收起一块面板」**。波形一直在。
+        ///
+        /// ## 为什么用 `HSplitView` 而不是 `HStack`
+        ///
+        /// 分隔条可以拖 —— **宽度是用户的决定不是我的**。
+        /// 有人想把字幕拉得很宽当聊天记录看，有人只想留一条窄的瞄一眼，
+        /// 这两种用法我都猜不准，也不该猜。
+        ///
+        /// ## ⚠️ 一个要盯着的代价
+        ///
+        /// `ChatView` 是**全 app 唯一保留 `@EnvironmentObject Session` 的地方**
+        /// （它显示的就是 `session.messages`，没有镜像可读）。原来那句
+        /// 「只有打开字幕时它才在视图树上」在 Mac 上字面仍然成立，
+        /// **但人的用法变了** —— 手机上开字幕就看不见波形，所以看完就关；
+        /// Mac 上并排之后，多数人会一直开着。
+        ///
+        /// 也就是说：**这块面板从「偶尔挂一会儿」变成了「常驻」**，
+        /// 而它订阅的是那条峰值几百次每秒的通知。
+        /// 省电那一轮量的是「字幕关着」的场景，Mac 上要重新量一次。
+        @ViewBuilder
+        private func macInteractions() -> some View {
+            HSplitView {
+                VoiceInteractionView()
+                    // 波形那块不能被挤没。280 是「柱子还看得出高低」的下限。
+                    .frame(minWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
+
+                if chat {
+                    VStack(spacing: 0) {
+                        // ⚠️ 这里**不用 `TextInteractionView`**。那个组件里还带了
+                        //    一份参与者头像（`participants()`）—— 在手机上它是必要的，
+                        //    因为切过去之后波形那一屏就看不见了。
+                        //    Mac 上波形就在左边，右边再放一份头像是同一件事说两遍。
+                        ChatView()
+                            .blurredTop()
+                        ChatInputView(keyboardFocus: _keyboardFocus)
+                    }
+                    .frame(minWidth: 260, idealWidth: 360, maxHeight: .infinity)
+                    // 拆掉/装上的时候别硬跳。用淡入淡出不用位移 ——
+                    // 位移会让左边那块跟着抖，而它本来是不该动的。
+                    .transition(.opacity)
+                }
+            }
+        }
+    #endif
 
     /// 这一页的房间还没连上。
     ///
