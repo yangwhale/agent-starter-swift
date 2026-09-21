@@ -229,6 +229,8 @@ struct CCVoiceBars: View {
     var showsDebug: Bool = false
 
     @State private var meter = CCVoiceMeter(barCount: 5)
+    /// 看不见就别画，也别听 —— 见 `CCRenderGate`。
+    @Environment(\.ccRendering) private var rendering
 
     /// 静止时的高度 ＝ 柱子宽度，于是是个圆点；一说话就抽成长条。
     /// 方块上那个小版本会把这三个都调小（见 `CCRoomTileRow`）。
@@ -268,8 +270,23 @@ struct CCVoiceBars: View {
         // 盯的是**拼起来的 id 串**而不是数组本身：`[any AudioTrack]` 不是
         // Equatable，`onChange` 收不了；而且轨的增删（本体旁路中途进房）
         // 正是要重挂的时机，id 串能如实反映这件事。
-        .onChange(of: trackKey, initial: true) { _, _ in meter.attach(tracks) }
-        .onChange(of: isSpeaking, initial: true) { _, speaking in meter.setSpeaking(speaking) }
+        // ⭐ **看不见就整个摘掉，连音频渲染器一起。**
+        //
+        // 摘的不只是那个 30fps 的泵 —— `meter.attach` 会往音轨上挂一个
+        // `AudioRenderer`，而挂上之后 SDK **每 10ms 回调一次**给我们送 PCM。
+        // 那是实打实的 CPU，而且跟「有没有人看」完全无关。
+        //
+        // ⚠️ 五个房间挂着时，不摘就是**五份**（`TabView` 分页样式
+        //    为了滑动跟手，相邻页同时活着）。
+        //
+        // ⚠️ 摘掉**不影响出声** —— 音频渲染器只是「旁听一份用来画柱子」，
+        //    播放走的是另一条路。
+        .onChange(of: trackKey, initial: true) { _, _ in syncMeter() }
+        .onChange(of: rendering, initial: true) { _, _ in syncMeter() }
+        .onChange(of: isSpeaking, initial: true) { _, speaking in
+            // 不渲染时连这一位都不用传：泵已经停了，传了也只是改个没人读的字段。
+            if rendering { meter.setSpeaking(speaking) }
+        }
         .onDisappear { meter.detach() }
         // ## 对 VoiceOver 隐藏，但信息没丢
         //
@@ -347,6 +364,16 @@ struct CCVoiceBars: View {
             .blendMode(.plusLighter)
         }
         .ccAnimation(.easeInOut(duration: 0.5), value: tint)
+    }
+
+    /// 渲染开关或音轨变了都走这儿。**幂等** —— `attach` 自己会先 `detach`。
+    private func syncMeter() {
+        if rendering {
+            meter.attach(tracks)
+            meter.setSpeaking(isSpeaking)
+        } else {
+            meter.detach()
+        }
     }
 
     /// 排障那一行。**这行是这次改动里最该留的东西。**

@@ -138,6 +138,7 @@ private struct CCShell: View {
     #if os(macOS)
         /// 工具栏那两颗要开独立场景。**名字不跟 SwiftUI 的环境键同名** ——
         /// 同名读起来像是覆盖了它。
+        @Environment(\.scenePhase) private var scenePhase
         @Environment(\.openWindow) private var openDiagWindow
         @Environment(\.openSettings) private var openSettingsWindow
     #endif
@@ -435,6 +436,16 @@ private struct CCShell: View {
             //    不再 `@EnvironmentObject` 订阅 LiveKit 那个 Session ——
             //    后者是老式对象，**读它任何一个属性就等于订阅它全部变化**。
             .environment(slot)
+            // ⭐ **看不见就不画。** 三个条件里这里管前两个：
+            //    是不是当前页 ＋ 场景在不在前台。
+            //
+            //    ⚠️ `TabView` 的分页样式为了滑动跟手，**相邻页是同时活着的** ——
+            //    不挂这个闸门的话，五个房间就是五份 30fps 的柱子泵
+            //    ＋ 五个每 10ms 回调一次的音频渲染器，全在画没人看的东西。
+            //
+            //    ⚠️ 它**只关「画」不关「听」** —— 音频照收照放，
+            //    `UIBackgroundModes: audio` 就是为这个开的。
+            .ccRendering(slot.name == rooms.activeName && scenePhase == .active)
     }
 
     /// 分页选中项。

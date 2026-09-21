@@ -63,6 +63,9 @@ struct AgentView: View {
         guard avatarTrack != nil, let t = lastSpokeAt else { return false }
         return now.timeIntervalSince(t) < Self.hideGrace
     }
+    /// 看不见就别定时重算 —— 见 `CCRenderGate`。
+    @Environment(\.ccRendering) private var rendering
+
 
     var body: some View {
         ZStack {
@@ -124,7 +127,8 @@ struct AgentView: View {
     /// 2026-09-20：原来它无条件常驻。当时还兼着「采样 isSpeaking」的活，
     /// 现在 `slot.isSpeaking` 是 @Observable 镜像，那一半理由也没了。
     private var sampler: some View {
-        TimelineView(.periodic(from: epoch, by: Self.tick)) { ctx in
+        // ⭐ 看不见就把周期拉到一小时。写法理由见 `CCRosterRow`。
+        TimelineView(.periodic(from: epoch, by: rendering ? Self.tick : 3600)) { ctx in
             Color.clear
                 .allowsHitTesting(false)
                 .onChange(of: ctx.date, initial: true) { _, t in

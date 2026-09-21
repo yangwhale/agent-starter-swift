@@ -34,6 +34,7 @@ struct CCAuroraBackground: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var drift = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -70,7 +71,16 @@ struct CCAuroraBackground: View {
                 .allowsHitTesting(false)
         }
         .ignoresSafeArea()
-        .onAppear { drift = true }
+        // ⭐ 漂移**只在前台跑**。这层是三团 `blur(radius: 110)` 的全屏椭圆，
+        //    `repeatForever` 一旦启动就永不停 —— 锁屏之后照样在烧 GPU，
+        //    而那时候一个像素都没人看。
+        //
+        //    ⚠️ Chris 2026-09-22 说「那是一个固定的桌面背景图」——
+        //    他看到的是静止的，因为有背景图时极光被压到 0.42 强度、
+        //    藏在图后面几乎看不出来。**但它一直在动，一直在付全价。**
+        //    「看不出来的动画」和「不动的画面」渲染成本完全不同。
+        .onAppear { drift = scenePhase == .active }
+        .onChange(of: scenePhase) { _, phase in drift = phase == .active }
     }
 
     private func blob(_ color: Color, size: CGFloat,

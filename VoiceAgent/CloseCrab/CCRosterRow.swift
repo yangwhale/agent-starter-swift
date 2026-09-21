@@ -62,6 +62,9 @@ struct CCRosterRow: View {
     /// Avatar 开关住在这儿（每房间、每角色），顺带拿服务端回报来给标记上色。
     private var link: CCAvatarLink { .shared }
     /// 正在放大看谁的形象。nil = 没在看。
+    /// 看不见就别定时重算 —— 见 `CCRenderGate`。
+    @Environment(\.ccRendering) private var rendering
+
     @State private var previewing: CCPersonaRole?
 
     private var roomName: String { slot.session.room.name ?? "" }
@@ -79,7 +82,16 @@ struct CCRosterRow: View {
         // 闭包参数是 `_`（不看刻度值），而且里面**不回写任何 `@State`** ——
         // 那个自激环要「定时器回写状态、状态又被 body 读到」两头都成立才闭合。
         // 对照 `CCBotStatusStrip.epoch` 那段：那两处两头都成立，所以会死循环。
-        TimelineView(.periodic(from: .now, by: 0.35)) { _ in
+        // ⭐ 不渲染时把周期**拉到一小时**，等于停跳。
+        //
+        //    ⚠️ 为什么不是 `.never`：**`TimelineSchedule` 没有 `.never`。**
+        //    我第一版直接写了它 —— 那是凭「应该有」想出来的 API。
+        //    `.explicit([.now])` 语义更准，但它跟 `.periodic` 是**不同类型**，
+        //    三元表达式两支要同类型，凑不到一起。
+        //
+        //    ⚠️ 也不能写成 `if rendering { TimelineView } else { HStack }` ——
+        //    那是两棵不同的树，切换时牌子会整排重建、闪一下。
+        TimelineView(.periodic(from: .now, by: rendering ? 0.35 : 3600)) { _ in
             HStack(spacing: 6) {
                 ForEach(roster()) { m in
                     CCRosterChip(member: m, room: roomName, persona: persona, link: link,

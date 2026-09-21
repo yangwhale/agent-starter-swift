@@ -43,6 +43,9 @@ struct CCBotStatusStrip: View {
     private static let tick: TimeInterval = 1.0
 
     private var snap: CCBotStatus.Snapshot? { status.snap }
+    /// 看不见就别定时重算 —— 见 `CCRenderGate`。
+    @Environment(\.ccRendering) private var rendering
+
 
     var body: some View {
         if let s = snap {
@@ -193,7 +196,9 @@ struct CCBotStatusStrip: View {
 
     /// **只在「在忙」时才挂** —— 空闲时秒数是冻住的，跳了也改变不了任何像素。
     private var sampler: some View {
-        TimelineView(.periodic(from: epoch, by: Self.tick)) { ctx in
+        // ⭐ 看不见就把周期拉到一小时（等于停跳）。写法理由见 `CCRosterRow`
+        //    那段 —— `TimelineSchedule` 没有 `.never`，三元两支要同类型。
+        TimelineView(.periodic(from: epoch, by: rendering ? Self.tick : 3600)) { ctx in
             Color.clear
                 .allowsHitTesting(false)
                 .onChange(of: ctx.date) { _, d in now = d }

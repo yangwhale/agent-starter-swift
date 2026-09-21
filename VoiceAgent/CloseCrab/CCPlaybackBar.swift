@@ -21,6 +21,9 @@ import SwiftUI
 struct CCPlaybackBar: View {
     let remote: CCPlaybackRemote
 
+    /// 看不见就别轮询 —— 见 `CCRenderGate`。
+    @Environment(\.ccRendering) private var rendering
+
     /// 一次拖多少。**用比例不用秒数** —— 服务端收的就是比例（-1…1），
     /// 而且一段话可能 3 秒也可能 3 分钟，固定秒数在两头都不好用。
     private let step = 0.15
@@ -57,8 +60,13 @@ struct CCPlaybackBar: View {
         .padding(.horizontal, CC.Space.snug)
         .padding(.vertical, CC.Space.tight)
         .background(.regularMaterial, in: Capsule())
-        .onAppear { remote.startPolling() }
+        // ⭐ 轮询也归渲染闸门管：看不见的房间/锁着的屏，
+        //    进度拉回来也没人看，而每次都是一趟 RPC 往返。
+        .onAppear { if rendering { remote.startPolling() } }
         .onDisappear { remote.stopPolling() }
+        .onChange(of: rendering) { _, on in
+            if on { remote.startPolling() } else { remote.stopPolling() }
+        }
     }
 
     // MARK: -
