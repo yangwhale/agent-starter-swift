@@ -260,6 +260,14 @@ struct CCDiagnosticsView: View {
                     } label: {
                         Text(verbatim: "最近自愈")
                     }
+                    // 「让出麦克风」的**前提条件**。设失败的话整个功能静默退化，
+                    // 而上面两行看起来会完全正常 —— 2026-09-21 就是这么卡住一轮的。
+                    LabeledContent {
+                        Text(verbatim: CCAudioSessionPolicy.shared.muteMode)
+                            .font(.caption).multilineTextAlignment(.trailing)
+                    } label: {
+                        Text(verbatim: "静音模式")
+                    }
                     #endif
                     LabeledContent {
                         Text(verbatim: rooms.activeName)

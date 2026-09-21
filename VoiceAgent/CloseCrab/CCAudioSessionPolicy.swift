@@ -96,11 +96,54 @@ final class CCAudioSessionPolicy {
     /// 最近一次自愈：什么时候、为什么。诊断页看这个。
     private(set) var lastRecovery = "（还没发生过）"
 
+    /// 静音模式设成了什么。
+    ///
+    /// ## 为什么这条必须上诊断页
+    ///
+    /// `.restart` 是「让出麦克风」成立的**前提**：默认那个 `.voiceProcessing`
+    /// 的静音法是「引擎照录、只把输入置零」，那样闭麦期间麦克风仍然被占着。
+    /// 设失败的话整个功能静默退化 —— 开关看着是开的、策略也装上了、
+    /// 诊断页一切正常，**只有麦克风灯还亮着**。
+    ///
+    /// ⚠️ 原来它只 `print` 一行。2026-09-21 Chris 报「让出不生效」时，
+    /// 我手上有诊断页却**分不清是这里失败了还是自愈把麦抢回去了** ——
+    /// 两者在诊断页上长得一模一样。
+    /// ⇒ **一个功能的前提条件，要跟这个功能的状态摆在一起看得见。**
+    private(set) var muteMode = "（还没设过）"
+
     private let observer = Observer()
     private var installed = false
     private var recoveryInstalled = false
     /// 我们自己管类别时，最后一次算出来的那套。自愈要原样再设一遍。
+    ///
+    /// ⚠️ **释放那条路不写它**（`report` 传的 `config` 是 nil）。
+    /// 所以让出麦克风之后，这里存的仍然是「上一次录音用的那套」——
+    /// 见 `isReleased`，自愈必须先看那个再决定要不要用这份配置。
     private var lastConfig: AudioSessionConfiguration?
+
+    /// 现在是不是「已经把麦克风让出去了」。
+    ///
+    /// ## 这个标记是 2026-09-21 补的，补的是一个**机制互相抵消**的 bug
+    ///
+    /// Chris：「不说话时让出麦克风为啥不生效，麦克风的灯还是亮着。」
+    /// 诊断页显示「录音中 → PlayAndRecord」＋「回前台自检 → 已重新激活」，
+    /// 而他确认**麦克风是关着的**。
+    ///
+    /// 源码对上了：`recover()` 每次回前台都跑，做的事是
+    /// **把类别设回 `lastConfig` 然后无条件 `setActive(true)`**。
+    /// 而 `lastConfig` 在释放时不更新 —— 它存的还是录音那套。
+    ///
+    ///     闭麦 → 释放（麦让出去了）→ 切后台 → 切回前台
+    ///          → 自愈把「录音那套」原样装回来 → **麦克风被抢回来**
+    ///          → 引擎状态没变，`apply()` 的去重挡住，**再也不会让出去**
+    ///
+    /// ⚠️ 两边单独看都完全正常：自愈成功了、让出也成功过。
+    /// **是顺序一叠才互相抵消** —— 这类 bug 在任何一侧的日志里都看不出问题。
+    ///
+    /// ⇒ 一般化：**加一个「无条件恢复」之前，先列出它会覆盖掉哪些正常状态。**
+    /// 「无条件」是为了不依赖猜出来的判据（那个理由现在依然成立），
+    /// 但它的代价是**它也不区分「坏了」和「本来就该是这样」**。
+    private var isReleased = false
 
     private init() {}
 
@@ -128,15 +171,19 @@ final class CCAudioSessionPolicy {
         // 那样麦克风还是被占着。.restart 才是真的停录音。
         do {
             try manager.set(microphoneMuteMode: .restart)
+            muteMode = "restart（闭麦真的停录音）"
         } catch {
             // 不致命：只是静音时麦克风仍被占着，退回今天的行为。
+            // **但一定要让人看得见** —— 见 `muteMode` 上面那段。
+            muteMode = "⚠️ 设置失败，闭麦仍占麦: \(error.localizedDescription)"
             print("[CCAudioSessionPolicy] 切静音模式失败，静音时仍会占麦: \(error)")
         }
 
-        observer.onApply = { [weak self] text, capturing, config in
+        observer.onApply = { [weak self] text, capturing, released, config in
             Task { @MainActor in
                 self?.lastApplied = text
                 self?.isCapturing = capturing
+                self?.isReleased = released
                 if let config { self?.lastConfig = config }
             }
         }
@@ -229,6 +276,17 @@ final class CCAudioSessionPolicy {
     /// 直接无条件 `setActive(true)`：对已经激活的 session 它基本是空操作，
     /// 一次前台切换一次，代价可以忽略。
     private func recover(reason: String) {
+        // **让出状态下什么都不做。** 这里没有东西需要恢复：
+        // 没在放音也没在录音，而 `setActive(true)` 会把麦克风重新抓回来。
+        //
+        // 不怕漏救：bot 一开口，引擎就会 enable playout，
+        // `apply()` 立刻会把 session 配起来 —— 那条路本来就走得通。
+        guard !isReleased else {
+            lastRecovery = "\(reason) → 跳过（当前是让出状态，没有东西要恢复）"
+            print("[CCAudioSessionPolicy] \(lastRecovery)")
+            return
+        }
+
         let session = AVAudioSession.sharedInstance()
         do {
             // 自己管类别的时候要把类别也重设一遍：中断期间 iOS 可能改过它。
@@ -253,7 +311,12 @@ final class CCAudioSessionPolicy {
     /// 音频直接没了。协议默认实现会转发，我们重写的这两个要自己转。
     private final class Observer: AudioEngineObserver, @unchecked Sendable {
         var next: (any AudioEngineObserver)?
-        var onApply: ((String, Bool, AudioSessionConfiguration?) -> Void)?
+        /// `(文案, 在不在录音, 是不是让出状态, 这次算出来的配置)`
+        ///
+        /// ⚠️ **`released` 必须是独立的一位，不能用「config 是 nil」去推** ——
+        /// 配置失败那条路 config 也是 nil，但那不是让出状态，
+        /// 那种时候恰恰需要自愈去救。两件事挤在一个信号里迟早混。
+        var onApply: ((String, Bool, Bool, AudioSessionConfiguration?) -> Void)?
 
         func engineWillEnable(_ engine: AVAudioEngine,
                               isPlayoutEnabled: Bool,
@@ -307,7 +370,7 @@ final class CCAudioSessionPolicy {
                 // App（音乐、导航）不会自己恢复。
                 do {
                     try session.setActive(false, options: .notifyOthersOnDeactivation)
-                    report("已释放（麦克风让出去了）", capturing: false)
+                    report("已释放（麦克风让出去了）", capturing: false, released: true)
                 } catch {
                     report("释放失败: \(error)", capturing: false)
                 }
@@ -330,7 +393,7 @@ final class CCAudioSessionPolicy {
                 try session.setPreferredIOBufferDuration(0.02)
                 try session.setActive(true)
                 report("\(isRecordingEnabled ? "录音中" : "只放音") → \(config.category.rawValue)",
-                       capturing: isRecordingEnabled, config: config)
+                       capturing: isRecordingEnabled, released: false, config: config)
             } catch {
                 // 配置失败就当没通 —— **宁可绿灯不亮，也不能让人对着坏的麦说话。**
                 report("配置失败: \(error)", capturing: false)
@@ -338,9 +401,10 @@ final class CCAudioSessionPolicy {
         }
 
         private func report(_ text: String, capturing: Bool,
+                            released: Bool = false,
                             config: AudioSessionConfiguration? = nil) {
             print("[CCAudioSessionPolicy] \(text)")
-            onApply?(text, capturing, config)
+            onApply?(text, capturing, released, config)
         }
     }
 }
