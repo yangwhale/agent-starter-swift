@@ -168,6 +168,19 @@ private struct CCShell: View {
         // `task` 的闭包是 `@Sendable` 的，在里面直接同步调 MainActor 方法
         // 在 Swift 6 下未必过得了；`onAppear` 收的是普通同步闭包，
         // 在这个工程（默认 MainActor 隔离）下必然继承主 actor。
+        // ⛔ **这一条必须挂在 body 上，不能挂在那颗汉堡上。**
+        //
+        //    它原来跟着 `menuButton()` 走 —— 而 `menuButton()` 只在
+        //    `touchLayout()` 里。Mac 走的是 `macLayout()`，于是整个 sheet
+        //    修饰符**根本不在视图树上**：⌘K 把 `roomsPresented` 置了真，
+        //    但没有任何人在听它，表现是「按了没反应」。
+        //    Chris 2026-09-21 报的「房间列表点不开」就是这个。
+        //
+        //    教训：**把「弹出什么」挂在「谁触发它」身上，是个耦合陷阱** ——
+        //    触发者换了平台，弹出能力就一起没了，而且编译期完全无声。
+        .sheet(isPresented: $roomsPresented) {
+            CCRoomListView()
+        }
         .onAppear { CCHaptics.warmUp() }
         #if os(iOS)
         .sensoryFeedback(.impact, trigger: active.isConnected)
@@ -205,7 +218,7 @@ private struct CCShell: View {
         @ViewBuilder
         private func macLayout() -> some View {
             NavigationSplitView {
-                CCMacRoomSidebar(rooms: rooms)
+                CCMacRoomSidebar(rooms: rooms, roomsPresented: $roomsPresented)
             } detail: {
                 pager()
                     // 说话条 ＋ 控制栏仍然在底部。
@@ -314,9 +327,6 @@ private struct CCShell: View {
         .accessibilityLabel(Text("房间列表"))
         .accessibilityValue(Text(rooms.activeName))
         .padding(.trailing, 4 * .grid)
-        .sheet(isPresented: $roomsPresented) {
-            CCRoomListView()
-        }
     }
 
     /// 内容窗口。**只有这一块分页**。

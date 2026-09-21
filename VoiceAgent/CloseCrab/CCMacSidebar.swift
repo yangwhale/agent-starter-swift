@@ -32,6 +32,9 @@
     /// 恰恰是靠**大部分行是安静的**才跳得出来。
     struct CCMacRoomSidebar: View {
         let rooms: CCRooms
+        /// 「管理房间」抽屉的开关。**由 `CCShell` 持有** —— ⌘K 走的也是它，
+        /// 两个入口必须是同一个状态，否则会出现「菜单能开、按钮不能开」这种鬼。
+        @Binding var roomsPresented: Bool
 
         var body: some View {
             List(selection: selection) {
@@ -49,6 +52,37 @@
             .listStyle(.sidebar)
             // 侧栏该能拖宽，但不能被拖到看不见名字，也不该宽到抢内容的地方。
             .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 320)
+            // ⛔ **这个入口不能省。**
+            //
+            //    侧栏列的是「已经连上的房间」，而「要连哪几个房间」是另一件事 ——
+            //    它在 iOS 上挂在右上角那颗汉堡里，而汉堡只在 `touchLayout()`。
+            //    Mac 换成侧栏之后我把汉堡去掉了，**却忘了把它的职责接过来** ——
+            //    结果是进了房间就再也没有地方去挑别的 bot。
+            //    Chris 2026-09-21 报的第二、第三条都是这个。
+            //
+            //    教训：**拿 B 替换 A 时，要逐条列出 A 承担的职责，
+            //    而不是只看 A 的主要用途。** 汉堡的主要用途是「看房间列表」，
+            //    但它还顺带挂着「打开抽屉」这个唯一入口。
+            .safeAreaInset(edge: .bottom) {
+                Button {
+                    roomsPresented = true
+                } label: {
+                    HStack(spacing: CC.Space.tight) {
+                        Image(systemName: "plus.circle")
+                        Text(verbatim: "管理房间…")
+                        Spacer()
+                        // 顺手告诉他有快捷键。快捷键最大的问题不是不好用，
+                        // 是没人发现它存在。
+                        Text(verbatim: "⌘K")
+                            .foregroundStyle(.tertiary)
+                    }
+                    .font(.system(size: 12))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, CC.Space.snug)
+                .padding(.vertical, CC.Space.tight)
+            }
         }
 
         /// **不能直接 `$rooms.activeName`** —— 那样只改了个字符串，

@@ -44,11 +44,19 @@ struct CloseCrabSettingsView: View {
             //    这类差异只有在第二个平台上真跑一次才会暴露。
             form
                 .formStyle(.grouped)
-                // 说明文字（footer）是整段的话。`.columns` 下它们被截成
-                // 「……背后是一块纯色…」那样，而**截断的说明比没有说明更糟**：
-                // 它看起来像是写完了。这两条保证它们换行而不是截断。
+                // 说明文字（footer）是整段的话，要换行不要截断 ——
+                // **截断的说明比没有说明更糟**，它看起来像是写完了。
+                //
+                // ⛔ 这里原来还有一句 `.fixedSize(horizontal: false, vertical: true)`，
+                //    **它把整页的滚动干掉了**：fixedSize 让 Form 取「理想高度」
+                //    ＝ 全部内容摊开的高度，外面那个 `.frame(height:)` 再一裁，
+                //    下半页就永远看不到，而且滚不动。
+                //    Chris 2026-09-21 第一眼就撞上了。
+                //
+                //    正确做法是**只对那几段说明文字用 fixedSize，不要对容器用** ——
+                //    容器级的布局修饰符会改变整棵子树的布局协商方式，
+                //    「让文字换行」和「让页面不能滚」是同一个修饰符的两个后果。
                 .lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
                 // 560 太窄 —— 那几段说明本来就长，窄了就是逼它们换五行。
                 .frame(width: 620, height: 680)
         #else
