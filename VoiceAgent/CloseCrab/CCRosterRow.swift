@@ -260,17 +260,11 @@ private struct CCRosterChip: View {
     /// 其余角色用各自的语义符号（语音助手＝波形）。
     @ViewBuilder
     private var defaultFace: some View {
-        // 先看这块牌子自己有没有设过本地图标（emoji 或图）。
-        // 优先级：**数字人形象图 > 本地图标 > 角色默认符号**。
-        // 形象图排最前是因为它是「这张脸真的长这样」，
-        // 本地图标只是个标签。
-        let localKey = personaRole?.key(room: room)
-        if let localKey, let img = CCRoomIcons.shared.image(for: localKey) {
-            img.resizable().scaledToFill()
-        } else if let localKey, CCRoomIcons.shared.hasCustomIcon(localKey) {
-            Text(verbatim: CCRoomIcons.shared.icon(for: localKey))
-                .font(.system(size: 13))
-        } else if member.role == .broadcast {
+        // ⚠️ 本地 emoji 那两支**已经挪到上面的 ZStack 里了**（它现在要压过
+        //    服务端形象图，所以必须在 `thumb` 之前判）。这里只剩「什么都没设过」
+        //    的兜底。留在这儿会是死代码，而死代码最坏的地方是：
+        //    下一个人会以为优先级还写在这里。
+        if member.role == .broadcast {
             Text(verbatim: CCRoomIcons.shared.icon(for: room))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.fg1)
@@ -282,6 +276,17 @@ private struct CCRosterChip: View {
     }
     private var thumb: Image? {
         personaRole.flatMap { persona.images[$0.key(room: room)] }
+    }
+
+    /// 这块牌子上用户自己选的 emoji。没选过＝nil。
+    ///
+    /// ⚠️ 用 `hasCustomIcon` 判，**不能直接看 `icon(for:)` 有没有值** ——
+    /// 那个方法在没设过时会回落到「名字首字母」，永远非空。
+    /// 拿它判等于「永远有 emoji」，服务端那张图就再也显示不出来了。
+    private var localEmoji: String? {
+        guard let key = personaRole?.key(room: room),
+              CCRoomIcons.shared.hasCustomIcon(key) else { return nil }
+        return CCRoomIcons.shared.icon(for: key)
     }
     private var busy: Bool {
         personaRole.map { persona.uploading.contains($0.key(room: room)) } ?? false
@@ -330,7 +335,25 @@ private struct CCRosterChip: View {
                 //    这笔交易值得 —— 前者影响少数想换图的人一次，
                 //    后者影响每个人每一眼。
                 ZStack {
-                    if let thumb {
+                    // ⛔ **顺序在 2026-09-21 翻过来了。**
+                    //
+                    //    原来是「服务端形象图 > 本地图标」，理由写的是
+                    //    「形象图是这张脸真的长这样，本地图标只是个标签」。
+                    //    听起来有道理，**但它让用户选的 emoji 不生效** ——
+                    //    Chris 当场撞上：「能选，但是它没有换过来，
+                    //    还保持着从服务器 load 过来的图片。」
+                    //
+                    //    正确的规则不是「哪个更权威」，是
+                    //    **「用户最后一次显式选的那个生效」**。
+                    //    他刚点了一个 emoji，那就是他此刻的意思 ——
+                    //    界面不该拿一个他上次传的图去覆盖这次的选择。
+                    //
+                    //    对称的另一半在下面那个上传闭包里：**传新图时清掉 emoji**。
+                    //    不清的话就是镜像 bug：emoji 一直赢，新传的图看着没生效。
+                    if let localEmoji {
+                        Text(verbatim: localEmoji)
+                            .font(.system(size: 15))
+                    } else if let thumb {
                         thumb.resizable().scaledToFill()
                     } else {
                         defaultFace
@@ -466,6 +489,12 @@ private struct CCChipGestures: ViewModifier {
                     // 那会多一次有损重编码，而参考图的清晰度直接决定
                     // 生成出来那张脸的清晰度。
                     guard let ctype = CCPersona.sniff(data) else { return }
+                    // ⭐ **传新图 = 清掉 emoji。** 这是「最后一次显式选择生效」
+                    //    的另一半 —— 不清的话 emoji 永远赢，
+                    //    用户传完图看着像没生效，跟他刚撞上的那个 bug 正好镜像。
+                    //    （选择器那边选 emoji 时也会清掉它自己那张本地图，
+                    //     同一个philosophy，只是它管不到服务端这张。）
+                    CCRoomIcons.shared.set("", for: role.key(room: room))
                     persona.upload(room: room, role: role,
                                    data: data, contentType: ctype)
                 }
