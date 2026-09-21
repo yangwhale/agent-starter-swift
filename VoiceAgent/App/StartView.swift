@@ -134,9 +134,17 @@ struct StartView: View {
             // 自己拿一块饱和紫铺满，在那些设置下就跟旁边的系统控件对不上 ——
             // 这正是「看着不像原生」最常见的来源。
             //
-            // ⚠️ **不写 `.tint(.fgAccent)`** —— 让它跟随系统强调色。
-            //    用户在系统设置里把强调色改成绿色，这个按钮就该是绿的。
-            //    写死一个紫色等于告诉系统「你的偏好我不认」。
+            // ⛔ **我上一版在这儿写错了一句**，记下来免得再犯：
+            //    我写的是「不写 `.tint` 就会跟随系统强调色」。**不会。**
+            //
+            //    工程里设了 `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = fgAccent`
+            //    —— **app 自己的强调色资产覆盖了系统偏好**。
+            //    所以 `.borderedProminent` 拿到的一直是 `fgAccent`，
+            //    不管用户在系统设置里选了什么色。
+            //    Chris 2026-09-21 一句话戳破：「我什么时候把紫色设成系统颜色？」
+            //
+            //    ⇒ 想改这颗按钮的颜色，**改的是那个资产，不是这一行**。
+            //      已经把 fgAccent 从电紫（#5B3DF5）换成低饱和蓝。
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
         #else
