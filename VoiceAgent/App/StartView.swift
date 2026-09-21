@@ -60,7 +60,11 @@ struct StartView: View {
             }
         }
         .frame(width: 116, height: 116)
-        .glassEffect(.regular, in: .circle)
+        #if os(macOS)
+            .ccFlatCircle()
+        #else
+            .glassEffect(.regular, in: .circle)
+        #endif
     }
 
     @ViewBuilder
@@ -117,7 +121,11 @@ struct StartView: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .cc(CC.Radius.bar))
+        #if os(macOS)
+            .ccFlatBar(radius: CC.Radius.bar)
+        #else
+            .glassEffect(.regular.interactive(), in: .cc(CC.Radius.bar))
+        #endif
         .sheet(isPresented: $roomsPresented) {
             CCRoomListView()
         }

@@ -74,7 +74,15 @@ struct CCTalkBar: View {
         // Liquid Glass 本体。`.interactive()` 让它在手指按下时自己产生
         // 折射和高光的形变 —— 这是系统按钮的那套反馈，自己用 scaleEffect
         // 模仿永远差一口气。
-        .glassEffect(glass, in: .cc(CC.Radius.bar))
+        //
+        // ⚠️ **Mac 上换成纯色 ＋ 细线**（见 CCMacFlat）。状态还是靠颜色表达，
+        //    只是从「玻璃染色」变成「填充色」—— 淡一点，因为 Mac 上
+        //    一整条饱和色块会比手机上显得重得多。
+        #if os(macOS)
+            .ccFlatBar(radius: CC.Radius.bar, tint: macTint)
+        #else
+            .glassEffect(glass, in: .cc(CC.Radius.bar))
+        #endif
         .overlay(alignment: .leading) { holdingPulse }
         .contentShape(.cc(CC.Radius.bar))
         .ccAnimation(CC.Motion.fade, value: mic.isHolding)
@@ -130,6 +138,17 @@ struct CCTalkBar: View {
             .clear.interactive()
         }
     }
+
+    #if os(macOS)
+        /// Mac 上那条的填充色。**比 iOS 淡得多** —— 玻璃的染色本来就是
+        /// 半透明叠加，换成实色填充时照搬饱和度会刺眼。
+        private var macTint: Color? {
+            if isWarmingUp { return .yellow.opacity(0.35) }
+            if mic.isHolding { return .green.opacity(0.30) }
+            if isAlwaysOn { return .green.opacity(0.15) }
+            return nil          // 待机＝系统控件底色
+        }
+    #endif
 
     private var foreground: Color {
         // 黄底上用黑字。白字在黄色上读不清，而这一档要传达的恰恰是

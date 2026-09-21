@@ -42,6 +42,27 @@ struct CCBackdrop: View {
     @State private var asset: String?
 
     var body: some View {
+        #if os(macOS)
+            // ⭐ **Mac 上不铺图、不画极光，只有系统窗口底色。**
+            //
+            //    Chris 2026-09-21 对着飞书 Mac 版：「它也没有那个 Liquid Glass，
+            //    所以你并不需要一个图片当背景，就是纯纯色的，
+            //    这样才符合其他应用的设计范式。」
+            //
+            //    背景图在 iOS 上**不是装饰，是承重的** —— 玻璃要有东西可折射。
+            //    Mac 上我们不用玻璃了，它就只剩装饰，而装饰性的满屏图片
+            //    恰恰是 Mac 应用里最扎眼的「这不是原生」信号。
+            //    顺带还省掉一张图的解码和常驻内存。
+            CCMacSurface.window
+                .ignoresSafeArea()
+        #else
+            decorated
+        #endif
+    }
+
+    /// iOS / visionOS 那一套：背景图 ＋ 压暗 ＋ 极光。
+    @ViewBuilder
+    private var decorated: some View {
         ZStack {
             // 垫底。图还没解码出来的那一两帧不能是白的 —— 白闪一下比慢一点难看得多。
             Color.bg1

@@ -54,7 +54,10 @@ struct ControlBar: View {
         )
         .font(.system(size: 17, weight: .medium))
         .frame(height: CC.Size.bar)
-        #if !os(visionOS)
+        // ⚠️ **这里原来是 `#if !os(visionOS)`，macOS 也走进了玻璃那一支。**
+        //    去掉背景图之后玻璃退化成灰块，而 `.background` 是垫在玻璃**后面**的
+        //    —— 两层叠着的结果是灰块照样盖在上面。所以必须把玻璃限定到 iOS。
+        #if os(iOS)
             // 一整条就是一块玻璃，按钮本身不再各带背景 —— 这是系统标签栏
             // 和 App Store 底栏的做法。原来那套「描边 + 实心底 + 投影」
             // 是 Liquid Glass 之前的语言，摆在 iOS 26 上一眼是上个时代的。
@@ -64,6 +67,10 @@ struct ControlBar: View {
             // 的场景准备的变体，几乎只剩折射和边缘高光。
             // 我们现在背后是整张背景图，正是它的适用场景。
             .glassEffect(.clear, in: .cc(CC.Radius.bar))
+        #endif
+        #if os(macOS)
+            // Mac：纯色 ＋ 1px 线，跟窗口里其它面板一个语言。见 CCMacFlat。
+            .ccFlatBar(radius: CC.Radius.bar)
         #endif
     }
 
@@ -110,7 +117,11 @@ struct ControlBar: View {
                     // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
                     // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
                     // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
-                    .glassEffect(.identity.interactive(), in: .capsule)
+                    #if os(macOS)
+                        .ccFlatCapsule()
+                    #else
+                        .glassEffect(.identity.interactive(), in: .capsule)
+                    #endif
             }
             #if os(macOS)
                 separator()
@@ -147,7 +158,11 @@ struct ControlBar: View {
                     // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
                     // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
                     // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
-                    .glassEffect(.identity.interactive(), in: .capsule)
+                    #if os(macOS)
+                        .ccFlatCapsule()
+                    #else
+                        .glassEffect(.identity.interactive(), in: .capsule)
+                    #endif
             }
             #if os(macOS)
                 separator()
@@ -174,7 +189,11 @@ struct ControlBar: View {
                     // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
                     // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
                     // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
-                    .glassEffect(.identity.interactive(), in: .capsule)
+                    #if os(macOS)
+                        .ccFlatCapsule()
+                    #else
+                        .glassEffect(.identity.interactive(), in: .capsule)
+                    #endif
         }
         .buttonStyle(
             ControlBarButtonStyle(
@@ -201,7 +220,11 @@ struct ControlBar: View {
                     // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
                     // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
                     // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
-                    .glassEffect(.identity.interactive(), in: .capsule)
+                    #if os(macOS)
+                        .ccFlatCapsule()
+                    #else
+                        .glassEffect(.identity.interactive(), in: .capsule)
+                    #endif
         }
         .buttonStyle(
             ControlBarButtonStyle(
@@ -230,7 +253,11 @@ struct ControlBar: View {
                     // 都没有局部反馈。而 Tide Guide 那位开发者在 Apple 官方 session
                     // 里专门讲了这一条 —— **小按钮被手指盖住时，你得抬手才知道按没按中**，
                     // 加了交互玻璃就变成落指即有反应。控制栏这几颗正是那种尺寸。
-                    .glassEffect(.identity.interactive(), in: .capsule)
+                    #if os(macOS)
+                        .ccFlatCapsule()
+                    #else
+                        .glassEffect(.identity.interactive(), in: .capsule)
+                    #endif
         }
         .buttonStyle(
             ControlBarButtonStyle(

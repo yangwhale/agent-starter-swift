@@ -135,6 +135,13 @@ private struct CCShell: View {
     @State private var roomsPresented = false
     @FocusState private var keyboardFocus: Bool
 
+    #if os(macOS)
+        /// 工具栏那两颗要开独立场景。**名字不跟 SwiftUI 的环境键同名** ——
+        /// 同名读起来像是覆盖了它。
+        @Environment(\.openWindow) private var openDiagWindow
+        @Environment(\.openSettings) private var openSettingsWindow
+    #endif
+
     /// 方块本体的边长。**必须和 `CCRoomTile` 里那个 `side` 同源同缩放** ——
     /// 汉堡要对齐的是**方块本体的中线**，而方块会跟着系统字号长。
     /// 写死 54 的话，用户把字号调大，汉堡就会越偏越低。
@@ -229,6 +236,39 @@ private struct CCShell: View {
                     // 静音 / 字幕 / 挂断那几个是候选，等侧栏落地之后再说。
                     .safeAreaInset(edge: .bottom) {
                         if !keyboardFocus { bottomBar() }
+                    }
+                    // ⭐ **齿轮在右上角工具栏 —— 这是 Mac 的位置。**
+                    //
+                    //    Chris 2026-09-21 指着飞书 Mac 版：setting 按钮的摆放
+                    //    也要学。看那张图，右上角一排图标按钮，齿轮在最右 ——
+                    //    几乎每个 Mac 应用都是这个位置，它已经是肌肉记忆。
+                    //
+                    //    这三颗跟菜单里那三条是**同一批动作**，不是新功能。
+                    //    菜单负责「不用鼠标怎么做 ＋ 让人知道有」，
+                    //    工具栏负责「手在鼠标上时一下点到」。两者都要有。
+                    .toolbar {
+                        ToolbarItemGroup(placement: .primaryAction) {
+                            Button {
+                                roomsPresented = true
+                            } label: {
+                                Image(systemName: "person.2")
+                            }
+                            .help(Text(verbatim: "管理房间（⌘K）"))
+
+                            Button {
+                                openDiagWindow(id: CCWindowID.diagnostics)
+                            } label: {
+                                Image(systemName: "waveform.badge.magnifyingglass")
+                            }
+                            .help(Text(verbatim: "诊断（⌘⌥D）"))
+
+                            Button {
+                                openSettingsWindow()
+                            } label: {
+                                Image(systemName: "gearshape")
+                            }
+                            .help(Text(verbatim: "设置（⌘,）"))
+                        }
                     }
             }
         }
@@ -342,7 +382,7 @@ private struct CCShell: View {
             .clipShape(RoundedRectangle(cornerRadius: CC.Radius.card, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: CC.Radius.card, style: .continuous)
-                    .strokeBorder(Self.cardStroke, lineWidth: 1.5)
+                    .strokeBorder(Self.cardStroke, lineWidth: Self.cardLine)
             )
             // iPad 上限宽居中，iPhone 上比屏还宽所以是空操作。见 CC.Size.contentMax。
             .frame(maxWidth: CC.Size.contentMax)
@@ -500,7 +540,15 @@ private struct CCShell: View {
     /// 接缝处就会出现一道边 —— 而那道边正好在最显眼的位置上。
     /// 所以 `CCTileNeckView.fill` 的类型从 `Color` 放宽成 `AnyShapeStyle`，
     /// 就是为了让它能收下同一个材质。
-    private static let cardStroke = Color.separator1
+    #if os(macOS)
+        /// Mac 上用系统分隔线色。**跟旁边系统控件颜色差一点点，
+        /// 恰恰是最容易被看出来不原生的地方** —— 所以不自己调十六进制。
+        private static let cardStroke = CCMacSurface.separator
+        private static let cardLine: CGFloat = 1
+    #else
+        private static let cardStroke = Color.separator1
+        private static let cardLine: CGFloat = 1.5
+    #endif
 
     /// 窗口/颈部的填充。**四版下来只调这一个值，历史全在这儿。**
     ///
@@ -520,5 +568,13 @@ private struct CCShell: View {
     /// ⛔ **不要再往上乘透明度了。** ②③ 两版都试过这条路，
     /// 结论是玻璃的实体感靠材质厚度，不靠把它调淡 ——
     /// 乘出来的只是「一层没擦干净的膜」，不是玻璃。
-    private static let cardFill = AnyShapeStyle(.thickMaterial)
+    #if os(macOS)
+        /// ⚠️ **Mac 上不能用材质。** `.thickMaterial` 是半透明的 ——
+        /// 它假设背后有东西（背景图）值得透出来。去掉背景图之后，
+        /// 半透明只会让这块面板跟窗口底色糊在一起，边界消失。
+        /// 换成实心的系统面板色，面板边界靠那 1px 线说清楚。
+        private static let cardFill = AnyShapeStyle(CCMacSurface.panel)
+    #else
+        private static let cardFill = AnyShapeStyle(.thickMaterial)
+    #endif
 }
