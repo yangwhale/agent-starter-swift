@@ -145,6 +145,28 @@ private struct CCShell: View {
     /// **管的是「我改的东西属于谁」，管不了「我改的东西依赖谁」。**
     @Environment(\.scenePhase) private var scenePhase
 
+    /// ⚠️ **不加平台条件是刻意的，而且是有实据的**：`VoiceInteractionView`
+    /// 从来就无条件声明它，而那个文件**是编进 macOS 目标的**
+    /// （`AppView.wideInteractions()` 用它）。所以它在 macOS 上编得过 ——
+    /// 这不是推断，是这份工程已经在跑的事实。
+    ///
+    /// 但**它在 macOS 上返回什么，我没有验证过**，所以下面 `isWide`
+    /// 仍然用 `#if os(macOS)` 直接给 `true`，不依赖它的取值。
+    /// （见 [[feedback_verify-never-fabricate]]：编得过 ≠ 值是我以为的那个。）
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// **这块屏按宽屏排还是按手机排。** 判据见 `CCLayout.swift`。
+    private var isWide: Bool {
+        #if os(macOS)
+            return true
+        #elseif os(visionOS)
+            // visionOS 有自己那条 `VisionInteractionView`，不趟这套。
+            return false
+        #else
+            return horizontalSizeClass == .regular
+        #endif
+    }
+
     #if os(macOS)
         /// 工具栏那两颗要开独立场景。**名字不跟 SwiftUI 的环境键同名** ——
         /// 同名读起来像是覆盖了它。
@@ -176,6 +198,12 @@ private struct CCShell: View {
         .environmentObject(active.localMedia)
         .environment(active.micPolicy)
         .environment(active)
+        // ⭐ **「这是宽屏吗」在这里算一次，全子树共用。**
+        //    `AppView` 要用它决定字幕和波形是并存还是二选一，而它拿不到
+        //    `horizontalSizeClass`（那个环境值在 macOS 上的取值没验证过）。
+        //    算一次往下发，也就顺手保证了外壳和内容**不会给出两个答案** ——
+        //    改这轮之前它们给的正是两个答案，见 `CCLayout.swift` 那张表。
+        .environment(\.ccWide, isWide)
         .ccAnimation(.default, value: active.isConnected)
         .ccAnimation(.default, value: chat)
         // 预热 Taptic Engine。不热身的话第一下手势会明显迟半拍 ——
@@ -213,22 +241,32 @@ private struct CCShell: View {
 
     // MARK: - 连上之后
 
-    /// 连上之后的主体。**两个平台是两种布局，不是一种布局的两个尺寸。**
+    /// 连上之后的主体。**两种布局，不是一种布局的两个尺寸。**
     ///
     /// 手机竖着拿，横向是唯一的富余方向 —— 所以房间排成一排、靠滑动翻页，
-    /// 内容一列到底。Mac 正好反过来：竖向有的是空间，横向是拿来放内容的。
-    /// 所以 Mac 走侧栏 ＋ 内容两栏，方块行和那截颈部在 Mac 上整个不出现。
+    /// 内容一列到底。宽屏正好反过来：竖向有的是空间，横向是拿来放内容的。
+    /// 所以宽屏走侧栏 ＋ 内容两栏，方块行和那截颈部整个不出现。
+    ///
+    /// ## ⚠️ 判据从 `#if os(macOS)` 换成了 `isWide`（2026-09-22）
+    ///
+    /// 老判据把 **iPad 判成了手机** —— 而 iPad 恰恰是唯一两种形态都有的设备：
+    /// 全屏时是宽屏，拖成 Slide Over 时就该按手机排。
+    /// `#if` 是**编译期**的，它看不见用户把窗口拖成了多宽。
+    ///
+    /// Chris 2026-09-22：「iPad 它还是能横过来的，更像是 macOS 的那个格式。」
     ///
     /// ⚠️ 拆成两个函数而不是在里面插 `#if`：`#if` **劈不开 `VStack {` 那对
     /// 花括号**（那不是合法 Swift）。这条坑 `VoiceAgentApp` 里也记过一次。
+    /// 现在换成运行期的 `if` 之后这条限制本身没了，但两个函数仍然分开 ——
+    /// 它们是两套布局，挤在一个函数里读不了。
     @ViewBuilder
     private func connected() -> some View {
         Group {
-            #if os(macOS)
-                macLayout()
-            #else
+            if isWide {
+                wideLayout()
+            } else {
                 touchLayout()
-            #endif
+            }
         }
         // ⭐ **chrome 也要管。** 方块行不在分页里，它常驻在这一层 ——
         //    而每个方块各有一份 `CCVoiceBars`（＝ 一个音频渲染器 ＋ 一个 30fps 泵）。
@@ -247,59 +285,112 @@ private struct CCShell: View {
         }
     }
 
-    #if os(macOS)
-        /// Mac：左边房间侧栏，右边这个房间的全部。
-        @ViewBuilder
-        private func macLayout() -> some View {
-            NavigationSplitView {
-                CCMacRoomSidebar(rooms: rooms, roomsPresented: $roomsPresented)
-            } detail: {
-                pager()
-                    // 说话条 ＋ 控制栏仍然在底部。
-                    //
-                    // **没有跟着挪进工具栏**：说话条是这个 app 里按得最频繁的
-                    // 东西，而且全局热键（右 Option）读的就是它那套状态 ——
-                    // 把它挪到窗口顶上，手和眼睛都要多跑一趟。
-                    // 静音 / 字幕 / 挂断那几个是候选，等侧栏落地之后再说。
-                    .safeAreaInset(edge: .bottom) {
-                        if !keyboardFocus { bottomBar() }
-                    }
-                    // ⭐ **齿轮在右上角工具栏 —— 这是 Mac 的位置。**
-                    //
-                    //    Chris 2026-09-21 指着飞书 Mac 版：setting 按钮的摆放
-                    //    也要学。看那张图，右上角一排图标按钮，齿轮在最右 ——
-                    //    几乎每个 Mac 应用都是这个位置，它已经是肌肉记忆。
-                    //
-                    //    这三颗跟菜单里那三条是**同一批动作**，不是新功能。
-                    //    菜单负责「不用鼠标怎么做 ＋ 让人知道有」，
-                    //    工具栏负责「手在鼠标上时一下点到」。两者都要有。
-                    .toolbar {
-                        ToolbarItemGroup(placement: .primaryAction) {
-                            Button {
-                                roomsPresented = true
-                            } label: {
-                                Image(systemName: "person.2")
-                            }
-                            .help(Text(verbatim: "管理房间（⌘K）"))
-
-                            Button {
-                                openDiagWindow(id: CCWindowID.diagnostics)
-                            } label: {
-                                Image(systemName: "waveform.badge.magnifyingglass")
-                            }
-                            .help(Text(verbatim: "诊断（⌘⌥D）"))
-
-                            Button {
-                                openSettingsWindow()
-                            } label: {
-                                Image(systemName: "gearshape")
-                            }
-                            .help(Text(verbatim: "设置（⌘,）"))
+    /// 宽屏：左边房间侧栏，右边这个房间的全部。**Mac 和 iPad 共用。**
+    ///
+    /// ## 横竖屏不用我们管
+    ///
+    /// Chris 要的「iPad 能横过来」这件事，`NavigationSplitView` 自己就做了：
+    /// 横屏时两栏并排，竖屏时侧栏收起、留一颗系统给的开关把它拉出来。
+    /// **我们不去读设备方向** —— 读方向就得自己处理分屏、外接屏、
+    /// 台前调度这些情况，而系统那套本来就把它们全考虑过了。
+    ///
+    /// ⇒ 一般化：**「横屏还是竖屏」几乎从来不是真正的问题，
+    /// 「现在有多宽」才是。** 前者是设备的属性，后者才是布局要的信息。
+    ///
+    /// ## 换掉 `touchLayout()` 之前逐条点过它的职责
+    ///
+    /// （侧栏文件里那条教训的直接应用：拿 B 换 A 要列清单，不能只看主用途。）
+    ///
+    /// | `touchLayout()` 提供的 | 宽屏这边谁接 |
+    /// |---|---|
+    /// | 方块行切房间 | 侧栏单击 ✅ |
+    /// | 方块行看谁在说话 | 侧栏行的状态文字，**信息更多** ✅ |
+    /// | 汉堡 → 管理房间抽屉 | 侧栏底部「管理房间…」✅ |
+    /// | 抽屉里的齿轮 → 设置 | 同上，路径没变 ✅ |
+    /// | 底部说话条 ＋ 控制栏 | 原样保留 ✅ |
+    /// | **横滑切房间** | **没了** ⚠️ —— Mac 本来就没有；iPad 上用侧栏 |
+    /// | 颈部装饰 | 不需要（它是缝合方块行和窗口的，两者都没了）|
+    @ViewBuilder
+    private func wideLayout() -> some View {
+        NavigationSplitView {
+            CCRoomSidebar(rooms: rooms, roomsPresented: $roomsPresented)
+        } detail: {
+            pager()
+                // 说话条 ＋ 控制栏仍然在底部。
+                //
+                // **没有跟着挪进工具栏**：说话条是这个 app 里按得最频繁的
+                // 东西，而且全局热键（右 Option）读的就是它那套状态 ——
+                // 把它挪到窗口顶上，手和眼睛都要多跑一趟。
+                // 静音 / 字幕 / 挂断那几个是候选，等侧栏落地之后再说。
+                .safeAreaInset(edge: .bottom) {
+                    if !keyboardFocus { bottomBar() }
+                }
+                #if os(iOS)
+                // ⭐ **iPad 上必须给个标题。**
+                //
+                //    `NavigationSplitView` 在 iPad 竖屏时把侧栏收起来，
+                //    那颗「拉出侧栏」的开关是系统放进**导航栏**的 ——
+                //    没有导航栏就没有那颗开关，侧栏收起来就再也拉不出来了。
+                //
+                //    而导航栏一旦存在就必须有内容，否则是一条顶在屏幕上的空白带。
+                //    放房间名正好：它是这块屏此刻在讲谁，跟 Mac 的窗口标题同义。
+                //
+                //    ⚠️ 这不是「顺手加个标题」，是**那颗开关的载体**。
+                //    删它之前先确认侧栏还有别的出路。
+                .navigationTitle(active.name)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                #if os(macOS)
+                // ⭐ **齿轮在右上角工具栏 —— 这是 Mac 的位置。**
+                //
+                //    Chris 2026-09-21 指着飞书 Mac 版：setting 按钮的摆放
+                //    也要学。看那张图，右上角一排图标按钮，齿轮在最右 ——
+                //    几乎每个 Mac 应用都是这个位置，它已经是肌肉记忆。
+                //
+                //    这三颗跟菜单里那三条是**同一批动作**，不是新功能。
+                //    菜单负责「不用鼠标怎么做 ＋ 让人知道有」，
+                //    工具栏负责「手在鼠标上时一下点到」。两者都要有。
+                //
+                //    ⚠️ **iPad 上没有这三颗，是刻意的**：`openWindow` /
+                //    `openSettings` 都是 macOS 的场景 API，iPad 没有对应物；
+                //    而这三件事在 iPad 上**已经有路** —— 侧栏底部「管理房间…」
+                //    弹出的抽屉里就有齿轮。再加一排是同一件事说两遍。
+                .toolbar {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button {
+                            roomsPresented = true
+                        } label: {
+                            Image(systemName: "person.2")
                         }
+                        .help(Text(verbatim: "管理房间（⌘K）"))
+
+                        Button {
+                            openDiagWindow(id: CCWindowID.diagnostics)
+                        } label: {
+                            Image(systemName: "waveform.badge.magnifyingglass")
+                        }
+                        .help(Text(verbatim: "诊断（⌘⌥D）"))
+
+                        Button {
+                            openSettingsWindow()
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
+                        .help(Text(verbatim: "设置（⌘,）"))
                     }
-            }
+                }
+                #endif
         }
-    #endif
+        #if os(iOS)
+        // 侧栏拉出来时**挤占**内容宽度，不是盖在上面。
+        //
+        // iPad mini 竖屏逻辑宽约 744pt，减去 220pt 侧栏还剩 520 出头 ——
+        // 正好在 `CC.Size.contentMax`（560）附近，内容不会被压变形。
+        // 用 `.prominentDetail` 的话侧栏是浮层，看着更像手机上的抽屉，
+        // 而 Chris 要的是「像 macOS 那个格式」。
+        .navigationSplitViewStyle(.balanced)
+        #endif
+    }
 
     @ViewBuilder
     private func touchLayout() -> some View {
@@ -429,6 +520,32 @@ private struct CCShell: View {
     @ViewBuilder
     private func pages() -> some View {
         #if os(iOS)
+            if isWide {
+                // ⭐ **宽屏不分页。**
+                //
+                //    不只是「侧栏已经能切了，分页多余」—— 分页样式的
+                //    `TabView` 要吃掉整块区域的**水平拖动**，而
+                //    `NavigationSplitView` 在 iPad 竖屏时正是靠从左边缘
+                //    往右拖来拉出侧栏的。两个手势抢同一个方向，
+                //    结果不是「都能用」，是**其中一个静默失灵**。
+                //
+                //    ⚠️ 这条是推断，不是实测 —— 手上没有能装 iPad 的路子。
+                //    但即使手势不打架，宽屏本来也不该有横滑（Mac 就没有），
+                //    所以两个理由指向同一个做法，先按这个来。
+                page(active)
+            } else {
+                touchPages()
+            }
+        #else
+            // macOS / visionOS 没有分页样式，也没有横滑的意义 —— 直接显示当前房间。
+            page(active)
+        #endif
+    }
+
+    #if os(iOS)
+        /// 手机上那个横滑分页器。
+        @ViewBuilder
+        private func touchPages() -> some View {
             // 页序和方块行一致，走 TabView 的标准分页方向：
             // 手指往左划 = 数组里的下一个 = 右边那个方块。
             //
@@ -444,11 +561,8 @@ private struct CCShell: View {
             // 不要那排小圆点：方块行已经是更好的索引器，
             // 再来一排点就是同一件事说两遍，还占掉窗口底部一条。
             .tabViewStyle(.page(indexDisplayMode: .never))
-        #else
-            // macOS / visionOS 没有分页样式，也没有横滑的意义 —— 直接显示当前房间。
-            page(active)
-        #endif
-    }
+        }
+    #endif
 
     private func page(_ slot: CCRoomSlot) -> some View {
         AppView(chat: chat, keyboardFocus: $keyboardFocus)
