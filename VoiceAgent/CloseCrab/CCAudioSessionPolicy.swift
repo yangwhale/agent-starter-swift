@@ -172,11 +172,21 @@ final class CCAudioSessionPolicy {
         do {
             try manager.set(microphoneMuteMode: .restart)
             muteMode = "restart（闭麦真的停录音）"
+            // ⚠️ **诊断页显示一份，日志也要打一份。**
+            //
+            // 这一行是 2026-09-22 补的，起因很具体：tommy（跑在 Mac 上、
+            // 看不到屏幕）拿不到这个量 —— 它只在诊断页显示。
+            // 于是我给它定的失败判据「静音模式 restart 而灯还亮」
+            // **它结构上执行不了**，只能拿一个能看到的代理去顶替，然后判错。
+            //
+            // ⇒ 判据分配是**可以设计的**，不是「这个量恰好在不在日志里」。
+            //   一行 print 的成本，换掉一整轮「让人去截图」的往返。
+            print("[CCAudioSessionPolicy] 静音模式：\(muteMode)")
         } catch {
             // 不致命：只是静音时麦克风仍被占着，退回今天的行为。
             // **但一定要让人看得见** —— 见 `muteMode` 上面那段。
             muteMode = "⚠️ 设置失败，闭麦仍占麦: \(error.localizedDescription)"
-            print("[CCAudioSessionPolicy] 切静音模式失败，静音时仍会占麦: \(error)")
+            print("[CCAudioSessionPolicy] 静音模式：\(muteMode)")
         }
 
         observer.onApply = { [weak self] text, capturing, released, config in
