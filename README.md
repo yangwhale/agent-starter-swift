@@ -118,6 +118,7 @@ git merge upstream/main    # 改动集中在 VoiceAgent/CloseCrab/，冲突面�
 
 ## 文档
 
+- [`docs/power-profile-2026-09-22.md`](docs/power-profile-2026-09-22.md) — 电量实测：渲染侧优化天花板 9%，大头是 WebRTC（**再做省电前先读这份**）
 - [`docs/mac-audio-input-devices.md`](docs/mac-audio-input-devices.md) — Mac 上为什么没有麦克风输入设备切换（2026-09-21 做了又删，实测结论存档）
 - [`docs/apple-platform-notes-2026.md`](docs/apple-platform-notes-2026.md)
 - [`docs/visual-redesign-2026.md`](docs/visual-redesign-2026.md)
