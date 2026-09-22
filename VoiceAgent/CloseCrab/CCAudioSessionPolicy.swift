@@ -195,8 +195,15 @@ final class CCAudioSessionPolicy {
             muteMode = "restart（闭麦真的停录音）"
         } catch {
             muteMode = "⚠️ 设置失败，闭麦仍占麦: \(error.localizedDescription)"
-            print("[CCAudioSessionPolicy] 静音模式：\(muteMode)")
         }
+        // ⚠️ **成功路径也要打。** 上一版只在 `catch` 里 print ——
+        //    于是我写了一条「加房间时该再打出这行」的验收判据，
+        //    而那行在成功时**根本不会出现**。
+        //    按那条判据，一次成功的修复会被判成「位置不对」而回退。
+        //
+        // ⇒ **判据里引用「某行日志会出现」时，必须当场确认那行真的会打。**
+        //    我当时没核，是 tommy 在回报前查了实现才没走成那一步。
+        print("[CCAudioSessionPolicy] 静音模式：\(muteMode)")
     }
 
     /// **在 App 启动时调一次，连房间之前。**
