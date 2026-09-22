@@ -579,6 +579,11 @@ final class CCRooms {
         // ⭐ 不再只关「上一个」—— 走总闸，一次把所有不该开的都关掉。
         //    只关上一个在两个房间时就漏：第三个、第四个没人管。
         enforceGlobalMic(foreground: true)
+        // ⚠️ **锁屏卡片/耳机按键的归属不在这里改** —— 它跟着 `activeName` 走，
+        //    而 `CCShell` 已经在监听那个值了（搜 `CCNowPlaying.shared.attach`）。
+        //    在这儿再调一次是同一件事说两遍：这个函数**只管早退那一条路**，
+        //    第一次连上时它根本不会被调（`name == activeName` 直接 return），
+        //    所以它做不了「唯一入口」，只会变成两个入口里不完整的那个。
     }
 
     // MARK: - 麦克风总闸

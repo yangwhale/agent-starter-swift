@@ -118,6 +118,18 @@ final class CCPlaybackRemote {
         // `total` 可能是 JSON null ⇒ `as? Double` 自然得到 nil，正是我们要的。
         total = json["total"] as? Double
         fid = json["fid"] as? String ?? ""
+
+        #if os(iOS)
+            // ⭐ 顺手把锁屏那张卡片和耳机按键同步上。
+            //
+            // **挂在 `refresh()` 里而不是各个按钮里**：状态的唯一来源是服务端，
+            // 而这里是唯一一处「刚从服务端拿到最新状态」的地方。挂在按钮上的话，
+            // 服务端自己推进（播完、下一段开始）就同步不到 —— 那恰恰是
+            // 锁屏用户唯一能看到的变化。
+            //
+            // 这个调用对非当前房间是空操作（`publish` 自己校验身份）。
+            CCNowPlaying.shared.publish(from: self)
+        #endif
     }
 
     /// 开始每秒拉一次。**只在界面看得见时开** ——

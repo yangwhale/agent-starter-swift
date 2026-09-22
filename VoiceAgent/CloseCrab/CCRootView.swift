@@ -229,6 +229,26 @@ private struct CCShell: View {
         .onAppear { CCHaptics.warmUp() }
         #if os(iOS)
         .sensoryFeedback(.impact, trigger: active.isConnected)
+        // ⭐ **系统那张 Now Playing 卡片只有一张，得指定它属于谁。**
+        //
+        //    Chris 2026-09-22 23:39 要的是「捏一下 AirPods 暂停/继续」，
+        //    而那条命令系统只会发给当前的 Now Playing app —— 五个房间
+        //    必须先选出一个代表。选**当前房间**不选「正在说话的房间」：
+        //    后者在两个 bot 交替说话时会来回跳，而你捏耳机想控制的
+        //    永远是你正在听的那个。
+        //
+        //    ⚠️ **为什么挂在这儿而不是 `CCRooms.activate()` 里。**
+        //    那个函数看起来才是「切房间」的正主，但它**第一次连上时不会被调**
+        //    （`name == activeName` 直接早退）。挂在那儿等于第一次进 app
+        //    耳机按键是死的，而那是最常见的一次使用。
+        //
+        //    这里用 `initial: true` 的复合 key，一处覆盖三种情况：
+        //    首次出现 / 切房间 / 断开连接。断开时传 nil ⇒ 交还卡片，
+        //    不赖在用户的锁屏上（我们占着它，他的音乐 app 就消失了）。
+        .onChange(of: "\(active.name)|\(active.isConnected)", initial: true) { _, _ in
+            CCNowPlaying.shared.attach(active.isConnected ? active.playback : nil,
+                                       room: active.name)
+        }
         #endif
         #if os(macOS)
         // 把「打开房间抽屉」这个开关交给菜单（⌘K）。
