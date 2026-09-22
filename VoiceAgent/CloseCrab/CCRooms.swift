@@ -478,7 +478,33 @@ final class CCRooms {
         // Session 没人持有、end() 那个 Task 可能还没跑完就被回收。
         let removing = slots.filter { plan.toRemove.contains($0.name) }
         for slot in removing {
-            Task { await slot.session.end() }
+            Task {
+                // ⭐ **先闭麦再断开。** 这一句是 2026-09-22 补的，补的是一处**不对称**：
+                //
+                //   连接那条路显式做了「SDK 开了麦 → 我们按回去」
+                //     （`connectAwait` 里的 `enforceMutedAfterConnect`）
+                //   退出那条路**没有对应的「先按回去再走」** —— 直接 `end()`。
+                //
+                // ## 现象（Chris 2026-09-22 10:19，三步确定性复现）
+                //
+                //   只连 bunny        → 灯不亮
+                //   加上 jarvis       → **灯亮**
+                //   退出 jarvis       → **灯还亮**
+                //
+                // 第三步是关键：**扰动停止之后没有自愈**。
+                // 纯时序问题会自愈（下一次状态重算就按回去了），
+                // 这个不会 ⇒ 不是时序，是**状态没被撤销**。
+                //
+                // ⇒ 采集设备是全进程唯一的，而 `setMicrophone` 是每房间的。
+                //   带着一条还 enabled 的麦克风轨直接 `end()`，
+                //   那一份在 SDK 的计数里可能减不掉 —— 于是全局录音停不下来。
+                //
+                // ⚠️ SDK 那层的计数实现我看不到，所以这是**对症不是对因**。
+                //   但「拆的时候撤销装的时候做过的事」这条本身就该成立，
+                //   不需要等真因也该补。
+                try? await slot.session.room.localParticipant.setMicrophone(enabled: false)
+                await slot.session.end()
+            }
         }
         slots.removeAll { plan.toRemove.contains($0.name) }
 
