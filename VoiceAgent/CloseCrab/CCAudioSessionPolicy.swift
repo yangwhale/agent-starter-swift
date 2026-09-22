@@ -188,6 +188,9 @@ final class CCAudioSessionPolicy {
     /// 是**SDK 源码和它自己的文档注释**，不是推断。
     ///
     /// ⚠️ 所以这个函数**必须在每次建 `LocalMedia` 之后调**，不能只在启动时调。
+    ///
+    /// 完整来龙去脉（含三档模式对照、两步接力、已知未解）见
+    /// `docs/ios-mic-indicator.md`。
     func reassertMuteMode() {
         guard Self.isEnabled else { return }
         do {
