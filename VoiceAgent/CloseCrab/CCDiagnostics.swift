@@ -62,13 +62,28 @@ final class CCDiagnostics {
         }
         timer = Task { [weak self] in
             while !Task.isCancelled {
-                self?.sample()
+                // `guard let self`，不是 `self?.sample()` ——
+                // 后者在对象没了之后每秒空转到天荒地老。
+                // **弱引用防的是泄漏对象，不防泄漏循环。**
+                guard let self else { return }
+                sample()
                 try? await Task.sleep(for: .seconds(1))
             }
         }
     }
 
     func stop() {
+        // ⚠️ **必须把统计也关掉。** `start` 里那句
+        // `set(reportStatistics: true)` 会让 WebRTC 持续计算统计，
+        // 而它**不随定时器停止** —— 诊断页开过一次，那份计算就一直挂着，
+        // 关掉窗口也不会停。
+        //
+        // 跟 `CCNetReadout.stop()` 同一个坑、同一天（2026-09-22）发现的：
+        // **「开了一个开关」和「起了一个定时器」是两件事，
+        //   收尾时容易只收自己起的那个。**
+        for t in [remote, local].compactMap({ $0 }) {
+            Task { await t.set(reportStatistics: false) }
+        }
         timer?.cancel()
         timer = nil
         prev.removeAll()
