@@ -151,6 +151,54 @@ final class CCAudioSessionPolicy {
     /// `UserDefaults`** —— 两处各判一次，默认值迟早会写歪一个。
     static var isEnabled: Bool { CCStore.releaseMicWhenIdle }
 
+    /// 把静音模式**重新按回 `.restart`**。
+    ///
+    /// ## ⭐ 这是「加第二个房间就抢麦」的真因
+    ///
+    /// SDK 的 `LocalMedia.observeDevices()` 里有这么一句（2.17.0 第 114 行）：
+    ///
+    /// ```swift
+    /// try? AudioManager.shared.set(microphoneMuteMode: .inputMixer) // don't play mute sound effect
+    /// ```
+    ///
+    /// 而 `.inputMixer` 是什么，SDK 自己的文档注释写得清清楚楚：
+    ///
+    /// > Simply mutes the output of the input mixer.
+    /// > **The mic indicator remains on**, and the internal `AVAudioEngine`
+    /// > continues running without reconfiguration.
+    ///
+    /// ⇒ **「闭麦」在这个模式下只是把输入调成静音 —— 麦克风一直开着，灯一直亮。**
+    ///
+    /// ## 为什么是「第二个房间」
+    ///
+    /// `AudioManager` 是**全进程单例**，而 `LocalMedia` 是**每个房间一份**。
+    /// 每建一个房间槽位就 `LocalMedia(session:)` 一次，
+    /// 每一次都把这个全局模式**覆盖成 `.inputMixer`**。
+    ///
+    /// 我们在 `install()` 里设的 `.restart` 只设一次、在 App 启动时。
+    /// 第一个房间的 `LocalMedia` 建在它之前（所以一个房间时是好的），
+    /// **而第二个房间建在它之后 —— 一建就把我们那句覆盖掉。**
+    /// 退出那个房间也不会恢复，因为没有任何人再设回来。
+    ///
+    /// ⇒ 三个现象一次全中：
+    ///   一个房间不亮 ／ 加第二个就亮 ／ 退出也不灭。
+    ///
+    /// ⚠️ 「为什么第一个房间不受影响」是**推断**（取决于构造顺序）；
+    /// 「每个 `LocalMedia` 都会覆盖成 `.inputMixer`、而那个模式让灯常亮」
+    /// 是**SDK 源码和它自己的文档注释**，不是推断。
+    ///
+    /// ⚠️ 所以这个函数**必须在每次建 `LocalMedia` 之后调**，不能只在启动时调。
+    func reassertMuteMode() {
+        guard Self.isEnabled else { return }
+        do {
+            try AudioManager.shared.set(microphoneMuteMode: .restart)
+            muteMode = "restart（闭麦真的停录音）"
+        } catch {
+            muteMode = "⚠️ 设置失败，闭麦仍占麦: \(error.localizedDescription)"
+            print("[CCAudioSessionPolicy] 静音模式：\(muteMode)")
+        }
+    }
+
     /// **在 App 启动时调一次，连房间之前。**
     ///
     /// SDK 的文档明确说 `isAutomaticConfigurationEnabled` 要在连接前设。

@@ -64,6 +64,15 @@ final class CCRoomSlot: Identifiable {
             )
         )
         localMedia = LocalMedia(session: session)
+        // ⭐ **必须紧跟在这一句后面。** `LocalMedia` 的 init 里会把全局的
+        //    静音模式改成 `.inputMixer`，而 SDK 自己的文档写着那个模式下
+        //    **「The mic indicator remains on」** —— 麦克风一直开着、灯一直亮。
+        //    `AudioManager` 是单例、`LocalMedia` 是每房间一份，
+        //    所以每加一个房间就被覆盖一次。这就是「加第二个 bot 就抢麦」的真因。
+        //    详见 `CCAudioSessionPolicy.reassertMuteMode()` 上面那段。
+        #if os(iOS) || os(visionOS)
+            CCAudioSessionPolicy.shared.reassertMuteMode()
+        #endif
         audioOptions = AudioOptions(localMedia: localMedia)
         micPolicy = CCMicPolicy(session: session)
         // ⭐ 现在就绑定，绑一次。**不要挪到界面 onAppear 里去** ——
