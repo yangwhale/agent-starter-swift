@@ -511,7 +511,7 @@ final class CCRooms {
                 // ⚠️ SDK 那层的计数实现我看不到，所以这是**对症不是对因**。
                 //   但「拆的时候撤销装的时候做过的事」这条本身就该成立，
                 //   不需要等真因也该补。
-                try? await slot.session.room.localParticipant.setMicrophone(enabled: false)
+                _ = try? await slot.session.room.localParticipant.setMicrophone(enabled: false)
                 await slot.session.end()
             }
         }
@@ -631,7 +631,7 @@ final class CCRooms {
             guard !mayKeep else { continue }
             Task { [weak slot] in
                 guard let slot else { return }
-                try? await slot.session.room.localParticipant.setMicrophone(enabled: false)
+                _ = try? await slot.session.room.localParticipant.setMicrophone(enabled: false)
             }
         }
     }
