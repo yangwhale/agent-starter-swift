@@ -546,6 +546,11 @@ final class CCRooms {
         // start() 内部连上之后会无条件开一次麦，必须在它返回之后按回去。
         // 靠监听连接状态是拦不住的，原因见 CCMicPolicy.enforceMutedAfterConnect。
         await slot.micPolicy.enforceMutedAfterConnect()
+        // ⭐ 再过一次总闸。**上面那句只按住了这一个房间** ——
+        //    而 SDK 在每条 session 连上时都会开一次麦（`Session.swift:287`），
+        //    并发连多个房间时，别人那一下可能刚好落在这一句之后。
+        //    总闸是幂等的，多跑一次不花什么。
+        enforceGlobalMic(foreground: true)
         connecting.remove(slot.name)
         onRoomsChanged?()      // 连上了 —— 该把 avatar 开关报给这个房间
     }
@@ -561,8 +566,59 @@ final class CCRooms {
         let previous = active
         activeName = name
         config.room = name          // 让抽屉、启动页那些读 config.room 的地方跟上
-        if let previous {
-            Task { try? await previous.session.room.localParticipant.setMicrophone(enabled: false) }
+        _ = previous
+        // ⭐ 不再只关「上一个」—— 走总闸，一次把所有不该开的都关掉。
+        //    只关上一个在两个房间时就漏：第三个、第四个没人管。
+        enforceGlobalMic(foreground: true)
+    }
+
+    // MARK: - 麦克风总闸
+
+    /// **全进程只有一个采集设备，所以关麦这件事必须有一个统一的判断。**
+    ///
+    /// Chris 2026-09-22 10:28：
+    /// 「它是不是看见有别的房间在，就不给你真正地关麦？
+    ///  谁也不想去关这个还有其他房间在的麦。**这应该有一个统一的 check**，
+    ///  看看是不是所有房间都不再用，就把它关了。
+    ///  后台的房间默认就是不开麦的，甭管它。
+    ///  所有房间即使开着麦，切到后台的时候也马上关上 ——
+    ///  **别让它有『后台开麦』这一说**。」
+    ///
+    /// ## 为什么之前的做法不成立
+    ///
+    /// 原来是**每个房间各管各的**：
+    /// - `connectAwait` 连上之后把**自己**按回去
+    /// - `activate()` 切房间时关**上一个**
+    /// - 退出时关**要走的那个**（2026-09-22 才补的）
+    ///
+    /// 每一处单独看都对，**但没有任何一处回答「现在到底该不该录音」** ——
+    /// 而采集设备是全局的。三个局部正确的决定凑不出一个全局正确的状态：
+    /// 只要有**任何一条**麦克风轨还开着，引擎就继续录，灯就继续亮。
+    ///
+    /// ⇒ 这就是 Chris 说的「互锁」的实质 —— 不是谁在拦着谁，
+    ///   是**没有人在回答那个全局问题**。
+    ///
+    /// ## 规则（只有一条）
+    ///
+    /// **只有「当前这个房间」＋「app 在前台」时，麦克风才可能开着。**
+    /// 其余一律关。
+    ///
+    /// - 后台房间：永远关，不管它自己怎么想
+    /// - app 进后台：**全部**关，没有「后台开麦」这回事
+    /// - 当前房间在前台：**不在这里开** —— 开麦是用户按出来的，
+    ///   这里只负责「该关的都关掉」，不负责替谁开
+    ///
+    /// ⚠️ 最后这条很要紧：这个函数是**单向**的（只关不开）。
+    /// 双向的话它会跟「按住说话」抢方向盘 —— 用户松手它就给开回去，
+    /// 或者反过来。**总闸只管断电，不管谁开灯。**
+    func enforceGlobalMic(foreground: Bool) {
+        for slot in slots {
+            let mayKeep = foreground && slot.name == activeName
+            guard !mayKeep else { continue }
+            Task { [weak slot] in
+                guard let slot else { return }
+                try? await slot.session.room.localParticipant.setMicrophone(enabled: false)
+            }
         }
     }
 

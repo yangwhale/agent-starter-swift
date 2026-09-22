@@ -235,6 +235,16 @@ private struct CCShell: View {
         //    这里只判「屏幕亮着吗」；「是不是当前页」那一层在 `page()` 上，
         //    子树上的 `.ccRendering` 会覆盖这一层，两者是收紧关系不是冲突。
         .ccRendering(scenePhase == .active)
+        // ⭐ **切后台立刻全部关麦。** Chris 2026-09-22：
+        //    「所有的房间，即使是开着麦的，切到后台的时候也马上就关上 ——
+        //     别让它有『后台开麦』这一说。」
+        //
+        //    ⚠️ 这跟上面那个渲染闸门**不是一回事**，别因为都读 `scenePhase`
+        //    就把它们合并：渲染闸门管「画不画」，这条管「录不录」。
+        //    合并的话以后想让后台继续画（比如画中画）就会顺手把麦也放开。
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            rooms.enforceGlobalMic(foreground: phase == .active)
+        }
     }
 
     #if os(macOS)
