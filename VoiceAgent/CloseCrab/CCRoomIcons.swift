@@ -107,6 +107,37 @@ final class CCRoomIcons {
 
     func image(for room: String) -> Image? { images[room] }
 
+    #if os(iOS)
+        /// 锁屏 / 控制中心那张「封面」用的图。**跟房间方块是同一张脸。**
+        ///
+        /// Chris 2026-09-24 指着锁屏卡片那块大空白问「这个屏幕上怎么显示内容」——
+        /// 那是系统留给封面图的位置，我们一直没给。
+        ///
+        /// 设过图片就用那张（从磁盘读原图，不用内存里那份 SwiftUI `Image`，
+        /// 后者转不回 `UIImage`）；没设就把 emoji / 首字母画在它的身份色上 ——
+        /// 跟方块、侧栏一个约定，锁屏上一眼认出是谁在说话。
+        func artwork(for room: String, side: CGFloat = 600) -> UIImage? {
+            if images[room] != nil, let dir = Self.imageDir,
+               let d = try? Data(contentsOf: dir.appendingPathComponent(Self.fileName(for: room))),
+               let ui = UIImage(data: d)
+            {
+                return ui
+            }
+            let size = CGSize(width: side, height: side)
+            let bg = UIColor(CCIdentityColor.color(for: room))
+            let glyph = icon(for: room)
+            return UIGraphicsImageRenderer(size: size).image { _ in
+                bg.withAlphaComponent(0.35).setFill()
+                UIRectFill(CGRect(origin: .zero, size: size))
+                let font = UIFont.systemFont(ofSize: side * 0.45, weight: .semibold)
+                let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: UIColor.white]
+                let t = glyph as NSString
+                let ts = t.size(withAttributes: attrs)
+                t.draw(at: CGPoint(x: (side - ts.width) / 2, y: (side - ts.height) / 2), withAttributes: attrs)
+            }
+        }
+    #endif
+
     /// 显示用的字符：设过就用设的，没设过退回名字首字母（大写）。
     func icon(for room: String) -> String {
         if let custom = map[room], !custom.isEmpty { return custom }

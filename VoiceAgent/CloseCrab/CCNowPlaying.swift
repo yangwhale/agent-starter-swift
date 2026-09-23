@@ -2,6 +2,7 @@
 
     import MediaPlayer
     import Observation
+    import UIKit
 
     /// 把 bot 的说话接到**系统的媒体控制**上 —— 锁屏那张卡片、控制中心、
     /// 车机方向盘，以及 Chris 真正要的那个：**捏一下 AirPods 就暂停/继续。**
@@ -102,6 +103,9 @@
         /// 处理器只注册一次。`MPRemoteCommandCenter` 是全进程单例，
         /// 重复 `addTarget` 会挂出多个处理器 —— 一次按键触发好几回。
         private var wired = false
+        /// 封面缓存。`publish` 每次拉完进度都会调（在播时一秒一次），
+        /// **每次重画一张 600×600 的图是纯浪费** —— 只在换房间时重做。
+        private var artwork: (room: String, art: MPMediaItemArtwork)?
 
         // MARK: - 挂接
 
@@ -155,7 +159,23 @@
                 info[MPNowPlayingInfoPropertyIsLiveStream] = true
             }
 
+            // 封面：房间头像。见 `CCRoomIcons.artwork`。
+            if artwork?.room != room, let img = CCRoomIcons.shared.artwork(for: room) {
+                artwork = (room, Self.makeArtwork(img))
+            }
+            if let art = artwork?.art, artwork?.room == room {
+                info[MPMediaItemPropertyArtwork] = art
+            }
+
             MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        }
+
+        /// ⚠️ **必须是 `nonisolated`。** 这个闭包系统会在**后台线程**调来取图。
+        /// 写在 `@MainActor` 类的方法里，Swift 6 会把闭包推断成 MainActor 隔离 ——
+        /// 编译照过，**运行时在后台被调用就直接崩**（隔离检查断言）。
+        /// 放进 nonisolated 函数里构造，闭包就不带隔离了。`UIImage` 是 Sendable，可以捕获。
+        nonisolated private static func makeArtwork(_ img: UIImage) -> MPMediaItemArtwork {
+            MPMediaItemArtwork(boundsSize: img.size) { _ in img }
         }
 
         /// 交还卡片。断开连接、或者这个房间彻底没东西可播时调。
