@@ -233,16 +233,35 @@
                     } else {
                         0.15
                     }
-                    Task { await remote.seek(sign * ratio) }
+                    Task {
+                        await remote.seek(sign * ratio)
+                        self.log("\(sign > 0 ? "skipForward" : "skipBackward") → \(remote.lastError ?? "ok")")
+                    }
                     return .success
                 }
             }
 
-            // ⛔ **上一首/下一首显式关掉。** 不关的话锁屏上会出现两颗
-            //    按下去什么都不发生的按钮 —— 而「按了没反应」比「没有这个按钮」
-            //    坏得多：它让人以为是坏了，而不是没有。
-            //    （AirPods 双击/三击发的正是这两条，所以这里不是假想情况。）
-            center.nextTrackCommand.isEnabled = false
+            // ⭐ **AirPods 双击 → 重播刚才那一段。**
+            //
+            //    Chris 2026-09-24 06:31：「双击映射成重播。」
+            //    AirPods 按两下，系统发的是 `nextTrackCommand`（「下一首」）。
+            //    这个 app 没有「下一首」的概念，而「刚才那段没听清，再来一遍」
+            //    是最高频的操作 —— 把这个现成的手势借过来用。
+            //
+            //    ⚠️ 代价：锁屏卡片上如果出现 ⏭ 那颗按钮，点它也是重播。图标和动作
+            //    对不上，但这颗按钮原来是关着的（按了没反应更坏），而且真正按它的
+            //    场景主要就是耳机。
+            //
+            //    ⚠️ 没验证过的：锁屏同时启用了 skipForward（前进 15 秒）时，系统
+            //    会不会把双击改发成 skipForward。所以两条都打日志 —— 双击后诊断页
+            //    「耳机命令」里出现的是 `next` 还是 `skipForward`，一眼就知道。
+            center.nextTrackCommand.isEnabled = true
+            center.nextTrackCommand.addTarget { [weak self] _ in
+                self?.run("next→重播") { await $0.replay() } ?? .noActionableNowPlayingItem
+            }
+
+            // 三击（上一首）仍然关着 —— 没有要求，别自作主张给它安一个动作。
+            // 关着的理由不变：一颗按了没反应的按钮比没有这颗按钮坏。
             center.previousTrackCommand.isEnabled = false
         }
 
