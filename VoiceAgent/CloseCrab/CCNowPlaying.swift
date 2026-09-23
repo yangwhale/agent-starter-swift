@@ -23,11 +23,12 @@
     ///
     /// | 条件 | 我们的状态 |
     /// |---|---|
-    /// | 有一个**激活的、媒体类的**音频会话 | ✅ bot 说话而我们没开麦时，`CCAudioSessionPolicy` 把类别设成 `.playback` —— 正是媒体类 |
+    /// | 有一个**激活的、媒体类的、不混音的**音频会话 | ⚠️ 第一版以为 ✅ —— 类别确实是 `.playback`，**但 SDK 那份带着 `.mixWithOthers`，混音的 app 当不了 Now Playing**。2026-09-24 真机上捏耳机没反应，才查出来。已改用 `CCAudioSessionPolicy.nowPlayable`（去掉混音）|
     /// | 注册了 `MPRemoteCommandCenter` 的处理器 | ❌ 一直没有。**这个文件就是补这一块** |
     /// | `Info.plist` 有 `UIBackgroundModes: audio` | ✅ 早就有（为后台收音频开的）|
     ///
-    /// ⇒ 三缺一。**不是从零做一个功能，是把最后一根线接上。**
+    /// ⇒ 当初判断是「三缺一」，**实际是三缺二** —— 只看了 category 没看 options。
+    /// 教训写在 `CCAudioSessionPolicy.nowPlayable` 上。
     ///
     /// ## ⚠️ 已知的边界，两条，都没在真机上验过
     ///

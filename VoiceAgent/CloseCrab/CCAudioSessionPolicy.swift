@@ -121,6 +121,38 @@ final class CCAudioSessionPolicy {
     /// 见 `isReleased`，自愈必须先看那个再决定要不要用这份配置。
     private var lastConfig: AudioSessionConfiguration?
 
+    /// 「只放音」时用的类别。**替换 LiveKit 自带的 `.playback`，只差一个选项。**
+    ///
+    /// SDK 那份是 `categoryOptions: [.mixWithOthers]`（源码注释：对听众来说混音是对的）。
+    /// 而**带 `.mixWithOthers` 的 app 当不了 Now Playing** —— 系统只把锁屏卡片和
+    /// 耳机按键交给「主音频 app」，混音的 app 不算。
+    ///
+    /// 2026-09-24 Chris：「跟耳机按钮联动的功能还不好使」。`CCNowPlaying` 的处理器
+    /// 注册得好好的，就是**永远收不到** —— 因为系统压根没把我们当成可以控制的那个。
+    /// 那份代码里我写了「三个前提缺一个，这就是补的那一个」，**其实缺的是两个**：
+    /// 我把「会话是媒体类的」当成了已满足，只看了 category，没看 options。
+    ///
+    /// ⇒ 一般化：**「类别对了」不等于「配置对了」** —— 同一个 category，
+    /// 一个 option 就能把资格整个取消，而且不报任何错。
+    ///
+    /// ## 代价（这是个产品取舍，写清楚）
+    ///
+    /// 去掉混音之后，**bot 开口时别的 app 的声音会被打断**（音乐、播客暂停），
+    /// 不再是叠在一起放。bot 说完、会话释放时带着 `.notifyOthersOnDeactivation`，
+    /// 被打断的那个会自己恢复。
+    ///
+    /// 对这个 app 来说这反而更合理：bot 在跟你说话时，音乐在底下同时响本来就听不清。
+    /// 但它**是**一个行为变化，不是纯修 bug。
+    ///
+    /// `mode` 照抄 SDK 那份的 `.spokenAudio` —— 只改我们要改的那一个选项。
+    ///
+    /// ⚠️ **`nonisolated` 不能省。** 这个类是 `@MainActor`，而读它的地方是
+    /// `Observer.apply` —— 跑在音频引擎的线程上。不标的话 Swift 6 会报跨 actor 访问。
+    /// `AudioSessionConfiguration` 本身是 `Sendable`（SDK 里声明的），所以可以这么标。
+    nonisolated static let nowPlayable = AudioSessionConfiguration(category: .playback,
+                                                       categoryOptions: [],
+                                                       mode: .spokenAudio)
+
     /// 现在是不是「已经把麦克风让出去了」。
     ///
     /// ## 这个标记是 2026-09-21 补的，补的是一个**机制互相抵消**的 bug
@@ -449,7 +481,7 @@ final class CCAudioSessionPolicy {
             let config: AudioSessionConfiguration = isRecordingEnabled
                 ? (AudioManager.shared.audioSession.isSpeakerOutputPreferred
                     ? .playAndRecordSpeaker : .playAndRecordReceiver)
-                : .playback
+                : CCAudioSessionPolicy.nowPlayable
 
             do {
                 try session.setCategory(config.category,
