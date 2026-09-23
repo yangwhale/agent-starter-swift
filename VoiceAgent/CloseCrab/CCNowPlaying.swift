@@ -180,17 +180,36 @@
             //    而那正是 Chris 要的唯一一个交互。
             center.togglePlayPauseCommand.isEnabled = true
             center.togglePlayPauseCommand.addTarget { [weak self] _ in
-                self?.toggle() ?? .noActionableNowPlayingItem
+                self?.toggle(via: "toggle") ?? .noActionableNowPlayingItem
             }
 
             // 锁屏卡片和控制中心上那两颗，是分开的 play / pause。
+            // ⭐ **play / pause 都不能照字面执行，必须看服务端的真实状态再决定。**
+            //
+            //    2026-09-24 真机日志（Chris 捏两下，间隔 3 秒）：
+            //        [CCNowPlaying] 6:26:45 pause → ok
+            //        [CCNowPlaying] 6:26:48 pause → ok
+            //    **第二下系统发的还是 pause**，不是 play、也不是 toggle。
+            //
+            //    原因：iOS 判断「这个 app 在不在播」**看的是它实际有没有往外出声**，
+            //    不看我们填的 `PlaybackRate`。而服务端暂停时 WebRTC 的播放引擎照样
+            //    在跑、输出静音 —— 所以在系统眼里我们**永远在播**，耳机每一下都是 pause。
+            //
+            //    ⛔ 别去设 `MPNowPlayingInfoCenter.playbackState` —— 文档原话
+            //    「This property only applies to macOS」，iOS 上设了也白设。
+            //    （tommy 第一反应是它，查文档才排除；看属性列表会以为 iOS 也有。）
+            //
+            //    ⇒ 系统那头的判断改不了，那就让命令自己去问服务端：
+            //    pause 按 toggle 处理（停着就继续）；play 只在「停着 / 播完」时动作。
+            //    代价：锁屏上那颗按钮的图标可能跟实际状态对不上（它跟着系统的判断走），
+            //    但按下去做的事一定是对的 —— **动作对比图标对重要**。
             center.playCommand.isEnabled = true
             center.playCommand.addTarget { [weak self] _ in
-                self?.run("play") { await $0.resume() } ?? .noActionableNowPlayingItem
+                self?.smartPlay() ?? .noActionableNowPlayingItem
             }
             center.pauseCommand.isEnabled = true
             center.pauseCommand.addTarget { [weak self] _ in
-                self?.run("pause") { await $0.pause() } ?? .noActionableNowPlayingItem
+                self?.toggle(via: "pause") ?? .noActionableNowPlayingItem
             }
             center.stopCommand.isEnabled = true
             center.stopCommand.addTarget { [weak self] _ in
@@ -251,9 +270,9 @@
         /// ⇒ 多一次 RPC 往返（几十毫秒，只在按键那一刻发生），
         /// 换掉一整类「按了反而更糟」。**比让轮询一直开着便宜得多** ——
         /// 后者是每 4 秒一次，前者是一天几次。
-        private func toggle() -> MPRemoteCommandHandlerStatus {
+        private func toggle(via name: String) -> MPRemoteCommandHandlerStatus {
             guard let remote = target else {
-                log("toggle → 没有挂接的房间")
+                log("\(name) → 没有挂接的房间")
                 return .noActionableNowPlayingItem
             }
             Task {
@@ -268,7 +287,31 @@
                 } else {
                     action = "无事可做"
                 }
-                log("toggle [\(before)] → \(action)：\(remote.lastError ?? "ok")")
+                log("\(name) [\(before)] → \(action)：\(remote.lastError ?? "ok")")
+            }
+            return .success
+        }
+
+        /// 系统发来「播放」：只在**停着**或**播完**时动作，正在播就什么都不做。
+        ///
+        /// 跟 toggle 一样先 refresh —— 锁屏时进度轮询是停的，本地状态一定是旧的。
+        private func smartPlay() -> MPRemoteCommandHandlerStatus {
+            guard let remote = target else {
+                log("play → 没有挂接的房间")
+                return .noActionableNowPlayingItem
+            }
+            Task {
+                await remote.refresh()
+                let before = "active=\(remote.isActive) paused=\(remote.isPaused)"
+                let action: String
+                if remote.isActive, remote.isPaused {
+                    action = "resume"; await remote.resume()
+                } else if !remote.isActive, remote.canReplay {
+                    action = "replay"; await remote.replay()
+                } else {
+                    action = "已经在播，不动"
+                }
+                log("play [\(before)] → \(action)：\(remote.lastError ?? "ok")")
             }
             return .success
         }
