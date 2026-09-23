@@ -284,6 +284,18 @@ struct CCDiagnosticsView: View {
                         Text(verbatim: "静音模式")
                     }
                     #endif
+                    #if os(iOS)
+                    // 耳机 / 锁屏发来的最近几条命令。「按了没反应」有三种完全不同的病因，
+                    // 这里一眼分得开：第二下没出现 ＝ 系统没发给我们；出现了但报错 ＝ 服务端。
+                    LabeledContent {
+                        Text(verbatim: CCNowPlaying.shared.events.isEmpty
+                             ? "（还没收到过）"
+                             : CCNowPlaying.shared.events.joined(separator: "\n"))
+                            .font(.caption.monospaced()).multilineTextAlignment(.trailing)
+                    } label: {
+                        Text(verbatim: "耳机命令")
+                    }
+                    #endif
                     LabeledContent {
                         Text(verbatim: rooms.activeName)
                     } label: {

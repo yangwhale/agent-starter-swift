@@ -1,6 +1,7 @@
 #if os(iOS)
 
     import MediaPlayer
+    import Observation
 
     /// 把 bot 的说话接到**系统的媒体控制**上 —— 锁屏那张卡片、控制中心、
     /// 车机方向盘，以及 Chris 真正要的那个：**捏一下 AirPods 就暂停/继续。**
@@ -71,9 +72,28 @@
     /// 改成告诉系统「这是直播流」（`IsLiveStream`），锁屏就不会画一条
     /// 骗人的进度条。跟 `CCPlaybackBar` 里那条注释是同一个理由。
     @MainActor
+    @Observable
     final class CCNowPlaying {
         static let shared = CCNowPlaying()
         private init() {}
+
+        /// 最近几条系统命令：收到什么、当时什么状态、结果如何。**诊断页读这个。**
+        ///
+        /// 2026-09-24 Chris：「耳机按钮暂停好使了，resume 不好使。」
+        /// 三种可能 —— 第二下根本没到我们（会话释放、丢了 Now Playing）／
+        /// 到了但走的是 play 不是 toggle ／ 到了、发了、服务端回失败 ——
+        /// **在没有这行之前长得一模一样：都是「按了没反应」。**
+        ///
+        /// ⇒ 留最近 4 条而不是 1 条：要看的恰恰是「第一下」和「第二下」的**对比**。
+        /// 只留最后一条的话，第二下没到时显示的还是第一下，会被误读成「到了」。
+        private(set) var events: [String] = []
+
+        private func log(_ text: String) {
+            let f = DateFormatter(); f.dateFormat = "HH:mm:ss"
+            let line = "\(f.string(from: Date())) \(text)"
+            events = Array(([line] + events).prefix(4))
+            print("[CCNowPlaying] \(line)")
+        }
 
         /// 命令该转给谁。**弱引用** —— 房间销毁时这里不该把它吊着。
         private weak var target: CCPlaybackRemote?
@@ -166,15 +186,15 @@
             // 锁屏卡片和控制中心上那两颗，是分开的 play / pause。
             center.playCommand.isEnabled = true
             center.playCommand.addTarget { [weak self] _ in
-                self?.run { await $0.resume() } ?? .noActionableNowPlayingItem
+                self?.run("play") { await $0.resume() } ?? .noActionableNowPlayingItem
             }
             center.pauseCommand.isEnabled = true
             center.pauseCommand.addTarget { [weak self] _ in
-                self?.run { await $0.pause() } ?? .noActionableNowPlayingItem
+                self?.run("pause") { await $0.pause() } ?? .noActionableNowPlayingItem
             }
             center.stopCommand.isEnabled = true
             center.stopCommand.addTarget { [weak self] _ in
-                self?.run { await $0.stop() } ?? .noActionableNowPlayingItem
+                self?.run("stop") { await $0.stop() } ?? .noActionableNowPlayingItem
             }
 
             // 前后拖。系统给的是**秒数**，而服务端收的是**比例** ——
@@ -232,14 +252,23 @@
         /// 换掉一整类「按了反而更糟」。**比让轮询一直开着便宜得多** ——
         /// 后者是每 4 秒一次，前者是一天几次。
         private func toggle() -> MPRemoteCommandHandlerStatus {
-            guard let remote = target else { return .noActionableNowPlayingItem }
+            guard let remote = target else {
+                log("toggle → 没有挂接的房间")
+                return .noActionableNowPlayingItem
+            }
             Task {
                 await remote.refresh()
+                let before = "active=\(remote.isActive) paused=\(remote.isPaused)"
+                let action: String
                 if remote.isActive {
-                    if remote.isPaused { await remote.resume() } else { await remote.pause() }
+                    if remote.isPaused { action = "resume"; await remote.resume() }
+                    else { action = "pause"; await remote.pause() }
                 } else if remote.canReplay {
-                    await remote.replay()
+                    action = "replay"; await remote.replay()
+                } else {
+                    action = "无事可做"
                 }
+                log("toggle [\(before)] → \(action)：\(remote.lastError ?? "ok")")
             }
             return .success
         }
@@ -252,10 +281,17 @@
         /// `CCPlaybackBar` 的错误文字看得到。这是系统 API 的形状决定的，
         /// 不是我们偷懒 —— 但别以为报了 success 就等于生效了。
         private func run(
+            _ name: String,
             _ action: @escaping (CCPlaybackRemote) async -> Void
         ) -> MPRemoteCommandHandlerStatus {
-            guard let remote = target else { return .noActionableNowPlayingItem }
-            Task { await action(remote) }
+            guard let remote = target else {
+                log("\(name) → 没有挂接的房间")
+                return .noActionableNowPlayingItem
+            }
+            Task {
+                await action(remote)
+                log("\(name) → \(remote.lastError ?? "ok")")
+            }
             return .success
         }
     }
