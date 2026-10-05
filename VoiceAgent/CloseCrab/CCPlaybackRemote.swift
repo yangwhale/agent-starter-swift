@@ -81,7 +81,7 @@ final class CCPlaybackRemote {
 
     private let room: Room
     private let target: Participant.Identity
-    private var poller: Task<Void, Never>?
+    @ObservationIgnored private var poller: Task<Void, Never>?
 
     /// - Parameter roomName: 房间名 ＝ bot 名。服务端那个参与者的 identity
     ///   是 `<bot>-speaker`（`livekit_out.py:690`，`f"{bot_name}-speaker"`）。
@@ -107,8 +107,9 @@ final class CCPlaybackRemote {
     /// 捏 AirPods（`CCNowPlaying`）和锁屏实时活动上那颗暂停键（`CCLiveActivity`）共用 ——
     /// 两处原来要各写一份同样的三档判断，迟早写歪一个。
     ///
-    /// ⚠️ **先 `refresh()` 再判断，这条是承重的**：锁屏时进度轮询是停的（渲染闸门），
-    /// 本地状态一定是旧的，拿旧状态判断的后果是**做反**（想停，它反而从头重播）。
+    /// ⚠️ **先 `refresh()` 再判断，这条是承重的**：锁屏时进度可能没在轮询（实时活动没开 /
+    /// 被划掉时，只剩渲染闸门管着的播放条，它锁屏就停），就算在轮询也可能差最多 4 秒，
+    /// 本地状态可能是旧的，拿旧状态判断的后果是**做反**（想停，它反而从头重播）。
     /// 完整理由见 `CCNowPlaying.toggle(via:)` 上面那段。
     func smartToggle() async -> (before: String, action: String) {
         await refresh()
@@ -154,9 +155,21 @@ final class CCPlaybackRemote {
         #endif
     }
 
-    /// 开始每秒拉一次。**只在界面看得见时开** ——
-    /// 常驻轮询是一条纯耗电的链路，而没人看的时候进度没有意义。
-    func startPolling() {
+    /// 谁在要进度。**引用计数，不是一个开关**（2026-10-05 起）。
+    ///
+    /// 原来是 `startPolling` / `stopPolling` 一对，只有 `CCPlaybackBar` 在用，
+    /// 界面看不见（锁屏）就停 —— 而锁屏实时活动上的进度条**恰恰是在锁屏时看的**。
+    /// 两个使用方各管一个开关的话，播放条一消失就把实时活动那份也关了。
+    /// ⇒ 每个使用方拿一个自己的名字来挂号，**最后一个走了才停**。
+    ///
+    /// 用 `Set` 不用整数：同一个使用方重复挂号 / 重复退号都是幂等的
+    /// （`onAppear` 和 `onChange` 可能对同一次出现各调一遍）—— 整数计数会多数一次、永远停不下来。
+    @ObservationIgnored private var pollOwners: Set<String> = []
+
+    /// 挂号：要轮询进度。第一个挂号的人把轮询开起来。
+    /// 节奏不变：在播 1 秒一次、否则 4 秒一次。
+    func acquirePolling(_ owner: String) {
+        pollOwners.insert(owner)
         guard poller == nil else { return }
         poller = Task { [weak self] in
             while !Task.isCancelled {
@@ -174,7 +187,10 @@ final class CCPlaybackRemote {
         }
     }
 
-    func stopPolling() {
+    /// 退号。没人要了才真停 —— 常驻轮询是一条纯耗电的链路。
+    func releasePolling(_ owner: String) {
+        pollOwners.remove(owner)
+        guard pollOwners.isEmpty else { return }
         poller?.cancel()
         poller = nil
     }

@@ -71,6 +71,17 @@
         private var moodMemo: (room: String, mood: CCFaceMood, since: Date)?
         /// 上一次的计时起点（吃掉服务端 `sec` 的抖动，见 `CCLiveActivityPolicy.timerTolerance`）。
         private var timerMemo: (room: String, start: Date)?
+        /// 上一次算出来的播放进度（`CCLiveActivityPolicy.playMark` 靠它判断「能不能沿用」）。按房间记。
+        private var playMemo: (room: String, mark: CCLiveActivityPolicy.PlayMark)?
+
+        /// 替卡片挂着号的那个播放器（`CCPlaybackRemote.acquirePolling`）。
+        ///
+        /// 锁屏时 `CCPlaybackBar` 被渲染闸门退了号，没有这一份的话进度就不再更新 ——
+        /// 而实时活动正是锁屏时看的。**有卡就挂、卡没了就退、换房间就换一个挂。**
+        /// `weak`：房间被删掉时别让这里把一个连着死房间的播放器续命（它的轮询循环
+        /// 靠「对象没了就退出」收尾，见 `acquirePolling`）。
+        private weak var pollingRemote: CCPlaybackRemote?
+        private static let pollOwner = "live-activity"
 
         /// 观察登记着没有。**同一时刻只能有一份登记** —— `sync()` 还会被闹钟、回前台调到，
         /// 每次都登记的话，一次属性变化会回调好几次，回调里又登记，越滚越多。
@@ -127,6 +138,10 @@
             var isActive = false
             var isPaused = false
             var canReplay = false
+            var played: Double = 0
+            var total: Double?
+            var fid = ""
+            var playback: CCPlaybackRemote?
             var peers: [(name: String, dot: CCPresenceDot)] = []
             var finishedAt: Date?
             var speechEndedAt: Date?
@@ -167,6 +182,12 @@
                 isActive: slot.playback.isActive,
                 isPaused: slot.playback.isPaused,
                 canReplay: slot.playback.canReplay,
+                // 进度也走观察：轮询每拉回一份（在播时 1 秒一次）就重算一次卡片 ——
+                // 绝大多数时候 `playMark` 沿用上一份，内容相等，Policy 判 skip，不会每秒推。
+                played: slot.playback.played,
+                total: slot.playback.total,
+                fid: slot.playback.fid,
+                playback: slot.playback,
                 peers: peers,
                 finishedAt: slot.botStatus.finishedAt,
                 speechEndedAt: slot.speechEndedAt
@@ -247,6 +268,16 @@
             // 只要将来的：换卡失败时「开卡满 7.5 小时」那个时刻已经过去了，
             // 留着它会让闹钟每 50 毫秒响一次（重试节奏由 startRetry 那个时刻管）。
             scheduleWake(wakeAt.filter { $0 > now }.min(), now: now)
+
+            holdPolling(activityID != nil ? i.playback : nil)
+        }
+
+        /// 让「有卡时挂号、没卡时退号、换房间时换着挂」成立。每次 `apply` 末尾调，幂等。
+        private func holdPolling(_ want: CCPlaybackRemote?) {
+            guard want !== pollingRemote else { return }
+            pollingRemote?.releasePolling(Self.pollOwner)
+            want?.acquirePolling(Self.pollOwner)
+            pollingRemote = want
         }
 
         private func makeState(_ i: Inputs, now: Date) -> CCLiveActivityState {
@@ -260,11 +291,15 @@
                 previous: timerMemo?.room == i.room ? timerMemo?.start : nil,
                 moodSince: moodMemo?.since ?? now)
             timerMemo = (i.room, start)
+            let play = CCLiveActivityPolicy.playMark(
+                isActive: i.isActive, isPaused: i.isPaused, played: i.played, total: i.total, fid: i.fid,
+                previous: playMemo?.room == i.room ? playMemo?.mark : nil, now: now)
+            playMemo = (i.room, play)
             return CCLiveActivityPolicy.makeState(
                 room: i.room, mood: i.mood, skin: i.skin, presence: i.presence,
                 snapHeadline: i.snapHeadline, runningSubtasks: i.subs, timerStart: start,
                 isActive: i.isActive, isPaused: i.isPaused, canReplay: i.canReplay,
-                peers: i.peers)
+                peers: i.peers, play: play)
         }
 
         // MARK: - ActivityKit

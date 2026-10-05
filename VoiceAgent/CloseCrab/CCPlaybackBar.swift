@@ -24,6 +24,10 @@ struct CCPlaybackBar: View {
     /// 看不见就别轮询 —— 见 `CCRenderGate`。
     @Environment(\.ccRendering) private var rendering
 
+    /// 轮询挂号用的名字（`CCPlaybackRemote.acquirePolling`）。每个实例一个 ——
+    /// 锁屏实时活动也挂着号，这里退号不能把它那份一起退掉。
+    @State private var pollOwner = "bar-\(UUID().uuidString)"
+
     /// 一次拖多少。**用比例不用秒数** —— 服务端收的就是比例（-1…1），
     /// 而且一段话可能 3 秒也可能 3 分钟，固定秒数在两头都不好用。
     private let step = 0.15
@@ -62,10 +66,11 @@ struct CCPlaybackBar: View {
         .background(.regularMaterial, in: Capsule())
         // ⭐ 轮询也归渲染闸门管：看不见的房间/锁着的屏，
         //    进度拉回来也没人看，而每次都是一趟 RPC 往返。
-        .onAppear { if rendering { remote.startPolling() } }
-        .onDisappear { remote.stopPolling() }
+        //    锁屏时这里退号；实时活动卡片在的话它自己挂着号，轮询不停。
+        .onAppear { if rendering { remote.acquirePolling(pollOwner) } }
+        .onDisappear { remote.releasePolling(pollOwner) }
         .onChange(of: rendering) { _, on in
-            if on { remote.startPolling() } else { remote.stopPolling() }
+            if on { remote.acquirePolling(pollOwner) } else { remote.releasePolling(pollOwner) }
         }
     }
 

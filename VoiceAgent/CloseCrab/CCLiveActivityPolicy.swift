@@ -132,6 +132,72 @@ nonisolated enum CCLiveActivityPolicy {
         return out
     }
 
+    // MARK: - 语音播放进度
+
+    /// 在播时，「按卡片上的起点推算的已播秒数」跟服务端报的差多少才重推。
+    /// 服务端每秒报一次、RPC 往返几百毫秒，每次反推出来的起点都会抖 —— 不吃掉的话
+    /// 每秒推一次，正是要避免的。超过 2 秒才说明真偏了（卡住等生成、拖动、网络慢了一大截）。
+    static let playDriftTolerance: TimeInterval = 2
+    /// 总长变化超过多少才重推。生成完那一刻服务端给的总长可能还会再修正一点点。
+    static let playTotalTolerance: TimeInterval = 1
+
+    /// 卡片上那条进度「上一次推的是什么」。`playMark` 返回跟上次**同一个值**就意味着
+    /// 进度这一项不用推（卡片内容整体相等 ⇒ `push` 判 skip）。
+    nonisolated struct PlayMark: Equatable, Sendable {
+        /// 这是哪一段（`CCPlaybackRemote.fid`）。换了一段 ⇒ 一定重推。
+        var fid: String
+        /// 在播：这一段从头开始播的时刻。
+        var start: Date?
+        /// 不在播（暂停 / 播完）：停在第几秒。
+        var played: Double?
+        /// 总长，nil ＝ 还在生成。
+        var total: Double?
+
+        static let none = PlayMark(fid: "", start: nil, played: nil, total: nil)
+        var isPlaying: Bool { start != nil }
+    }
+
+    /// 由服务端这一次的进度（`CCPlaybackRemote` 的 isActive / isPaused / played / total / fid）
+    /// 和上一次推出去的那份，算这一次卡片上该写的进度。
+    ///
+    /// **能沿用上一次就沿用**（返回 `previous` 原值）—— 只有下面这些才换新值、触发一次推：
+    /// 开始播 / 暂停 / 继续 / 播完（在播 ⇄ 不在播）、换了一段、总长从未知变已知（或反过来）、
+    /// 总长变化 > 1 秒、在播时已播秒数跟按起点推算的差 > 2 秒；停着时显示的整秒数变了。
+    ///
+    /// - 有没有东西：`isActive || !fid.isEmpty`（播完了 fid 还留着 ⇒ 还能重播，进度条照画）。
+    /// - 在播：`isActive && !isPaused`。服务端的 `paused` 在不活跃时是残值，不算（跟 makeState 一致）。
+    static func playMark(isActive: Bool, isPaused: Bool, played: Double, total: Double?, fid: String,
+                         previous: PlayMark?, now: Date) -> PlayMark {
+        guard isActive || !fid.isEmpty else { return .none }
+        let p = played.isFinite ? max(0, played) : 0
+        let t = total.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        let prev = previous.flatMap { $0.fid == fid && totalsClose($0.total, t) ? $0 : nil }
+
+        if isActive && !isPaused {
+            let start = now.addingTimeInterval(-p)
+            if let prev, let ps = prev.start, abs(ps.timeIntervalSince(start)) <= playDriftTolerance {
+                return prev
+            }
+            return PlayMark(fid: fid, start: start, played: nil, total: t)
+        }
+        // 停着：数字是死的，只看显示出来的整秒变没变（暂停时拖了一下也要跟上）。
+        if let prev, prev.start == nil, let pp = prev.played,
+           Int(pp.rounded()) == Int(p.rounded()) {
+            return prev
+        }
+        return PlayMark(fid: fid, start: nil, played: p, total: t)
+    }
+
+    /// 两个总长算不算「一样」：都未知；或都已知且差不超过 `playTotalTolerance`。
+    /// 一个已知一个未知 ⇒ 不一样（生成完了，进度条该出来了）。
+    static func totalsClose(_ a: Double?, _ b: Double?) -> Bool {
+        switch (a, b) {
+        case (nil, nil): return true
+        case let (x?, y?): return abs(x - y) <= playTotalTolerance
+        default: return false
+        }
+    }
+
     // MARK: - 卡片上写什么
 
     /// 计时起点。
@@ -176,7 +242,8 @@ nonisolated enum CCLiveActivityPolicy {
     static func makeState(room: String, mood: CCFaceMood, skin: CCFaceSkin?, presence: CCPresenceDot,
                           snapHeadline: String?, runningSubtasks: Int, timerStart: Date,
                           isActive: Bool, isPaused: Bool, canReplay: Bool,
-                          peers: [(name: String, dot: CCPresenceDot)]) -> CCLiveActivityState {
+                          peers: [(name: String, dot: CCPresenceDot)],
+                          play: PlayMark = .none) -> CCLiveActivityState {
         // 子任务数跟状态行同一条规矩：断线时是残值，不显示。
         let live = mood != .asleep && mood != .searching
         return CCLiveActivityState(
@@ -191,7 +258,12 @@ nonisolated enum CCLiveActivityPolicy {
             isPaused: isActive && isPaused,
             canReplay: canReplay,
             peers: peers.filter { $0.name != room }.prefix(maxPeers)
-                .map { CCLiveActivityState.Peer(name: $0.name, dot: $0.dot.rawValue) }
+                .map { CCLiveActivityState.Peer(name: $0.name, dot: $0.dot.rawValue) },
+            // 起点只在「在播」时给、停住的秒数只在「不在播」时给 —— 两个判据都跟上面
+            // isPlaying 同源，扩展那边不会碰到「说在播、却只有暂停秒数」的组合。
+            playStart: isActive && !isPaused ? play.start : nil,
+            playTotal: play.total,
+            playedAtPause: isActive && !isPaused ? nil : play.played
         )
     }
 }

@@ -313,6 +313,187 @@ let fat = P.makeState(room: String(repeating: "r", count: 32), mood: .waiting, s
 let fatBytes = try! enc.encode(fat).count
 check("⭐ 最坏情况编码后 < 2 KB（上限 4 KB 留一半余量）", fatBytes < 2048, "\(fatBytes) 字节")
 
+// MARK: - 语音播放进度（2026-10-05）
+//
+// 要钉的需求：
+//   ⑦ 在播时卡片**自己走**，app 不每秒推 —— 服务端每秒报一次、每次都带几百毫秒抖动，
+//      只有开始 / 暂停 / 继续 / 换段 / 总长未知→已知 / 总长变 >1 s / 偏差 >2 s 才推；
+//   ⑧ 总长未知（还在生成）**不画进度条**（不编分母）；
+//   ⑨ 新扩展读旧 app 推的卡（没这几个键）、旧扩展读新 app 推的卡，都不能整份解码失败。
+
+typealias M = P.PlayMark
+
+func mark(active: Bool = true, paused: Bool = false, played: Double = 0, total: Double? = 48,
+          fid: String = "f1", prev: M? = nil, now: Date = t0) -> M {
+    P.playMark(isActive: active, isPaused: paused, played: played, total: total, fid: fid, previous: prev, now: now)
+}
+
+check("⭐ 没东西（不活跃、没 fid）⇒ none", mark(active: false, fid: "") == .none)
+check("没东西时不管上一份", mark(active: false, fid: "", prev: mark(played: 3)) == .none)
+let m0 = mark(played: 12, now: at(100))
+check("⭐ 在播：起点 ＝ 现在 − 已播", m0.start == at(88) && m0.played == nil && m0.total == 48 && m0.fid == "f1")
+check("第一份（没有上一份）一定给新值", m0.isPlaying)
+
+// ⑦ 每秒一次、服务端如实前进 ⇒ 一直沿用
+check("⭐ 1 秒后已播 +1 ⇒ 沿用（不推）", mark(played: 13, prev: m0, now: at(101)) == m0)
+check("抖 0.3 秒 ⇒ 沿用", mark(played: 13.3, prev: m0, now: at(101)) == m0)
+check("抖 −0.4 秒 ⇒ 沿用", mark(played: 12.6, prev: m0, now: at(101)) == m0)
+// 偏差边界：2 秒（含）沿用，过一点就换
+check("⭐ 偏差正好 2 秒 ⇒ 沿用", mark(played: 15, prev: m0, now: at(101)) == m0)
+check("⭐ 偏差 2.01 秒 ⇒ 换新起点", mark(played: 15.01, prev: m0, now: at(101)).start == at(101 - 15.01))
+check("落后 2.01 秒 ⇒ 换新起点（卡住等生成也要跟上）", mark(played: 12, prev: m0, now: at(102.01)) != m0)
+check("落后正好 2 秒 ⇒ 沿用", mark(played: 12, prev: m0, now: at(102)) == m0)
+check("容忍区间是需求不是巧合：≥ 1 秒（吃掉 RPC 抖动）且 ≤ 5 秒（偏了别太久没人管）",
+      P.playDriftTolerance >= 1 && P.playDriftTolerance <= 5)
+
+// 开始 / 暂停 / 继续 / 播完 / 换段
+let mp = mark(paused: true, played: 20, prev: m0, now: at(108))
+check("⭐ 暂停 ⇒ 换新值：没有起点、停在 20 秒", mp != m0 && mp.start == nil && mp.played == 20 && mp.total == 48)
+check("暂停中再报一次同样的秒数 ⇒ 沿用", mark(paused: true, played: 20, prev: mp, now: at(120)) == mp)
+check("暂停中秒数有小数抖动但显示的整秒不变 ⇒ 沿用", mark(paused: true, played: 20.4, prev: mp, now: at(121)) == mp)
+check("⭐ 暂停中拖了一下（显示的整秒变了）⇒ 换", mark(paused: true, played: 27, prev: mp, now: at(122)).played == 27)
+check("暂停中变到下一个整秒 ⇒ 换", mark(paused: true, played: 20.6, prev: mp, now: at(122)) != mp)
+let mr = mark(played: 20, prev: mp, now: at(130))
+check("⭐ 继续 ⇒ 换新值：起点按现在重算", mr.start == at(110) && mr.played == nil)
+let mf = mark(active: false, played: 48, prev: mr, now: at(138))
+check("⭐ 播完（不活跃、fid 还在）⇒ 停在末尾，还算有东西", mf.start == nil && mf.played == 48 && mf.fid == "f1")
+check("播完之后反复轮询 ⇒ 沿用", mark(active: false, played: 48, prev: mf, now: at(142)) == mf)
+check("⭐ 不活跃时服务端 paused 的残值不算在播", mark(active: false, paused: false, played: 5).start == nil)
+let mn = mark(played: 0.5, fid: "f2", prev: m0, now: at(101))
+check("⭐ 换了一段（fid 变）⇒ 换新值，哪怕起点碰巧很近", mn.fid == "f2" && mn != m0)
+check("换段但起点几乎一样也换", mark(played: 13, fid: "f2", prev: m0, now: at(101)).fid == "f2")
+check("⭐ 重播同一段（played 回到 0）⇒ 换", mark(played: 0, prev: m0, now: at(101)).start == at(101))
+
+// 总长
+let mu = mark(played: 3, total: nil, now: at(10))
+check("总长未知 ⇒ total 为 nil", mu.total == nil && mu.start == at(7))
+check("未知时照样沿用", mark(played: 4, total: nil, prev: mu, now: at(11)) == mu)
+check("⭐ 总长从未知变已知 ⇒ 换", mark(played: 4, total: 30, prev: mu, now: at(11)).total == 30)
+check("总长从已知变未知 ⇒ 换", mark(played: 13, total: nil, prev: m0, now: at(101)).total == nil)
+check("总长变 0.9 秒 ⇒ 沿用（保留上一份总长）", mark(played: 13, total: 48.9, prev: m0, now: at(101)) == m0)
+check("⭐ 总长变正好 1 秒 ⇒ 沿用", mark(played: 13, total: 49, prev: m0, now: at(101)) == m0)
+check("⭐ 总长变 1.01 秒 ⇒ 换", mark(played: 13, total: 49.01, prev: m0, now: at(101)).total == 49.01)
+check("总长变小 1.5 秒 ⇒ 换", mark(played: 13, total: 46.5, prev: m0, now: at(101)) != m0)
+check("总长 0 / 负数 / NaN / 无穷 ⇒ 当未知",
+      [0.0, -3, .nan, .infinity].allSatisfy { mark(played: 1, total: $0).total == nil })
+check("已播为负 ⇒ 按 0（起点不能在将来）", mark(played: -5, now: at(10)).start == at(10))
+check("已播 NaN ⇒ 按 0", mark(played: .nan, now: at(10)).start == at(10))
+check("totalsClose 一个已知一个未知 ⇒ 不一样", !P.totalsClose(nil, 3) && !P.totalsClose(3, nil))
+
+// 拼卡片 ＋ 怎么画
+func pst(active: Bool, paused: Bool = false, replay: Bool = true, play: M) -> S {
+    P.makeState(room: "bunny", mood: .speaking, skin: .bunny, presence: .online, snapHeadline: "在说话",
+                runningSubtasks: 0, timerStart: t0, isActive: active, isPaused: paused, canReplay: replay,
+                peers: [], play: play)
+}
+let sRun = pst(active: true, play: m0)
+check("⭐ 在播、总长已知 ⇒ 从起点走到起点＋总长", sRun.playDisplay == .running(at(88)...at(136)))
+check("在播时卡片不带暂停秒数", sRun.playStart == at(88) && sRun.playedAtPause == nil && sRun.playTotal == 48)
+check("⭐ 在播、总长未知 ⇒ 只走已播、不画条", pst(active: true, play: mu).playDisplay == .growing(since: at(7)))
+check("⭐ 暂停 ⇒ 静态", pst(active: true, paused: true, play: mp).playDisplay == .still(played: 20, total: 48))
+check("暂停时卡片不带起点", pst(active: true, paused: true, play: mp).playStart == nil)
+check("暂停、总长未知 ⇒ 静态不画条",
+      pst(active: true, paused: true, play: mark(paused: true, played: 5, total: nil)).playDisplay == .still(played: 5, total: nil))
+check("⭐ 播完能重播 ⇒ 静态停在末尾", pst(active: false, play: mf).playDisplay == .still(played: 48, total: 48))
+check("⭐ 没东西 ⇒ 不画", pst(active: false, replay: false, play: .none).playDisplay == .hidden)
+check("不传进度（旧调用点）⇒ 不画", mk(active: true, replay: true).playDisplay == .hidden)
+check("⭐ 过期版不画进度（app 不在了，接着走就是在编）", sRun.staleVersion.playDisplay == .hidden
+      && pst(active: false, play: mf).staleVersion.playDisplay == .hidden)
+// makeState 的两道闸跟 isPlaying 同源：哪怕传进来的 mark 跟播放状态对不上，也不会落成矛盾组合
+check("mark 说在播、输入说暂停 ⇒ 卡片不带起点", pst(active: true, paused: true, play: m0).playStart == nil)
+check("mark 说停着、输入说在播 ⇒ 卡片不带暂停秒数", pst(active: true, play: mp).playedAtPause == nil)
+check("过期版连字段一起清掉（扩展以后换种画法也不会拿残值接着走）",
+      sRun.staleVersion.playStart == nil && pst(active: false, play: mf).staleVersion.playedAtPause == nil)
+var lie = sRun; lie.playStart = nil
+check("说在播却没起点 ⇒ 不画（不拿暂停秒数冒充）", lie.playDisplay == .hidden)
+var lie2 = sRun; lie2.isPlaying = false
+check("不在播、不暂停、不能重播 ⇒ 不画", { var x = lie2; x.canReplay = false; x.playedAtPause = 3; return x.playDisplay == .hidden }())
+check("总长 0 落进卡片 ⇒ 当未知", { var x = sRun; x.playTotal = 0; return x.playDisplay == .growing(since: at(88)) }())
+
+check("clock：12 ⇒ 0:12", S.clock(12) == "0:12")
+check("clock：48.4 ⇒ 0:48，48.5 ⇒ 0:49（四舍五入，跟 app 播放条一致）", S.clock(48.4) == "0:48" && S.clock(48.5) == "0:49")
+check("clock：59.6 ⇒ 1:00（进位不出现 0:60）", S.clock(59.6) == "1:00")
+check("clock：768 ⇒ 12:48", S.clock(768) == "12:48")
+check("clock：负数 / NaN / 无穷 ⇒ 0:00 不崩", S.clock(-3) == "0:00" && S.clock(.nan) == "0:00" && S.clock(.infinity) == "0:00")
+check("fraction 夹在 0…1", S.fraction(played: 60, total: 48) == 1 && S.fraction(played: -1, total: 48) == 0
+      && S.fraction(played: 12, total: 48) == 0.25 && S.fraction(played: 3, total: 0) == 0)
+
+// ⑨ 兼容：旧 app 推的卡（没有新键）新扩展照样解码；新 app 推的卡旧扩展照样解码
+let noPlay = try! enc.encode(mk(active: true))
+let noPlayJSON = String(data: noPlay, encoding: .utf8)!
+check("没进度时三个新键都不写进去（体积、也就等于旧 app 的格式）",
+      !noPlayJSON.contains("playStart") && !noPlayJSON.contains("playTotal") && !noPlayJSON.contains("playedAtPause"))
+/// 旧版 app / 扩展里那份结构体（2026-10-05 之前的字段，原样抄）。
+/// ⚠️ 旧格式的样本**必须从这里编出来**，不能拿新结构体编完再删键 —— 新结构体将来要是
+/// 多了个非可选字段（比如 `hasClip: Bool`），它自己编出来的 JSON 里就带着那个键，测不出问题。
+struct OldState: Codable {
+    var room: String; var mood: String; var skin: String; var presence: String; var headline: String
+    var subtasks: Int; var timerStart: Date; var isPlaying: Bool; var isPaused: Bool; var canReplay: Bool
+    var peers: [S.Peer]
+}
+let oldJSON = try! enc.encode(OldState(room: "bunny", mood: "speaking", skin: "bunny", presence: "online",
+                                       headline: "在说话", subtasks: 0, timerStart: t0, isPlaying: true,
+                                       isPaused: false, canReplay: true, peers: []))
+let fromOld = try? JSONDecoder().decode(S.self, from: oldJSON)
+check("⭐ 旧 app 推的卡（没有新键）⇒ 新扩展解码成功", fromOld != nil)
+check("…并且不画进度（不拿缺失当 0 秒画条）", fromOld?.playDisplay == .hidden)
+let withPlay = try! enc.encode(sRun)
+check("带进度的 JSON 里确实有新键", String(data: withPlay, encoding: .utf8)!.contains("playStart"))
+check("⭐ 新 app 带进度的卡 ⇒ 旧扩展照样解码", (try? JSONDecoder().decode(OldState.self, from: withPlay))?.room == "bunny")
+check("带进度编解码往返无损", (try? JSONDecoder().decode(S.self, from: withPlay)) == sRun)
+let fatPlay = try! enc.encode({ var x = fat; x.playStart = Date(); x.playTotal = 1234.567; x.playedAtPause = 98.7654; return x }())
+check("最坏情况带进度仍 < 2 KB", fatPlay.count < 2048, "\(fatPlay.count) 字节")
+
+// ⑦ 端到端：轮询 → playMark → makeState → push，数一共推了几次。
+//   一段 48 秒的话，每秒报一次、每次带 ±0.45 秒抖动（外加 RPC 延迟）；第 20 秒暂停 10 秒再继续。
+//   该推的只有：开始、暂停、继续、播完 —— 4 次。每秒推就是 60 次。
+func simPlay(steps: [(t: Double, active: Bool, paused: Bool, played: Double, total: Double?, fid: String)])
+    -> (pushes: Int, last: S?) {
+    var memo: M?
+    var lastPushed: S?
+    var lastAt: Date?
+    var n = 0
+    for st in steps {
+        let now = at(st.t)
+        let m = P.playMark(isActive: st.active, isPaused: st.paused, played: st.played, total: st.total,
+                           fid: st.fid, previous: memo, now: now)
+        memo = m
+        let s = pst(active: st.active, paused: st.paused, replay: !st.fid.isEmpty, play: m)
+        if case .now = P.push(next: s, last: lastPushed, lastPushAt: lastAt, now: now) {
+            lastPushed = s; lastAt = now; n += 1
+        }
+    }
+    return (n, lastPushed)
+}
+var steps: [(t: Double, active: Bool, paused: Bool, played: Double, total: Double?, fid: String)] = []
+var playedSoFar = 0.0
+var tt = 0.0
+rng = 7
+while playedSoFar < 48 {
+    let pausedNow = tt >= 20.3 && tt < 30.3
+    let jitter = (rnd() - 0.5) * 0.9
+    steps.append((tt, true, pausedNow, max(0, min(48, playedSoFar + (pausedNow ? 0 : jitter))), 48, "f1"))
+    tt += 1
+    if !pausedNow { playedSoFar += 1 }
+}
+for k in 0..<5 { steps.append((tt + Double(k) * 4, false, false, 48, 48, "f1")) }
+let r1 = simPlay(steps: steps)
+check("⭐ 48 秒一段、中间暂停一次：只推 4 次（开始 / 暂停 / 继续 / 播完），不是每秒推", r1.pushes == 4,
+      "推了 \(r1.pushes) 次 / \(steps.count) 次轮询")
+check("最后推出去的是「播完、停在末尾」", r1.last?.playDisplay == .still(played: 48, total: 48))
+
+//   还在生成：前 10 秒总长未知，第 10 秒知道了 ⇒ 开始 1 次 ＋ 总长出现 1 次。
+var gsteps: [(t: Double, active: Bool, paused: Bool, played: Double, total: Double?, fid: String)] = []
+for k in 0..<30 { gsteps.append((Double(k), true, false, Double(k) + (rnd() - 0.5) * 0.8, k < 10 ? nil : 30, "g")) }
+let r2 = simPlay(steps: gsteps)
+check("⭐ 生成中→长度出来：只推 2 次", r2.pushes == 2, "推了 \(r2.pushes) 次")
+
+//   卡住等生成（在播但 played 不动 20 秒）：会推纠偏，但有上限 —— 每 ~3 秒一次，不是每秒。
+var ssteps: [(t: Double, active: Bool, paused: Bool, played: Double, total: Double?, fid: String)] = []
+for k in 0..<20 { ssteps.append((Double(k), true, false, 5, nil, "s")) }
+let r3 = simPlay(steps: ssteps)
+check("卡住 20 秒：纠偏有、但不超过 20 ÷ 3 ＋ 1 次", r3.pushes >= 2 && r3.pushes <= 7, "推了 \(r3.pushes) 次")
+
 // MARK: - 小圆点颜色（app 和扩展共用一份）
 
 let allDots: [CCPresenceDot] = [.off, .retrying, .connecting, .degraded, .online]
@@ -331,7 +512,10 @@ nonisolated func touchFromNonisolated() -> Int {
     _ = P.push(next: 1, last: 2, lastPushAt: nil, now: Date())
     _ = P.lifecycle(enabled: true, wantConnected: true, room: "x", hasCard: false, cardStartedAt: nil,
                     dismissedByUser: false, now: Date())
+    let m = P.playMark(isActive: true, isPaused: false, played: 1, total: 2, fid: "x", previous: nil, now: Date())
+    let shown = s.playDisplay == .hidden ? 1 : 0
     return d + s.statusLine.count + s.faceMood.rawValue.count + Int(s.dot.signalHex & 1)
+        + (m.isPlaying ? 1 : 0) + shown + S.clock(3).count + Int(S.fraction(played: 1, total: 2) * 2)
 }
 check("卡片数据和规则能从 nonisolated 上下文用（编译过就算过）", touchFromNonisolated() > 0)
 

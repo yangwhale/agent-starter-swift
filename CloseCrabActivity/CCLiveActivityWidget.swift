@@ -11,16 +11,18 @@ import WidgetKit
 /// ## 长什么样（方案页 `ios-live-activity-plan-20261005`）
 ///
 /// ```
-///  ◡ ◡   bunny ●                       12:48
+///  ◡ ◡   bunny ●
 ///        跑 Q10 验收（3 个子任务）
+///   0:12 ━━━━━━━━━━━━━━──────────── 0:48
 ///        [⏸ 暂停] [↺ 重播]      jarvis ● tommy ●
 /// ```
 ///
 /// - 脸：按心情选定的**一帧**（实时活动里不能跑连续动画）。同一套形状和身份色金属。
-/// - 计时：系统的计时文本，自己会走，不靠每秒推更新。
+/// - 进度条：bot 有在播 / 能重播的语音时才出现；在播时用系统计时视图自己走，不靠每秒推更新。
+///   卡片上**不再有「已查」那个计时**（Chris 2026-10-05 拿掉的，见下面 CCActivityDot 后那段）。
 /// - 按钮：**两种音频模式都一直显示**（Chris 2026-10-05 后来简化的：不再按「系统播放控件」
 ///   开关藏起来）。点下去在 app 进程里执行（见 CCLiveActivityAttributes.swift 文件头）。
-/// - 过期（15 分钟没更新 ⇒ app 多半不在了）：睡着的脸、灰点、「已断开」，**不画按钮、不走计时**。
+/// - 过期（15 分钟没更新 ⇒ app 多半不在了）：睡着的脸、灰点、「已断开」，**不画按钮、不画进度条**。
 struct CCLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: CCLiveActivityAttributes.self) { context in
@@ -56,6 +58,7 @@ struct CCLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {
+                        if !stale && shown.playDisplay != .hidden { CCActivityProgress(state: shown) }
                         if !stale { CCActivityControls(state: shown) }
                         CCActivityPeers(peers: shown.peers)
                             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -102,6 +105,8 @@ struct CCActivityLockScreen: View {
                         .lineLimit(2)
                 }
             }
+            // 语音进度：有正在播 / 能重播的那段才出现（样子照 app 里的 CCPlaybackBar）。
+            if !stale && shown.playDisplay != .hidden { CCActivityProgress(state: shown) }
             if !stale { CCActivityControls(state: shown) }
             if !shown.peers.isEmpty {
                 CCActivityPeers(peers: shown.peers)
@@ -158,7 +163,8 @@ struct CCActivityDot: View {
 
 /// 暂停 / 继续 ＋ 重播。
 ///
-/// ⚠️ 图标按卡片上那份状态画，**可能是旧的**：锁屏时 app 不轮询播放进度（省电那轮定的）。
+/// ⚠️ 图标按卡片上那份状态画，**可能差几秒**：有卡时 app 替卡片挂着进度轮询，但播完后
+/// 4 秒才拉一次（`CCPlaybackRemote.acquirePolling`），卡片也有 1 秒节流。
 /// 不要紧 —— 那颗键做的是「先问服务端、再决定停还是继续还是重播」
 /// （`CCPlaybackRemote.smartToggle`），动作一定对，图标按完就会跟上。
 struct CCActivityControls: View {
@@ -185,6 +191,79 @@ struct CCActivityControls: View {
             .frame(maxWidth: .infinity, minHeight: 48)
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
             .contentShape(Rectangle())
+    }
+}
+
+/// 语音播放进度：左边已播、中间进度条、右边总长 —— 照 app 里的 `CCPlaybackBar`。
+///
+/// **在播时全靠系统计时视图自己走**（`Text(timerInterval:)` ＋ `ProgressView(timerInterval:)`），
+/// app 只在开始 / 暂停 / 继续 / 换段 / 总长变了 / 偏差 > 2 秒时推一次
+/// （判定在 `CCLiveActivityPolicy.playMark`，离线测过）。四种样子见 `CCLiveActivityState.PlayDisplay`。
+struct CCActivityProgress: View {
+    let state: CCLiveActivityState
+
+    /// 两端数字的宽度。系统计时文本会撑满能拿到的宽度，**不给定宽它会把进度条挤没**。
+    private let side: CGFloat = 46
+    /// 进度蓝：跟 app 播放条一样用系统蓝；底色用 ProgressView 自带的灰轨道。
+    private let blue = Color.blue
+
+    var body: some View {
+        Group {
+            switch state.playDisplay {
+            case .hidden:
+                EmptyView()
+            case let .running(range):
+                HStack(spacing: 8) {
+                    Text(timerInterval: range, countsDown: false)
+                        .frame(width: side, alignment: .leading)
+                    // label / currentValueLabel 都给空：默认那份会在条下面再画一个计时，跟左边重复。
+                    ProgressView(timerInterval: range, countsDown: false,
+                                 label: { EmptyView() }, currentValueLabel: { EmptyView() })
+                        .progressViewStyle(.linear)
+                        .tint(blue)
+                    Text(verbatim: CCLiveActivityState.clock(range.upperBound.timeIntervalSince(range.lowerBound)))
+                        .frame(width: side, alignment: .trailing)
+                }
+            case let .growing(since):
+                HStack(spacing: 8) {
+                    Text(timerInterval: since...since.addingTimeInterval(12 * 3600), countsDown: false)
+                        .frame(width: side, alignment: .leading)
+                    // 总长未知不画条 —— 拿猜的分母画会显示成「快播完了」（CCPlaybackBar 同一条）。
+                    Text(verbatim: "生成中")
+                    Spacer(minLength: 0)
+                }
+            case let .still(played, total):
+                HStack(spacing: 8) {
+                    Text(verbatim: CCLiveActivityState.clock(played))
+                        .frame(width: side, alignment: .leading)
+                    if let total {
+                        ProgressView(value: CCLiveActivityState.fraction(played: played, total: total))
+                            .progressViewStyle(.linear)
+                            .tint(blue)
+                        Text(verbatim: CCLiveActivityState.clock(total))
+                            .frame(width: side, alignment: .trailing)
+                    } else {
+                        Text(verbatim: "生成中")
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+        }
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.white.opacity(0.7))
+        .lineLimit(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: spoken))
+    }
+
+    private var spoken: String {
+        switch state.playDisplay {
+        case .hidden: return ""
+        case let .running(r): return "正在播放，共 \(CCLiveActivityState.clock(r.upperBound.timeIntervalSince(r.lowerBound)))"
+        case .growing: return "正在播放，还在生成"
+        case let .still(p, t):
+            return "已播 \(CCLiveActivityState.clock(p))" + (t.map { "，共 \(CCLiveActivityState.clock($0))" } ?? "，还在生成")
+        }
     }
 }
 
