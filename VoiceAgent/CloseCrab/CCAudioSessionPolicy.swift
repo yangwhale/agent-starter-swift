@@ -111,6 +111,26 @@ final class CCAudioSessionPolicy {
     /// ⇒ **一个功能的前提条件，要跟这个功能的状态摆在一起看得见。**
     private(set) var muteMode = "（还没设过）"
 
+    /// 最近十几条音频事件，带毫秒时间戳。诊断页看这个。
+    ///
+    /// Chris 2026-10-05：「bot 在放的时候按语音输入法，要等好几秒才切过来。」
+    /// 那几秒落在哪一步 —— 系统打断我们、我们的引擎停下、别人拿到设备、
+    /// 还是我们又把会话抢了回来 —— **没有时间戳就只能猜**。
+    /// 这里把打断开始/结束、路由变化、每次 setCategory/setActive 的结果按时间排好，
+    /// 一次测试就能看出时间花在谁身上。
+    private(set) var timeline: [String] = []
+
+    private static let stamp: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss.SSS"
+        return f
+    }()
+
+    func log(_ text: String) {
+        timeline.append("\(Self.stamp.string(from: Date())) \(text)")
+        if timeline.count > 14 { timeline.removeFirst(timeline.count - 14) }
+    }
+
     private let observer = Observer()
     private var installed = false
     private var recoveryInstalled = false
@@ -281,6 +301,7 @@ final class CCAudioSessionPolicy {
 
         observer.onApply = { [weak self] text, capturing, released, config in
             Task { @MainActor in
+                self?.log("引擎 → \(text)")
                 self?.lastApplied = text
                 self?.isCapturing = capturing
                 self?.isReleased = released
@@ -325,7 +346,18 @@ final class CCAudioSessionPolicy {
                        object: nil, queue: .main) { [weak self] note in
             guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            // 打断原因（iOS 14.5+）与「结束后该不该接着放」。
+            var why = ""
+            if let r = note.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt {
+                why = " reason=\(r)"
+            }
+            if let o = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt,
+               AVAudioSession.InterruptionOptions(rawValue: o).contains(.shouldResume) {
+                why += " shouldResume"
+            }
+            let detail = why   // 不能把 var 捕获进并发闭包（Swift 6 报错）
             Task { @MainActor in
+                self?.log("打断\(type == .began ? "开始" : "结束")\(detail)")
                 switch type {
                 case .began:
                     self?.lastRecovery = "被打断了（等结束）"
@@ -350,11 +382,16 @@ final class CCAudioSessionPolicy {
 
         nc.addObserver(forName: AVAudioSession.routeChangeNotification,
                        object: nil, queue: .main) { [weak self] note in
-            guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-                  AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable
-            else { return }
-            // 耳机拔了 / 蓝牙断了。iOS 会暂停，我们要接着放。
-            Task { @MainActor in self?.recover(reason: "设备拔掉了") }
+            guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt else { return }
+            let unplugged = AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable
+            let cat = AVAudioSession.sharedInstance().category.rawValue
+                .replacingOccurrences(of: "AVAudioSessionCategory", with: "")
+            Task { @MainActor in
+                // 每次路由变化都记（类别变了也走这条），只有拔设备才自愈 ——
+                // 耳机拔了 / 蓝牙断了时 iOS 会暂停，我们要接着放。
+                self?.log("路由变化 reason=\(raw) 类别=\(cat)")
+                if unplugged { self?.recover(reason: "设备拔掉了") }
+            }
         }
 
         #if os(iOS)
@@ -384,6 +421,7 @@ final class CCAudioSessionPolicy {
         guard !isReleased else {
             lastRecovery = "\(reason) → 跳过（当前是让出状态，没有东西要恢复）"
             print("[CCAudioSessionPolicy] \(lastRecovery)")
+            log("自愈：\(lastRecovery)")
             return
         }
 
@@ -401,6 +439,7 @@ final class CCAudioSessionPolicy {
             lastRecovery = "\(reason) → 重新激活失败: \(error)"
         }
         print("[CCAudioSessionPolicy] \(lastRecovery)")
+        log("自愈：\(lastRecovery)")
     }
 
     // MARK: - 观察者

@@ -283,6 +283,16 @@ struct CCDiagnosticsView: View {
                     } label: {
                         Text(verbatim: "静音模式")
                     }
+                    // 带毫秒的音频事件流。「按语音输入法要等几秒」那种问题看这一行：
+                    // 打断开始到别人拿到设备之间夹着什么，一目了然。
+                    LabeledContent {
+                        Text(verbatim: CCAudioSessionPolicy.shared.timeline.isEmpty
+                             ? "（还没有）"
+                             : CCAudioSessionPolicy.shared.timeline.joined(separator: "\n"))
+                            .font(.caption2.monospaced()).multilineTextAlignment(.trailing)
+                    } label: {
+                        Text(verbatim: "音频事件")
+                    }
                     #endif
                     #if os(iOS)
                     // 耳机 / 锁屏发来的最近几条命令。「按了没反应」有三种完全不同的病因，
