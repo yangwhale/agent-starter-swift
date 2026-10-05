@@ -38,7 +38,6 @@ struct CCLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     VStack(alignment: .trailing, spacing: 4) {
-                        if !stale && shown.faceMood == .working { CCActivityTimer(state: shown, font: .title3) }
                         CCActivityDot(dot: shown.dot, size: 8)
                     }
                     .padding(.trailing, 4)
@@ -65,13 +64,7 @@ struct CCLiveActivityWidget: Widget {
             } compactLeading: {
                 CCActivityFace(state: shown, side: 22)
             } compactTrailing: {
-                HStack(spacing: 4) {
-                    CCActivityDot(dot: shown.dot, size: 6)
-                    if !stale && shown.faceMood == .working {
-                        CCActivityTimer(state: shown, font: .caption2)
-                            .frame(maxWidth: 44)
-                    }
-                }
+                CCActivityDot(dot: shown.dot, size: 6)
             } minimal: {
                 CCActivityFace(state: shown, side: 20)
             }
@@ -88,7 +81,7 @@ struct CCActivityLockScreen: View {
 
     private var shown: CCLiveActivityState { stale ? state.staleVersion : state }
 
-    // 布局：上面「脸 ＋ 名字状态 ＋ 计时」，下面**两颗占满宽度的大按钮**。
+    // 布局：上面「脸 ＋ 名字状态」，下面**两颗占满宽度的大按钮**。
     // Chris 2026-10-05：「主要操作就是重播、暂停／恢复这两件事，做成大按钮。」
     // 锁屏上按的是一只拇指，小胶囊按钮（原来 caption 字、5pt 内边距）很难按准。
     var body: some View {
@@ -102,7 +95,6 @@ struct CCActivityLockScreen: View {
                             .lineLimit(1)
                         CCActivityDot(dot: shown.dot, size: 8)
                         Spacer(minLength: 4)
-                        if !stale && shown.faceMood == .working { CCActivityTimer(state: shown, font: .headline) }
                     }
                     Text(shown.statusLine)
                         .font(.subheadline)
@@ -159,28 +151,10 @@ struct CCActivityDot: View {
     }
 }
 
-/// 系统计时文本：从 `timerStart` 往上数，自己走。上限给 12 小时（单卡最长 8 小时，用不到）。
-///
-/// **只在 bot「在查东西」时显示**，前面带「已查」两个字。
-/// Chris 2026-10-05：「没看出来那个计时记的是什么时间，没啥用。」—— 原来空闲时也在走
-/// （数的是「进入当前心情多久了」），一个不说明自己在数什么的数字就是噪音。
-/// 忙的时候「这个活已经干了多久」才有用，那时也只有它有意义。
-struct CCActivityTimer: View {
-    let state: CCLiveActivityState
-    let font: Font
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Text(verbatim: "已查")
-                .font(font)
-                .foregroundStyle(.white.opacity(0.7))
-            Text(timerInterval: state.timerStart...state.timerStart.addingTimeInterval(12 * 3600),
-                 countsDown: false)
-                .font(font.monospacedDigit())
-                .multilineTextAlignment(.trailing)
-        }
-    }
-}
+// 计时已整个拿掉。Chris 2026-10-05：先是「没看出来计时记的是什么时间」，
+// 改成只在查东西时显示「已查 0:12」之后，仍然「这个不要」。
+// ⇒ 卡片上不放任何计时；`timerStart` 字段留在状态里没删（app 端还在写），
+//   以后真要恢复不用改数据结构。
 
 /// 暂停 / 继续 ＋ 重播。
 ///
