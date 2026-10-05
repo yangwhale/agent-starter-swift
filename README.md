@@ -116,6 +116,18 @@ git fetch upstream
 git merge upstream/main    # 改动集中在 VoiceAgent/CloseCrab/，冲突面很小
 ```
 
+## 第三方
+
+bot「活脸」（`VoiceAgent/CloseCrab/CCFace*.swift`）的眼睛轮廓、眼皮切法、头饰、
+动作节奏移植自别人的作品，**许可跟本仓库的 MIT 不同**：
+
+| 来源 | 用在哪 | 许可 | 全文 |
+|---|---|---|---|
+| [AgentTouch](https://github.com/wentong2022-arch/agenttouch)（`firmware/src/face.cpp` 等） | `CCFaceMotion.swift`、`CCFaceView.swift`、`CCFaceGrokEyes.swift` | PolyForm Noncommercial 1.0.0 —— **仅限非商业用途**。Required Notice: Copyright (c) 2026 yuwentong (https://github.com/wentong2022-arch/agenttouch) | [`THIRD_PARTY_LICENSES/AgentTouch-PolyForm-Noncommercial-1.0.0.txt`](THIRD_PARTY_LICENSES/AgentTouch-PolyForm-Noncommercial-1.0.0.txt) |
+| [GrokBot](https://github.com/nasawz/GrokBot)（grok 皮肤的 25 组眼睛坐标，经 AgentTouch 转录） | `CCFaceGrokEyes.swift` | BSD-3-Clause，Copyright (c) 2026, nasawz | [`THIRD_PARTY_LICENSES/GrokBot-BSD-3-Clause.txt`](THIRD_PARTY_LICENSES/GrokBot-BSD-3-Clause.txt) |
+
+分发包含这几个文件的构建时，许可条款和上面那行 Required Notice 要一起带上。
+
 ## 文档
 
 - [`docs/ios-mic-indicator.md`](docs/ios-mic-indicator.md) — 麦克风橙点关不掉：SDK 每建一个房间就把全局静音模式覆盖成「灯常亮」那一档（**灯又亮起来先读这份**）

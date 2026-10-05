@@ -46,6 +46,11 @@ nonisolated enum CCStore {
         static let legacyLiveAvatar = "cc.liveAvatar"
         /// 每个房间一条，键是 `cc.avatar.roles.<房间名>`。
         static func avatarRoles(room: String) -> String { "cc.avatar.roles.\(room)" }
+        /// 活脸皮肤，每个房间一条：`cc.face.skin.<房间名>`。没有这条＝这个房间不用活脸。
+        static let faceSkinPrefix = "cc.face.skin."
+        static func faceSkin(room: String) -> String { faceSkinPrefix + room }
+        /// **存的是「关掉了吗」** —— 跟 `hapticsOff` 同一个理由（默认开）。
+        static let faceChimeOff = "cc.face.chimeOff"
     }
 
     private static let keychainService = "com.higcp.closecrab.voice"
@@ -293,6 +298,46 @@ nonisolated enum CCStore {
 
     static func setAvatarWants(_ wants: CCAvatarWants, room: String) {
         UserDefaults.standard.set(wants.storageValue, forKey: Key.avatarRoles(room: room))
+    }
+
+    // MARK: - 活脸
+
+    /// 这个房间选了哪套活脸皮肤。nil ＝ 没选（方块还是 emoji / 照片 / 首字母）。
+    ///
+    /// **默认不开**：Chris 2026-10-05 的决定是「做成图标的一个选项，默认不改现有图标」。
+    /// 跟 `avatarWants(room:)` 同样按房间各存一份 —— 每个 bot 可以穿不同的皮肤。
+    static func faceSkin(room: String) -> CCFaceSkin? {
+        CCFaceSkin.parse(UserDefaults.standard.string(forKey: Key.faceSkin(room: room)))
+    }
+
+    /// 传 nil ＝ 关掉活脸。**关掉要删键，不能存空串** —— 空串读回来也是 nil，
+    /// 但留着一堆空键，`allFaceSkins()` 每次启动都要白扫它们。
+    static func setFaceSkin(_ skin: CCFaceSkin?, room: String) {
+        if let skin {
+            UserDefaults.standard.set(skin.rawValue, forKey: Key.faceSkin(room: room))
+        } else {
+            UserDefaults.standard.removeObject(forKey: Key.faceSkin(room: room))
+        }
+    }
+
+    /// 全部房间的皮肤，启动时 `CCRoomIcons` 读一次。
+    ///
+    /// 按前缀扫 UserDefaults，**不按当前房间名单逐个读** —— 名单是服务端下发的，
+    /// 冷启动时还是上次的缓存；一个这次没在名单里、下次又回来的房间，皮肤不该丢。
+    static func allFaceSkins() -> [String: CCFaceSkin] {
+        var out: [String: CCFaceSkin] = [:]
+        for (k, v) in UserDefaults.standard.dictionaryRepresentation() where k.hasPrefix(Key.faceSkinPrefix) {
+            if let skin = CCFaceSkin.parse(v as? String) {
+                out[String(k.dropFirst(Key.faceSkinPrefix.count))] = skin
+            }
+        }
+        return out
+    }
+
+    /// bot「等你回话」「刚干完」时叮一声。**默认开**，没有设置页入口（Chris：开关有就行）。
+    static var faceChime: Bool {
+        get { !UserDefaults.standard.bool(forKey: Key.faceChimeOff) }
+        set { UserDefaults.standard.set(!newValue, forKey: Key.faceChimeOff) }
     }
 
     // MARK: - 共享密钥（Keychain）

@@ -548,6 +548,12 @@ final class CCRooms {
                 print("[CCReconnect] \(slot.name) 断线（SDK 已放弃自带重连）")
                 self.scheduleReconnect(slot)
             }
+            // 活脸的「叮」：**只接这一处**。只在当前房间响 —— 隔壁房间的 bot 等你，
+            // 方块上的脸会瞪大＋问号，但不该打断你正在听的这一个。
+            slot.botStatus.onFaceEvent = { [weak self, weak slot] ev in
+                guard let self, let slot else { return }
+                CCFaceChime.shared.note(ev, room: slot.name, isActiveRoom: slot.name == self.activeName)
+            }
             slots.append(slot)
             if shouldConnect { connect(slot) }
         }

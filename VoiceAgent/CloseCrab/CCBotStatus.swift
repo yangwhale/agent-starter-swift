@@ -77,6 +77,14 @@ final class CCBotStatus {
     private(set) var snap: Snapshot?
     /// 最近几条流水。**只留几条** —— 它是氛围不是信息，多了就成了刷屏。
     private(set) var steps: [String] = []
+    /// 最近一次「刚干完」的时刻（`on` 真→假且带了一句总结）。活脸靠它挂 3 秒笑脸。
+    private(set) var finishedAt: Date?
+
+    /// 「等你回话」「刚干完」那一下叫一声 —— `CCRooms` 接到叮声上。
+    ///
+    /// 放在这里检测，是因为这是**唯一一处同时看得到新旧两份状态**的地方；
+    /// 界面那层只看得到当前值，在那里判边沿要另存一份旧值，而且分页时两页各判一次。
+    @ObservationIgnored var onFaceEvent: ((CCFaceEvent) -> Void)?
 
     private static let maxSteps = 4
 
@@ -153,7 +161,15 @@ final class CCBotStatus {
             return
         }
         lastRaw = raw
+        let prev = snap
         snap = s
+        // 边沿判定在 `CCFaceEvent.detect`（纯函数，离线测过）。
+        // `prev == nil`（刚连上 / 断线清空后的第一份）不算事件 —— 规则写在那边。
+        if let ev = CCFaceEvent.detect(prevOn: prev?.on, prevWait: prev?.wait,
+                                       nextOn: s.on, nextWait: s.wait, nextSum: s.sum) {
+            if ev == .finished { finishedAt = Date() }
+            onFaceEvent?(ev)
+        }
     }
 
     private func ingestStep(_ data: Data) {

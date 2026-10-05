@@ -292,7 +292,12 @@ private struct CCRoomTile: View {
     /// 常驻的动画层，白烧电，而且静止的波形看着像坏了。
     @ViewBuilder
     private var face: some View {
-        if ring == .speaking, !slot.botAudioTracks.isEmpty {
+        if let skin = icons.faceSkin(for: slot.name) {
+            // 选了活脸：一直是脸，**说话时也不换成波形** —— 脸自己会换成说话的样子，
+            // 再叠一层波形就是同一件事说两遍。没有自己的底，直接落在方块原来的底板上。
+            CCSlotFace(slot: slot, presence: presence, skin: skin, side: side * 0.92)
+                .transition(.opacity)
+        } else if ring == .speaking, !slot.botAudioTracks.isEmpty {
             // 跟中间那块**同一个组件**的小尺寸版本。
             //
             // 原来用的是 SDK 的 `BarAudioVisualizer` —— 换掉的原因见

@@ -286,7 +286,7 @@ extension CCVoiceMeter {
 
 /// 金属柱状图。
 struct CCVoiceBars: View {
-    @Environment(\.colorScheme) private var scheme
+    // （深浅色那一条现在由 `CCMetalGlow` 自己读，这里不用再订阅。）
     /// 房间里**所有**会出声的 bot 音轨 —— 语音助手的 ＋ 本体旁路的。
     /// 只给一条的话，bot 查完东西播报结论时柱子不会动（那是另一条轨）。
     let tracks: [any AudioTrack]
@@ -309,23 +309,15 @@ struct CCVoiceBars: View {
 
     var body: some View {
         VStack(spacing: CC.Space.snug) {
-            metal
+            // 材质和三道阴影在 `CCMetalGlow.swift`（活脸共用同一份，参数原样搬过去的）。
+            CCMetal(tint: tint)
                 .mask { bars }
                 .frame(width: CGFloat(meter.barCount) * barWidth + CGFloat(meter.barCount - 1) * spacing,
                        height: maxHeight)
                 // 辉光跟着遮罩的 alpha 走，所以是从每根柱子的实际形状散出来的，
-                // 不是一个方块的外发光。
-                // 先落一道**暗向**的接触阴影，再叠辉光。
-                //
-                // 之前只有 tint 辉光：柱子本身是白色金属渐变，浅色模式下
-                // 压在亮背景（云图）上等于白压白，五根柱子直接消失 ——
-                // 而且因为它还在动，你甚至不会觉得是"坏了"，只会觉得"没东西"。
-                // 辉光救不了这个：辉光是加亮，亮背景上加亮＝更看不见。
-                // 需要的是一道往下沉的暗边，把柱子从背景里抠出来。
-                .shadow(color: .black.opacity(scheme == .dark ? 0.18 : 0.34),
-                        radius: 3, y: 1)
-                .shadow(color: tint.opacity(0.55), radius: 18 * glow)
-                .shadow(color: tint.opacity(0.28), radius: 40 * glow)
+                // 不是一个方块的外发光。先一道暗向接触阴影（浅色模式靠它），再叠辉光 ——
+                // 为什么要那道暗边，理由写在 `CCMetalGlow` 的文档里。
+                .ccMetalGlow(tint: tint, glow: glow)
 
             if showsDebug { debugLine }
         }
@@ -403,34 +395,6 @@ struct CCVoiceBars: View {
     private func height(_ index: Int) -> CGFloat {
         let level = CGFloat(meter.levels.indices.contains(index) ? meter.levels[index] : 0)
         return barWidth + (maxHeight - barWidth) * level
-    }
-
-    /// 金属 ＝ 纵向亮暗亮暗多段跳 ＋ 一道斜向高光。
-    /// 单向渐变（上亮下暗）只会得到塑料：金属像金属，是因为它把环境里的
-    /// 亮带和暗带一起反射进来。
-    private var metal: some View {
-        ZStack {
-            LinearGradient(
-                stops: [
-                    .init(color: .white.opacity(0.95), location: 0.00),
-                    .init(color: tint.opacity(0.80), location: 0.14),
-                    .init(color: tint, location: 0.34),
-                    .init(color: .white.opacity(0.88), location: 0.50),
-                    .init(color: tint, location: 0.64),
-                    .init(color: tint.opacity(0.55), location: 0.82),
-                    .init(color: .white.opacity(0.90), location: 1.00),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            LinearGradient(
-                colors: [.white.opacity(0.55), .clear, .white.opacity(0.25), .clear],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .blendMode(.plusLighter)
-        }
-        .ccAnimation(.easeInOut(duration: 0.5), value: tint)
     }
 
     /// 渲染开关或音轨变了都走这儿。**幂等** —— `attach` 自己会先 `detach`。

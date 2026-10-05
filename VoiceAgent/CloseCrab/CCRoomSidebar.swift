@@ -240,7 +240,10 @@ private struct CCRoomSidebarRow: View {
         ZStack {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(identity.opacity(isActive ? 0.32 : 0.16))
-            if let custom = icons.image(for: slot.name) {
+            if let skin = icons.faceSkin(for: slot.name) {
+                // 选了活脸就画小脸（22pt，只有眼睛和头饰），落在头像原来的底上。
+                CCSlotFace(slot: slot, presence: rooms.presence(for: slot), skin: skin, side: 22)
+            } else if let custom = icons.image(for: slot.name) {
                 custom
                     .resizable()
                     .scaledToFill()

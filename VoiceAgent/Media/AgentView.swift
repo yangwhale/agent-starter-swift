@@ -84,8 +84,16 @@ struct AgentView: View {
                 // 2026-09-18 Chris 让去掉 —— 同样的信息现在在顶部那排
                 // `CCRosterRow` 的助手牌子上（而且那儿还顺带告诉你
                 // 房间里还有谁），底下再写一遍是重复。
-                voiceBars
-                    .transition(.opacity)
+                //
+                // ⭐ 活脸：**只有这个房间选了活脸皮肤时**才换成「大脸 ＋ 脸下面一排小柱子」。
+                //    没选（还是 emoji / 照片）就是原来那排柱子，大小位置一点不变（Chris 2026-10-05）。
+                if let skin = CCRoomIcons.shared.faceSkin(for: slot.name) {
+                    faceStage(skin)
+                        .transition(.opacity)
+                } else {
+                    voiceBars
+                        .transition(.opacity)
+                }
             }
         }
         // ⚠️ 时长从 `CCLineReveal.duration` 取，**别在这儿另写一个数** ——
@@ -138,6 +146,32 @@ struct AgentView: View {
                     // 那不是「说完了」，是「走了」。
                     if avatarTrack == nil { lastSpokeAt = nil }
                 }
+        }
+    }
+
+    // MARK: - 活脸
+
+    /// 大脸 ＋ 底下缩小的柱子。脸没有自己的底，直接落在中间这个大框里（跟柱子一样）。
+    ///
+    /// 小柱子的身份色取**这一页**的房间（`slot.name`），跟上面那张脸一致；
+    /// 大柱子那条沿用原来的 `rooms.activeName`，没动。
+    private func faceStage(_ skin: CCFaceSkin) -> some View {
+        GeometryReader { g in
+            let side = max(80, min(g.size.width * 0.72, g.size.height * 0.62, 300))
+            VStack(spacing: 2 * .grid) {
+                CCSlotFace(slot: slot, presence: rooms.presence(for: slot), skin: skin, side: side)
+                CCVoiceBars(
+                    tracks: slot.botAudioTracks,
+                    isSpeaking: slot.isSpeaking,
+                    tint: CCIdentityColor.color(for: slot.name),
+                    showsDebug: config.netReadout,
+                    barWidth: 8,
+                    spacing: 6,
+                    maxHeight: 44,
+                    glow: 0.35
+                )
+            }
+            .frame(width: g.size.width, height: g.size.height)
         }
     }
 

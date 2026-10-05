@@ -37,11 +37,48 @@ final class CCRoomIcons {
     /// emoji 轻、可以整份塞 UserDefaults；图片重、只能落盘，而且要能缓存。
     private(set) var images: [String: Image] = [:]
 
+    /// 选了活脸的房间 → 皮肤。真身在 `CCStore`（按房间各存一份），这里是给界面订阅的镜像，
+    /// 跟 `map` 一样**整份替换**。
+    private(set) var faceSkins: [String: CCFaceSkin]
+
     private static let key = "cc.roomIcons"
 
     private init() {
         map = UserDefaults.standard.dictionary(forKey: Self.key) as? [String: String] ?? [:]
+        faceSkins = CCStore.allFaceSkins()
         loadImagesFromDisk()
+    }
+
+    // MARK: - 活脸
+
+    func faceSkin(for room: String) -> CCFaceSkin? { faceSkins[room] }
+
+    /// 选一套活脸（传 nil ＝ 关掉，回到 emoji / 照片 / 首字母）。
+    ///
+    /// ⚠️ **选活脸要把 emoji 和照片清掉**，反过来选 emoji / 传照片也会清掉活脸 ——
+    /// 跟「选 emoji 清图片」同一个理由：方块一次只画一样，留着另一样 = 用户以为换了、
+    /// 其实被盖住，关掉活脸时又突然冒出一个早忘了的 emoji。
+    /// 清理写在这一层而不是选择器里：入口不止一个（方块、侧栏），**不靠调用方自觉**。
+    func setFaceSkin(_ skin: CCFaceSkin?, for room: String) {
+        var next = faceSkins
+        if let skin {
+            next[room] = skin
+            set("", for: room)          // 空串＝清 emoji，不会反过来清活脸
+            setImage(nil, for: room)    // nil＝清图片，同上
+        } else {
+            next.removeValue(forKey: room)
+        }
+        faceSkins = next
+        CCStore.setFaceSkin(skin, room: room)
+    }
+
+    /// emoji / 照片换上来时清掉活脸。只在真的有活脸时才写 —— 无脑写会白发一轮变更通知。
+    private func dropFaceSkin(_ room: String) {
+        guard faceSkins[room] != nil else { return }
+        var next = faceSkins
+        next.removeValue(forKey: room)
+        faceSkins = next
+        CCStore.setFaceSkin(nil, room: room)
     }
 
     // MARK: - 自定义图片
@@ -95,6 +132,7 @@ final class CCRoomIcons {
                 try? png.write(to: url, options: .atomic)
                 next[room] = Image(uiImage: small)
                 rooms.insert(room)
+                dropFaceSkin(room)       // 换成照片了，活脸让位（见 setFaceSkin）
             #endif
         } else {
             try? FileManager.default.removeItem(at: url)
@@ -158,6 +196,7 @@ final class CCRoomIcons {
         var next = map
         let trimmed = icon.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { next.removeValue(forKey: room) } else { next[room] = trimmed }
+        if !trimmed.isEmpty { dropFaceSkin(room) }   // 换成 emoji 了，活脸让位
         map = next
         UserDefaults.standard.set(next, forKey: Self.key)
     }
@@ -237,6 +276,7 @@ struct CCIconPickerSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 uploadRow
+                faceRow
                 groupTabs
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
@@ -249,6 +289,7 @@ struct CCIconPickerSheet: View {
                     Button {
                         icons.set("", for: room)
                         icons.setImage(nil, for: room)
+                        icons.setFaceSkin(nil, for: room)
                         dismiss()
                     } label: {
                         Text(verbatim: "恢复默认（显示首字母 \(String(room.prefix(1)).uppercased())）")
@@ -375,6 +416,76 @@ struct CCIconPickerSheet: View {
         #else
             EmptyView()
         #endif
+    }
+
+    // MARK: - 活脸
+
+    /// 「活脸」一栏：跟 emoji、照片并列的第三种图标。**默认不选**（Chris 2026-10-05）。
+    ///
+    /// 只给房间方块 / 侧栏（`onPickImage == nil`）。成员牌子那条复用同一个选择器，
+    /// 但它的图片是要上服务端给数字人当素材的，活脸对它没有意义。
+    ///
+    /// 点一下＝选上并关掉选择器（跟点 emoji 一样）；点已选中的那个＝关掉活脸、留在这里 ——
+    /// 关掉之后多半要接着挑别的，不该把人弹出去。
+    @ViewBuilder
+    private var faceRow: some View {
+        if onPickImage == nil {
+            let current = icons.faceSkin(for: room)
+            let tint = CCIdentityColor.color(for: room)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(verbatim: "活脸")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(CCFaceSkin.allCases, id: \.self) { skin in
+                            faceButton(skin, selected: current == skin, tint: tint)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+            .padding(.top, 10)
+            Divider().padding(.top, 8)
+        }
+    }
+
+    private func faceButton(_ skin: CCFaceSkin, selected: Bool, tint: Color) -> some View {
+        Button {
+            if selected {
+                icons.setFaceSkin(nil, for: room)
+            } else {
+                icons.setFaceSkin(skin, for: room)
+                dismiss()
+            }
+        } label: {
+            VStack(spacing: 3) {
+                CCFacePreview(skin: skin, tint: tint, side: 40)
+                    .frame(width: 54, height: 54)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(selected ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.10))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2)
+                    )
+                Text(verbatim: skin.title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "活脸：\(skin.title)"))
+        .accessibilityAddTraits(faceTraits(selected))
+    }
+
+    /// 写开不写三目 —— 理由同 `CCRoomTile.tileTraits`（OptionSet 字面量推断，离线查不出来）。
+    private func faceTraits(_ selected: Bool) -> AccessibilityTraits {
+        var traits: AccessibilityTraits = .isButton
+        if selected { traits.formUnion(.isSelected) }
+        return traits
     }
 
     // MARK: - 分组
