@@ -53,7 +53,7 @@
     }
 
     /// 暂停 / 继续。
-    nonisolated struct CCLiveActivityToggleIntent: LiveActivityIntent {
+    struct CCLiveActivityToggleIntent: LiveActivityIntent {
         static let title: LocalizedStringResource = "暂停或继续"
         /// 只给卡片上的按钮用，不进快捷指令 / Spotlight —— 那里没有「哪个房间」的上下文。
         static var isDiscoverable: Bool { false }
@@ -75,7 +75,7 @@
     }
 
     /// 重播刚才那一段。
-    nonisolated struct CCLiveActivityReplayIntent: LiveActivityIntent {
+    struct CCLiveActivityReplayIntent: LiveActivityIntent {
         static let title: LocalizedStringResource = "重播"
         static var isDiscoverable: Bool { false }
 
