@@ -130,6 +130,11 @@
         /// 前台房间的卡片覆盖掉，而且是随机哪个先轮询到就听谁的。
         func publish(from remote: CCPlaybackRemote) {
             guard remote === target else { return }
+            // 耳机控制关着（混音模式）：本来就当不了卡片主人，别往系统里写一张死卡片。
+            guard CCAudioSessionPolicy.shared.headsetControl else {
+                clear()
+                return
+            }
 
             // 既没在播、也没有可重播的东西 ⇒ 让出卡片。
             //

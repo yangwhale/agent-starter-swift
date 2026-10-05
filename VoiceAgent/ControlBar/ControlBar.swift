@@ -31,6 +31,10 @@ struct ControlBar: View {
                 // 放在麦克风旁边：输入输出挨着，不用满屏找。
                 outputControls()
                 flexibleSpacer()
+                #if os(iOS)
+                    headsetControlButton()
+                    flexibleSpacer()
+                #endif
             }
             if videoEnabled {
                 videoControls()
@@ -146,6 +150,36 @@ struct ControlBar: View {
         CCAudioOutputButton(height: Constants.buttonHeight)
             .frame(width: Constants.buttonWidth)
     }
+
+    #if os(iOS)
+        /// 耳机控制模式开关。Chris 2026-10-05：「下边那排按钮再加一个，
+        /// 一个是退回去的样子，一个是现在的样子，按一下切换。」
+        ///
+        /// 亮着 ＝ 耳机控制（AirPods 按键、锁屏卡片可用，音频独占）；
+        /// 灭着 ＝ 混音（不独占，语音输入法不用先打断我们，耳机按键不管用）。
+        /// 做饭腾不出手时开着，手机在手边时关掉。
+        private func headsetControlButton() -> some View {
+            let on = CCAudioSessionPolicy.shared.headsetControl
+            return Button {
+                CCAudioSessionPolicy.shared.setHeadsetControl(!on)
+            } label: {
+                // 开：耳机；关：混音的小喇叭 —— 形状不同，不只靠高亮区分。
+                Image(systemName: on ? "airpods" : "speaker.wave.2.fill")
+                    .frame(width: Constants.buttonWidth, height: Constants.buttonHeight)
+                    .contentShape(Rectangle())
+                    .glassEffect(.identity.interactive(), in: .capsule)
+            }
+            .buttonStyle(
+                ControlBarButtonStyle(
+                    isToggled: on,
+                    foregroundColor: .fg1,
+                    backgroundColor: .bg2,
+                    borderColor: .separator1
+                )
+            )
+            .accessibilityLabel(Text(verbatim: on ? "耳机控制：开（音频独占）" : "耳机控制：关（混音）"))
+        }
+    #endif
 
     private func videoControls() -> some View {
         HStack(spacing: .zero) {

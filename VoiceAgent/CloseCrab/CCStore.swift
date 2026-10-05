@@ -34,6 +34,7 @@ nonisolated enum CCStore {
         static let mutedRooms = "cc.mutedRooms"
         static let netReadout = "cc.netReadout"
         static let releaseMicWhenIdle = "cc.audio.releaseMicWhenIdle"
+        static let headsetControl = "cc.audio.headsetControl"
         static let voiceProcessing = "cc.voiceProcessing"
         static let backdrop = "cc.backdrop"
         static let pushToTalkKey = "cc.pttKey"
@@ -188,6 +189,14 @@ nonisolated enum CCStore {
     static var releaseMicWhenIdle: Bool {
         get { UserDefaults.standard.object(forKey: Key.releaseMicWhenIdle) as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: Key.releaseMicWhenIdle) }
+    }
+
+    /// 耳机控制模式：开 ＝ 当锁屏播放卡片的主人（AirPods 按键可用，音频独占）；
+    /// 关 ＝ 退回接耳机控制之前的样子（混音、不独占，语音输入法不用先打断我们）。
+    /// 控制栏那颗耳机按钮切它。**默认开**，保持 2026-09-24 以来的行为。
+    static var headsetControl: Bool {
+        get { UserDefaults.standard.object(forKey: Key.headsetControl) as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: Key.headsetControl) }
     }
 
     /// 显不显示网络读数（缓冲深度 / 丢包率）。

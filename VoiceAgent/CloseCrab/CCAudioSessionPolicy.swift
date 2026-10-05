@@ -197,6 +197,28 @@ final class CCAudioSessionPolicy {
     /// 但它的代价是**它也不区分「坏了」和「本来就该是这样」**。
     private var isReleased = false
 
+    /// 耳机控制模式开着没有（`CCStore.headsetControl` 的运行时镜像）。界面读这个。
+    private(set) var headsetControl = CCStore.headsetControl
+
+    /// 切耳机控制模式。**立刻生效**：正在放音的话当场按新配置重设一次类别。
+    ///
+    /// - 开：「只放音」用 `nowPlayable`（不混音）—— 才有资格当锁屏卡片、收耳机按键。
+    /// - 关：「只放音」用 SDK 原来那份 `.playback`（带 `.mixWithOthers`）——
+    ///   就是 2026-09-24 接耳机控制之前的样子：不独占，语音输入法、别的 app
+    ///   要音频时不用先把我们打断。代价：耳机按键、锁屏卡片没了。
+    ///
+    /// 录音时用的配置两种模式一样，不受影响。
+    func setHeadsetControl(_ on: Bool) {
+        headsetControl = on
+        CCStore.headsetControl = on
+        observer.setHeadsetControl(on)
+        #if os(iOS)
+            // 关的时候锁屏卡片当场撤掉；开的时候不用管 —— 在播时每秒一次的进度轮询会把它画回来。
+            if !on { CCNowPlaying.shared.clear() }
+        #endif
+        log("耳机控制 → \(on ? "开（独占）" : "关（混音）")")
+    }
+
     private init() {}
 
     /// 单一来源是 `CCStore.releaseMicWhenIdle`。**不要在这里再读一遍
@@ -299,6 +321,7 @@ final class CCAudioSessionPolicy {
             print("[CCAudioSessionPolicy] 静音模式：\(muteMode)")
         }
 
+        observer.setHeadsetControl(CCStore.headsetControl)
         observer.onApply = { [weak self] text, capturing, released, config in
             Task { @MainActor in
                 self?.log("引擎 → \(text)")
@@ -495,9 +518,28 @@ final class CCAudioSessionPolicy {
         // MARK: -
 
         private var lastKey: String?
+        /// 引擎最近一次报上来的放音 / 录音状态。切耳机模式时要按它原样重算一遍。
+        private var last: (playout: Bool, recording: Bool)?
+        /// 耳机控制模式。从主线程写、从音频线程读 —— 跟 `apply` 共用一把锁。
+        private var headsetControl = true
+        private let lock = NSLock()
+
+        /// 切模式：记下新值，并且**如果正在放音就立刻重设类别**（清掉去重键再算一遍）。
+        func setHeadsetControl(_ on: Bool) {
+            lock.lock()
+            headsetControl = on
+            lastKey = nil
+            let state = last
+            lock.unlock()
+            if let state { apply(isPlayoutEnabled: state.playout, isRecordingEnabled: state.recording) }
+        }
 
         private func apply(isPlayoutEnabled: Bool, isRecordingEnabled: Bool) {
-            let key = "\(isPlayoutEnabled)-\(isRecordingEnabled)"
+            lock.lock()
+            defer { lock.unlock() }
+            last = (isPlayoutEnabled, isRecordingEnabled)
+            // 去重键带上模式：同一个放音状态、模式变了，也要重设。
+            let key = "\(isPlayoutEnabled)-\(isRecordingEnabled)-\(headsetControl)"
             guard key != lastKey else { return }   // 同一个状态别反复 setCategory
             lastKey = key
 
@@ -520,7 +562,7 @@ final class CCAudioSessionPolicy {
             let config: AudioSessionConfiguration = isRecordingEnabled
                 ? (AudioManager.shared.audioSession.isSpeakerOutputPreferred
                     ? .playAndRecordSpeaker : .playAndRecordReceiver)
-                : CCAudioSessionPolicy.nowPlayable
+                : (headsetControl ? CCAudioSessionPolicy.nowPlayable : .playback)
 
             do {
                 try session.setCategory(config.category,
