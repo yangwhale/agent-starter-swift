@@ -102,6 +102,18 @@ final class CCRoomSlot: Identifiable {
                 }
             }
             .store(in: &bag)
+
+        // 网络质量打分变了只会通知参与者和房间（`Participant.swift` 里
+        // `objectWillChange` 同时发给两者），不一定经过 `session` —— 所以房间也订一份。
+        // 走同一个 80 ms 合并窗口，不会多算。
+        session.room.objectWillChange
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.scheduleRefresh()
+                }
+            }
+            .store(in: &bag)
     }
 
     /// 这个房间里**会出声的那些远端参与者**。
@@ -177,6 +189,11 @@ final class CCRoomSlot: Identifiable {
     /// 语音助手那一路连上没有。**跟 `isConnected` 不是一回事** ——
     /// 房间连着不代表助手 worker 已经进来了，控制栏那几个按钮看的是后者。
     private(set) var agentConnected: Bool = false
+    /// 在线小圆点用的三个原始信号（规则在 `CCPresenceDot`）。
+    private(set) var presencePhase: CCPresencePhase = .disconnected
+    private(set) var presenceQuality: CCPresenceQuality = .unknown
+    /// bot 在不在房间里：语音助手或 `<房间名>-speaker` 任一在场就算。
+    private(set) var botPresent: Bool = false
     /// 连接错误 / 助手错误 —— 错误条要显示它们，所以也得镜像。
     private(set) var connectionError: Error?
     private(set) var agentError: Error?
@@ -250,6 +267,24 @@ final class CCRoomSlot: Identifiable {
 
         let sp = session.ccIsSpeaking
         if sp != isSpeaking { isSpeaking = sp }
+
+        let ph: CCPresencePhase = switch session.room.connectionState {
+        case .connecting: .connecting
+        case .reconnecting: .reconnecting
+        case .connected: .connected
+        case .disconnected, .disconnecting: .disconnected
+        }
+        if ph != presencePhase { presencePhase = ph }
+        let q: CCPresenceQuality = switch session.room.localParticipant.connectionQuality {
+        case .unknown: .unknown
+        case .lost: .lost
+        case .poor: .poor
+        case .good: .good
+        case .excellent: .excellent
+        }
+        if q != presenceQuality { presenceQuality = q }
+        let bp = !botParticipants.isEmpty
+        if bp != botPresent { botPresent = bp }
 
         let ac = session.agent.isConnected
         if ac != agentConnected { agentConnected = ac }
@@ -646,6 +681,16 @@ final class CCRooms {
             if let self, self.reconnectTasks[name]?.id == id { self.reconnectTasks[name] = nil }
         }
         reconnectTasks[name] = (id, task)
+    }
+
+    /// 这个房间头像上那颗小圆点该是什么颜色。
+    func presence(for slot: CCRoomSlot) -> CCPresenceDot {
+        CCPresenceDot.derive(
+            wantConnected: wantConnected,
+            phase: slot.presencePhase,
+            botPresent: slot.botPresent,
+            quality: slot.presenceQuality
+        )
     }
 
     private func cancelReconnect(_ name: String) {

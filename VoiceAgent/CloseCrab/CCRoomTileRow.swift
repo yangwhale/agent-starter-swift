@@ -42,6 +42,7 @@ struct CCRoomTileRow: View {
                             slot: slot,
                             isActive: slot.name == rooms.activeName,
                             isConnecting: rooms.connecting.contains(slot.name),
+                            presence: rooms.presence(for: slot),
                             onTap: { rooms.activate(slot.name) },
                             onDoubleTap: { rooms.toggleMute(slot.name) },
                             onLongPress: { iconEditing = CCRoomRef(id: slot.name) }
@@ -131,6 +132,8 @@ private struct CCRoomTile: View {
 
     let isActive: Bool
     let isConnecting: Bool
+    /// 右下角那颗在线状态点（Google Chat 那种）。
+    let presence: CCPresenceDot
     let onTap: () -> Void
     let onDoubleTap: () -> Void
     let onLongPress: () -> Void
@@ -220,6 +223,11 @@ private struct CCRoomTile: View {
                         #endif
                 }
 
+                // 右下角：在线状态点。左上是静音、右上是话筒，右下一直空着 ——
+                // 正好是 Google Chat 放这颗点的位置，用户不用学。
+                CCPresenceDotView(dot: presence, size: badgeSize + 5)
+                    .offset(x: badgeInset, y: badgeInset)
+
                 if isActive {
                     Image(systemName: "mic.fill")
                         .font(.system(size: badgeSize, weight: .bold))
@@ -249,7 +257,8 @@ private struct CCRoomTile: View {
                 .fill(isActive ? identity : .clear)
                 .frame(width: 18, height: 3)
         }
-        .opacity(ring == .pending ? 0.45 : 1)
+        // 断线重试中（红点）不压暗：那正是要用户注意到的时候。
+        .opacity(ring == .pending && presence != .retrying ? 0.45 : 1)
         .scaleEffect(ring == .speaking ? 1.05 : 1)
         .ccAnimation(CC.Motion.snap, value: ring)
         .contentShape(Rectangle())
@@ -263,7 +272,7 @@ private struct CCRoomTile: View {
         // `children: .ignore` 把里面全部忽略掉，只留我们自己写的那句话 ——
         // 也顺带让下面 `accessibilityLabel` 真的落在一个元素上。
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: "\(slot.name)，\(ringDescription)"))
+        .accessibilityLabel(Text(verbatim: "\(slot.name)，\(presence.spoken)，\(ringDescription)"))
         .accessibilityAddTraits(tileTraits)
         // ⚠️ **双击和长按对 VoiceOver 用户等于不存在** —— 那两个手势被
         // VoiceOver 自己接管了，传不到我们的 `gestures` 上。

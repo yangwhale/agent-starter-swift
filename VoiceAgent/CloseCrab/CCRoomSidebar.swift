@@ -231,7 +231,7 @@ private struct CCRoomSidebarRow: View {
         //    就摸不到它了，静音对读屏用户直接消失。
         //    `.contain` 保留子元素可达，同时行本身仍有一个概括标签。
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(verbatim: "\(slot.name)，\(statusLine)"))
+        .accessibilityLabel(Text(verbatim: "\(slot.name)，\(rooms.presence(for: slot).spoken)，\(statusLine)"))
     }
 
     /// 左边那个小头像。**尺寸固定 22pt** —— 侧栏一行的高度由它定，
@@ -265,6 +265,11 @@ private struct CCRoomSidebarRow: View {
             }
         }
         .frame(width: 22, height: 22)
+        // 在线状态点，跟方块那边同一套（`CCPresenceDot`）。
+        .overlay(alignment: .bottomTrailing) {
+            CCPresenceDotView(dot: rooms.presence(for: slot), size: 9)
+                .offset(x: 3, y: 3)
+        }
     }
 
     /// 行尾：计时/转圈 ＋ **静音按钮**。

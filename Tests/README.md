@@ -15,6 +15,7 @@
 | `CCAvatarState.swift` | `CCAvatarStateTests.swift` | 75 | 四个状态的解析（大小写/空白/未知值）、`unknown` 与 `off` 不能合并、「报错」和「显示画面」都必须同时看用户自己的开关、rawValue 与服务端逐字对齐 |
 | `CCAvatarRoles.swift` | `CCAvatarRolesTests.swift` | 48 | 双击的互斥语义（含「抢过来再双击是全关不是弹回」）、**关掉的角色必须显式写 `false`**、老键只镜像 principal、存盘规范形与解析容错、角色 rawValue 与服务端 `policy.py` 逐字对齐 |
 | `CCReconnectPolicy.swift` | `CCReconnectPolicyTests.swift` | 18 | 断线重连：退避单调、封顶、**不设次数上限**、2×2×2 真值表（用户挂断不连、SDK 自己重连时 app 不插手、已在连时不重复发起）|
+| `CCPresence.swift` | `CCPresenceTests.swift` | 52 | 在线小圆点五态：挂断灰不是红、断线想连是红、刚连上质量未知是绿、SDK 重连是黄；非 connected 时不看 bot/质量；读屏文字齐全且互异 |
 
 > `CCVisibilityPolicy` 那条不对称最值得留意：**两个方向的代价完全不一样。**
 > 误判成「看不见」会让正在看的人画面断掉并重起（首帧 1.26 秒 + 重抢槽位），
