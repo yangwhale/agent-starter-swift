@@ -59,19 +59,29 @@ struct VoiceInteractionView: View {
     ///
     /// ⛔ **不要用 `.fixedSize` 去实现「空了就不占地」。** 那是「放弃跟父视图
     /// 协商」，视频轨道的理想宽度可能是原始分辨率，会把整行撑爆。
+    ///
+    /// ## ⚠️ 上面那条「空栏不占地方」其实不成立（2026-10-05 Chris 截图：Mac 上脸偏左）
+    ///
+    /// 右栏里有个 `Spacer()`，而 **Spacer 在 VStack 里横向也是可伸缩的** —— 它的
+    /// 理想宽度不是 0。于是 HStack 照样把 200pt 分给这个「空栏」，再加 16pt 间距，
+    /// 中间的波形 / 活脸整体向左偏了约 108pt（＝ (200 + 16) / 2，截图量出来正好对上）。
+    /// 柱子小、居中误差不显眼，活脸一放大就看出来了。
+    ///
+    /// ⇒ 改成**叠层**：`AgentView` 拿满整宽、真正居中；摄像头 / 屏幕共享的小窗
+    ///   叠在右下角（跟视频会议的画中画一样）。空的时候那两个视图什么都不画，
+    ///   **根本不参与布局**，不存在「空栏占地」这回事。
     private func regular() -> some View {
-        HStack(spacing: CC.Space.regular) {
-            AgentView()
-                .frame(maxWidth: .infinity)
-            VStack(spacing: CC.Space.snug) {
-                Spacer()
-                ScreenShareView()
-                LocalParticipantView()
+        AgentView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottomTrailing) {
+                VStack(spacing: CC.Space.snug) {
+                    ScreenShareView()
+                    LocalParticipantView()
+                }
+                .frame(maxWidth: 50 * .grid)
             }
-            .frame(maxWidth: 50 * .grid)
-        }
-        .safeAreaPadding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaPadding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func compact() -> some View {
