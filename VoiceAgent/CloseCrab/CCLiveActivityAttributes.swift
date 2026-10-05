@@ -44,6 +44,8 @@
         case toggle
         /// 重播当前这一段。
         case replay
+        /// 把卡片（连同 app 的当前房间）切到 `room` —— 锁屏上点其他房间的名字。
+        case activate
     }
 
     /// 按钮在 app 进程里落到哪。**只有 app 会给它赋值**（`CCLiveActivity.attach`）。
@@ -93,6 +95,31 @@
         @MainActor
         func perform() async throws -> some IntentResult {
             await CCLiveActivityBridge.handler?(.replay, room)
+            return .result()
+        }
+    }
+
+    /// 切房间：锁屏卡片上点其他房间的名字。`room` 是**要切过去的**那个房间。
+    ///
+    /// 卡片跟着 app 的当前房间走，所以切的就是 app 的当前房间（`CCRooms.activate`）——
+    /// 不另搞一个「卡片自己显示哪个」的状态，免得卡片和 app 各指一个房间。
+    /// `activate` 只关麦不开麦，锁屏时点它不会把话筒打开。
+    struct CCLiveActivitySwitchIntent: LiveActivityIntent {
+        static let title: LocalizedStringResource = "切换房间"
+        static var isDiscoverable: Bool { false }
+
+        @Parameter(title: "房间")
+        var room: String
+
+        init() {}
+
+        init(room: String) {
+            self.room = room
+        }
+
+        @MainActor
+        func perform() async throws -> some IntentResult {
+            await CCLiveActivityBridge.handler?(.activate, room)
             return .result()
         }
     }

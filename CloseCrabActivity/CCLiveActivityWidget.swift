@@ -345,36 +345,54 @@ struct CCActivityProgress: View {
     }
 }
 
-/// 其他房间只画小圆点（地方不够放名字时：灵动岛展开态、名字行挤不下时）。
+// 其他房间：**点一下就切过去**（Chris 2026-10-06）。不另加按钮 —— 卡片高度预算已经用满，
+// 名字行右边本来就画着它们，让它们可点就行。每个做成一颗淡底小胶囊，看得出是能按的。
+
+/// 其他房间只画小圆点（名字行挤不下名字时）。点同样能切。
 struct CCActivityPeerDots: View {
     let peers: [CCLiveActivityState.Peer]
 
     var body: some View {
         HStack(spacing: 4) {
             ForEach(peers, id: \.name) { p in
-                CCActivityDot(dot: CCPresenceDot(rawValue: p.dot) ?? .off, size: 6)
+                Button(intent: CCLiveActivitySwitchIntent(room: p.name)) {
+                    CCActivityDot(dot: CCPresenceDot(rawValue: p.dot) ?? .off, size: 6)
+                        .padding(6)
+                        .background(Capsule().fill(.white.opacity(0.14)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: "切到 \(p.name)"))
             }
         }
     }
 }
 
-/// 其他房间的名字 ＋ 小圆点。
+/// 其他房间的名字 ＋ 小圆点，点一下切过去。
 struct CCActivityPeers: View {
     let peers: [CCLiveActivityState.Peer]
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             ForEach(peers, id: \.name) { p in
-                HStack(spacing: 3) {
-                    Text(p.name)
-                        .font(.caption2)
-                        .lineLimit(1)
-                        .fixedSize()
-                    CCActivityDot(dot: CCPresenceDot(rawValue: p.dot) ?? .off, size: 6)
+                Button(intent: CCLiveActivitySwitchIntent(room: p.name)) {
+                    HStack(spacing: 3) {
+                        Text(p.name)
+                            .font(.caption)
+                            .lineLimit(1)
+                            .fixedSize()
+                        CCActivityDot(dot: CCPresenceDot(rawValue: p.dot) ?? .off, size: 6)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(.white.opacity(0.14)))
+                    .contentShape(Capsule())
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: "切到 \(p.name)"))
             }
         }
-        .foregroundStyle(.white.opacity(0.8))
+        .foregroundStyle(.white.opacity(0.9))
     }
 }
 

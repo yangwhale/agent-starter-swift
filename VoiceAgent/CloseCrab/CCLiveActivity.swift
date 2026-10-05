@@ -466,6 +466,10 @@
             case .replay:
                 await slot.playback.replay()
                 print("[CCLiveActivity] 按钮 replay \(room) → \(slot.playback.lastError ?? "ok")")
+            case .activate:
+                // 卡片的重算靠观察 activeName（readInputs 读了 rooms.active），不用手动 sync。
+                rooms?.activate(slot.name)
+                print("[CCLiveActivity] 按钮 切到 \(room)")
             }
         }
 
