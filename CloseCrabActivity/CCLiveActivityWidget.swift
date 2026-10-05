@@ -38,7 +38,7 @@ struct CCLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     VStack(alignment: .trailing, spacing: 4) {
-                        if !stale { CCActivityTimer(state: shown, font: .title3) }
+                        if !stale && shown.faceMood == .working { CCActivityTimer(state: shown, font: .title3) }
                         CCActivityDot(dot: shown.dot, size: 8)
                     }
                     .padding(.trailing, 4)
@@ -67,7 +67,7 @@ struct CCLiveActivityWidget: Widget {
             } compactTrailing: {
                 HStack(spacing: 4) {
                     CCActivityDot(dot: shown.dot, size: 6)
-                    if !stale {
+                    if !stale && shown.faceMood == .working {
                         CCActivityTimer(state: shown, font: .caption2)
                             .frame(maxWidth: 44)
                     }
@@ -102,7 +102,7 @@ struct CCActivityLockScreen: View {
                             .lineLimit(1)
                         CCActivityDot(dot: shown.dot, size: 8)
                         Spacer(minLength: 4)
-                        if !stale { CCActivityTimer(state: shown, font: .headline) }
+                        if !stale && shown.faceMood == .working { CCActivityTimer(state: shown, font: .headline) }
                     }
                     Text(shown.statusLine)
                         .font(.subheadline)
@@ -160,15 +160,25 @@ struct CCActivityDot: View {
 }
 
 /// 系统计时文本：从 `timerStart` 往上数，自己走。上限给 12 小时（单卡最长 8 小时，用不到）。
+///
+/// **只在 bot「在查东西」时显示**，前面带「已查」两个字。
+/// Chris 2026-10-05：「没看出来那个计时记的是什么时间，没啥用。」—— 原来空闲时也在走
+/// （数的是「进入当前心情多久了」），一个不说明自己在数什么的数字就是噪音。
+/// 忙的时候「这个活已经干了多久」才有用，那时也只有它有意义。
 struct CCActivityTimer: View {
     let state: CCLiveActivityState
     let font: Font
 
     var body: some View {
-        Text(timerInterval: state.timerStart...state.timerStart.addingTimeInterval(12 * 3600),
-             countsDown: false)
-            .font(font.monospacedDigit())
-            .multilineTextAlignment(.trailing)
+        HStack(spacing: 3) {
+            Text(verbatim: "已查")
+                .font(font)
+                .foregroundStyle(.white.opacity(0.7))
+            Text(timerInterval: state.timerStart...state.timerStart.addingTimeInterval(12 * 3600),
+                 countsDown: false)
+                .font(font.monospacedDigit())
+                .multilineTextAlignment(.trailing)
+        }
     }
 }
 
