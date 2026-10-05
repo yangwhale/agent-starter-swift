@@ -74,6 +74,33 @@ nonisolated struct CCLiveActivityState: Codable, Hashable, Sendable {
     /// 不在播（暂停 / 播完还能重播）时停在第几秒。在播时为 nil。
     var playedAtPause: Double?
 
+    // MARK: 等你回话 → 快捷回复（2026-10-05 加）
+    //
+    // ⚠️ 同上，**两个都必须是可选的**：旧 app 推的卡没有这两个键，新扩展解码时缺了就是 nil。
+
+    /// bot 在等你回的那句话（去空白、截到 80 字符）。只在「等你回话」时有。
+    var waitText: String?
+    /// 卡片上把「暂停 / 重播」那一行换成两颗快捷回复按钮。nil ＝ 不换（旧卡也是 nil）。
+    var showsQuickReply: Bool?
+
+    /// 一颗快捷回复按钮：发给 bot 的完整原句 ＋ 按钮放不下时的简写。
+    nonisolated struct QuickReply: Hashable, Sendable {
+        /// **发给 bot 的就是这句，「已回复：…」里显示的也是这句**（Chris 2026-10-05 定的原文）。
+        var text: String
+        /// 按钮宽度放不下整句时才用（扩展里 `ViewThatFits` 先试整句）。只是显示，不发出去。
+        var short: String
+    }
+
+    /// 两颗快捷回复按钮（Chris 2026-10-05 定的两句）。点下去走 app 的文字通道
+    /// （`session.send(text:)`，LiveKit `lk.chat`），由 bot 本体接收。
+    /// 放在这里而不是 Policy：扩展要画按钮，而扩展**不编** `CCLiveActivityPolicy.swift`。
+    static let quickReplies = [
+        QuickReply(text: "没问题，请继续", short: "请继续"),
+        QuickReply(text: "按照你的想法来", short: "按你的来"),
+    ]
+
+    var quickReplyShown: Bool { showsQuickReply == true }
+
     // MARK: - 扩展那边用的访问器（认不出的值退回安全默认，理由见类型注释）
 
     var faceMood: CCFaceMood { CCFaceMood(rawValue: mood) ?? .idle }
@@ -96,6 +123,9 @@ nonisolated struct CCLiveActivityState: Codable, Hashable, Sendable {
         // app 不在了，进度条按最后那份接着走就是在编（跟计时不走同一个理由）。
         s.playStart = nil
         s.playedAtPause = nil
+        // app 不在了，按了快捷回复也没人接。
+        s.showsQuickReply = nil
+        s.waitText = nil
         return s
     }
 

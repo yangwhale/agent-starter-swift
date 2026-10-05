@@ -50,6 +50,8 @@
     @MainActor
     enum CCLiveActivityBridge {
         static var handler: (@MainActor (CCLiveActivityAction, String) async -> Void)?
+        /// 快捷回复（房间, 那句话）。跟 `handler` 分开：它带一段文字，塞不进上面那个 rawValue 枚举。
+        static var replyHandler: (@MainActor (String, String) async -> Void)?
     }
 
     /// 暂停 / 继续。
@@ -91,6 +93,38 @@
         @MainActor
         func perform() async throws -> some IntentResult {
             await CCLiveActivityBridge.handler?(.replay, room)
+            return .result()
+        }
+    }
+
+    /// 快捷回复：「没问题，请继续」「按照你的想法来」（`CCLiveActivityState.quickReplies`）。
+    /// bot 在等你回话时代替暂停 / 重播出现在卡片上。
+    ///
+    /// 点下去在 **app 进程**里执行（理由见文件头），**走 app 本来的文字通道**：
+    /// 跟聊天框同一个 `session.send(text:)`（LiveKit 文本流 `lk.chat`）。2026-10-05 起
+    /// `lk.chat` 由 bot 本体（房间里的 `<房间名>-speaker`）接收、注入 bot 自己的对话；
+    /// 语音助手不再接。所以这里不另起任何 RPC —— 实时活动只是复用「给 bot 发文字」这个能力。
+    /// `text` 是完整原句（不是按钮上的简写）。
+    struct CCLiveActivityQuickReplyIntent: LiveActivityIntent {
+        static let title: LocalizedStringResource = "快捷回复"
+        static var isDiscoverable: Bool { false }
+
+        @Parameter(title: "房间")
+        var room: String
+
+        @Parameter(title: "回复")
+        var text: String
+
+        init() {}
+
+        init(room: String, text: String) {
+            self.room = room
+            self.text = text
+        }
+
+        @MainActor
+        func perform() async throws -> some IntentResult {
+            await CCLiveActivityBridge.replyHandler?(room, text)
             return .result()
         }
     }

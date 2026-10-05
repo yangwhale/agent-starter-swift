@@ -498,6 +498,129 @@ for k in 0..<20 { ssteps.append((Double(k), true, false, 5, nil, "s")) }
 let r3 = simPlay(steps: ssteps)
 check("卡住 20 秒：纠偏有、但不超过 20 ÷ 3 ＋ 1 次", r3.pushes >= 2 && r3.pushes <= 7, "推了 \(r3.pushes) 次")
 
+// MARK: - 等你回话：锁屏提醒（2026-10-05）
+//
+// 要钉的需求：
+//   ⑩ 只在「非等你 → 等你」的跃迁提醒一次；一直挂着不重复提醒；
+//   ⑪ 断线 / 睡着 → 等你、第一次看到这个房间，不算跃迁（重连看到的是早就挂着的那句）；
+//   ⑫ 同一句 60 秒内不重复提醒（换句话、换房间、过了 60 秒照常）；
+//   ⑬ app 在前台看着这个房间时不提醒。
+
+func alert(prev: CCFaceMood? = .working, mood: CCFaceMood = .waiting, room: String = "bunny",
+           wait: String = "要我继续跑 Q11 吗？", last: P.AlertMark? = nil, viewing: Bool = false,
+           now: Date = t0) -> Bool {
+    P.shouldAlert(previousMood: prev, mood: mood, room: room, wait: wait, lastAlert: last,
+                  appViewingRoom: viewing, now: now)
+}
+check("⭐ 在查东西 → 等你 ⇒ 提醒", alert())
+for m in [CCFaceMood.idle, .speaking, .listening, .done, .working] {
+    check("\(m.rawValue) → 等你 ⇒ 提醒", alert(prev: m))
+}
+check("⭐ 等你 → 等你（一直挂着）⇒ 不提醒", !alert(prev: .waiting))
+check("⭐ 睡着 → 等你 ⇒ 不提醒（断线回来）", !alert(prev: .asleep))
+check("⭐ 找网络 → 等你 ⇒ 不提醒（重连回来）", !alert(prev: .searching))
+check("⭐ 第一次看到这个房间 ⇒ 不提醒", !alert(prev: nil))
+for m in [CCFaceMood.idle, .speaking, .working, .done, .asleep] {
+    check("跃迁到 \(m.rawValue) ⇒ 不提醒", !alert(mood: m))
+}
+check("⭐ app 在前台看着 ⇒ 不提醒", !alert(viewing: true))
+check("wait 是空白 ⇒ 不提醒", !alert(wait: "  \n "))
+let lastA = P.AlertMark(room: "bunny", text: "要我继续跑 Q11 吗？", at: t0)
+check("⭐ 同一句 59 秒后 ⇒ 不提醒", !alert(last: lastA, now: at(59)))
+check("⭐ 同一句正好 60 秒 ⇒ 提醒（窗口左闭右开）", alert(last: lastA, now: at(60)))
+check("同一句 0 秒（同一刻又来一遍）⇒ 不提醒", !alert(last: lastA, now: t0))
+check("同一句、只是两头空白不同 ⇒ 算同一句", !alert(wait: "  要我继续跑 Q11 吗？\n", last: lastA, now: at(5)))
+check("换一句 ⇒ 照常提醒", alert(wait: "删掉旧 checkpoint 吗？", last: lastA, now: at(5)))
+check("换个房间同一句 ⇒ 照常提醒", alert(room: "jarvis", last: lastA, now: at(5)))
+check("时钟往回拨 ⇒ 不算刚提醒过", alert(last: lastA, now: at(-30)))
+check("窗口是 60 秒", P.alertRepeatWindow == 60)
+
+// 端到端：一串心情序列里一共提醒几次（模拟 CCLiveActivity.apply 里那段：上一刻的脸 ＋ lastAlert）
+func simAlerts(_ seq: [(t: Double, mood: CCFaceMood, wait: String, viewing: Bool)]) -> Int {
+    var prev: CCFaceMood?
+    var last: P.AlertMark?
+    var n = 0
+    for e in seq {
+        if P.shouldAlert(previousMood: prev, mood: e.mood, room: "bunny", wait: e.wait, lastAlert: last,
+                         appViewingRoom: e.viewing, now: at(e.t)) {
+            n += 1
+            last = .init(room: "bunny", text: e.wait.trimmingCharacters(in: .whitespacesAndNewlines), at: at(e.t))
+        }
+        prev = e.mood
+    }
+    return n
+}
+let q = "要我继续吗？"
+check("⭐ 等你挂 5 分钟（每 0.5 秒一份状态）⇒ 只提醒 1 次",
+      simAlerts([(0, .working, "", false)] + (1...600).map { (Double($0) * 0.5, .waiting, q, false) }) == 1)
+check("⭐ 按住说话又松开（等你 → 在听 → 等你）20 秒内 ⇒ 只 1 次",
+      simAlerts([(0, .working, "", false), (1, .waiting, q, false), (5, .listening, q, false), (20, .waiting, q, false)]) == 1)
+check("…同样的来回过了 60 秒 ⇒ 第 2 次",
+      simAlerts([(0, .working, "", false), (1, .waiting, q, false), (30, .listening, q, false), (61, .waiting, q, false)]) == 2)
+check("⭐ 断线重连（等你 → 找网络 → 等你）⇒ 只 1 次（哪怕隔了 5 分钟）",
+      simAlerts([(0, .working, "", false), (1, .waiting, q, false), (2, .searching, q, false), (300, .waiting, q, false)]) == 1)
+check("前台看着时开始等、之后切后台 ⇒ 0 次（没有新的跃迁）",
+      simAlerts([(0, .working, "", true), (1, .waiting, q, true), (10, .waiting, q, false)]) == 0)
+check("两个不同的问题先后来 ⇒ 2 次",
+      simAlerts([(0, .working, "", false), (1, .waiting, q, false), (5, .working, "", false), (8, .waiting, "另一个问题？", false)]) == 2)
+
+check("提醒正文去空白", P.alertBody(wait: "  要我继续吗？\n") == "要我继续吗？")
+let longWait = String(repeating: "长", count: 200)
+check("提醒正文按字符截到 60（含省略号）", P.alertBody(wait: longWait).count == P.alertBodyMax
+      && P.alertBody(wait: longWait).hasSuffix("…"))
+
+// MARK: - 快捷回复（2026-10-05）
+//
+//   ⑭ 只在等你回话时出现，其余状态仍是暂停 / 重播；
+//   ⑮ 回复发出后状态行显示「已回复：<完整原句>」恰好 3 秒（左闭右开），那 3 秒里按钮先收起；
+//   ⑯ 新字段可选：旧 app 推的卡新扩展照样解码、不出快捷回复；不在等你时 JSON 里没有这两个键。
+
+func qs(mood: CCFaceMood = .waiting, wait: String = "要我继续跑 Q11 吗？", replied: String? = nil) -> S {
+    P.makeState(room: "bunny", mood: mood, skin: .bunny, presence: .online, snapHeadline: wait,
+                runningSubtasks: 0, timerStart: t0, isActive: true, isPaused: false, canReplay: true,
+                peers: [], wait: wait, repliedLine: replied)
+}
+check("⭐ 等你回话 ⇒ 出快捷回复", qs().quickReplyShown && qs().showsQuickReply == true)
+for m in [CCFaceMood.idle, .speaking, .working, .done, .listening, .asleep, .searching] {
+    check("⭐ \(m.rawValue) ⇒ 不出快捷回复（仍是暂停 / 重播）", !qs(mood: m).quickReplyShown && qs(mood: m).showsQuickReply == nil)
+}
+check("等你时带上 wait 原文（去空白）", qs(wait: " 要我继续吗？ ").waitText == "要我继续吗？")
+check("不在等你 ⇒ 不带 wait", qs(mood: .working).waitText == nil)
+check("wait 截到 80 字符", qs(wait: longWait).waitText?.count == P.headlineMax)
+check("等你但 wait 是空白 ⇒ waitText 为 nil（按钮照出）", qs(wait: "  ").waitText == nil && qs(wait: "  ").quickReplyShown)
+check("⭐ 发给 bot 的是 Chris 定的两句完整原句", S.quickReplies.map(\.text) == ["没问题，请继续", "按照你的想法来"])
+check("按钮放不下时的简写", S.quickReplies.map(\.short) == ["请继续", "按你的来"])
+check("简写真的更短（否则 ViewThatFits 那一步没意义）", S.quickReplies.allSatisfy { $0.short.count < $0.text.count })
+check("两句都在服务端 1–2000 字范围内", S.quickReplies.allSatisfy { !$0.text.isEmpty && $0.text.count <= 2000 })
+check("两句互不相同（不然两颗按钮一样）", Set(S.quickReplies.map(\.text)).count == 2)
+
+check("⭐ 回复后 0 秒 ⇒ 已回复", P.repliedLine(text: "没问题，请继续", at: t0, now: t0) == "已回复：没问题，请继续")
+check("回复后 2.999 秒 ⇒ 仍显示", P.repliedLine(text: "没问题，请继续", at: t0, now: at(2.999)) != nil)
+check("⭐ 回复后正好 3 秒 ⇒ 撤下", P.repliedLine(text: "没问题，请继续", at: t0, now: at(3)) == nil)
+check("时钟往回拨 ⇒ 不显示", P.repliedLine(text: "没问题，请继续", at: at(10), now: t0) == nil)
+check("没回复过 ⇒ nil", P.repliedLine(text: nil, at: nil, now: t0) == nil)
+check("显示窗口是 3 秒", P.repliedShowFor == 3)
+check("重算时刻 ＝ 回复时刻 ＋ 3 秒", P.repliedRecheck(at: t0, now: at(1)) == at(3))
+check("窗口外不定闹钟", P.repliedRecheck(at: t0, now: at(3)) == nil && P.repliedRecheck(at: nil, now: t0) == nil)
+let rq = qs(replied: "已回复：没问题，请继续")
+check("⭐ 已回复窗口里：状态行换成「已回复：没问题，请继续」", rq.headline == "已回复：没问题，请继续")
+check("⭐ 已回复窗口里：快捷回复先收起（防连按）", !rq.quickReplyShown)
+check("已回复也能盖住别的心情的状态行", qs(mood: .working, replied: "已回复：按照你的想法来").headline == "已回复：按照你的想法来")
+check("过期版不出快捷回复、不带 wait", !qs().staleVersion.quickReplyShown && qs().staleVersion.waitText == nil)
+
+let noQuick = String(data: try! enc.encode(qs(mood: .working)), encoding: .utf8)!
+check("⭐ 不在等你时 JSON 里没有两个新键（体积不变、等于旧格式）",
+      !noQuick.contains("showsQuickReply") && !noQuick.contains("waitText"))
+let withQuick = try! enc.encode(qs())
+check("等你时 JSON 带两个新键", String(data: withQuick, encoding: .utf8)!.contains("showsQuickReply"))
+check("⭐ 旧 app 推的卡 ⇒ 新扩展不出快捷回复", fromOld.map { !$0.quickReplyShown && $0.waitText == nil } == true)
+check("⭐ 新 app 带快捷回复的卡 ⇒ 旧扩展照样解码", (try? JSONDecoder().decode(OldState.self, from: withQuick))?.room == "bunny")
+check("带快捷回复编解码往返无损", (try? JSONDecoder().decode(S.self, from: withQuick)) == qs())
+let fatQuick = try! enc.encode({ () -> S in
+    var x = fat; x.playStart = Date(); x.playTotal = 1234.567; x.playedAtPause = 98.7654
+    x.waitText = String(repeating: "等", count: P.headlineMax); x.showsQuickReply = true; return x }())
+check("⭐ 最坏情况（进度 ＋ 80 字 wait ＋ 快捷回复）仍 < 2 KB", fatQuick.count < 2048, "\(fatQuick.count) 字节")
+
 // MARK: - 小圆点颜色（app 和扩展共用一份）
 
 let allDots: [CCPresenceDot] = [.off, .retrying, .connecting, .degraded, .online]
@@ -518,7 +641,11 @@ nonisolated func touchFromNonisolated() -> Int {
                     dismissedByUser: false, now: Date())
     let m = P.playMark(isActive: true, isPaused: false, played: 1, total: 2, fid: "x", previous: nil, now: Date())
     let shown = s.playDisplay == .hidden ? 1 : 0
-    return d + s.statusLine.count + s.faceMood.rawValue.count + Int(s.dot.signalHex & 1)
+    let a = P.shouldAlert(previousMood: .working, mood: .waiting, room: "x", wait: "?", lastAlert: nil,
+                          appViewingRoom: false, now: Date()) ? 1 : 0
+    let r = (P.repliedLine(text: "a", at: Date(), now: Date()) ?? "").count + P.alertBody(wait: "b").count
+        + (s.quickReplyShown ? 1 : 0) + S.quickReplies.count
+    return a + r + d + s.statusLine.count + s.faceMood.rawValue.count + Int(s.dot.signalHex & 1)
         + (m.isPlaying ? 1 : 0) + shown + S.clock(3).count + Int(S.fraction(played: 1, total: 2) * 2)
 }
 check("卡片数据和规则能从 nonisolated 上下文用（编译过就算过）", touchFromNonisolated() > 0)

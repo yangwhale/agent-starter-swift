@@ -198,6 +198,72 @@ nonisolated enum CCLiveActivityPolicy {
         }
     }
 
+    // MARK: - 等你回话：锁屏提醒（2026-10-05）
+
+    /// 同一句 wait 多久内不重复提醒。服务端的状态是属性推送，重连、补发、
+    /// 「等你 → 在听你说 → 等你」（按住说话又松开）都可能把同一句再送来一遍 ——
+    /// 提醒会亮屏、响声，重复一次就很烦。
+    static let alertRepeatWindow: TimeInterval = 60
+    /// 提醒正文（wait 那句）最多几个字符。横幅和灵动岛展开都只放得下一两行。
+    static let alertBodyMax = 60
+
+    /// 上一次提醒的是哪个房间的哪句话、什么时候。
+    nonisolated struct AlertMark: Equatable, Sendable {
+        var room: String
+        /// 去过空白的 wait 原文（不是截短后的正文 —— 两句前 60 字一样的不同问题不该互相挡）。
+        var text: String
+        var at: Date
+    }
+
+    /// 这一刻该不该用带提醒的 update（灵动岛自动展开、锁屏亮起、提示音）。
+    ///
+    /// 全部满足才提醒：
+    /// - **跃迁**：上一刻的脸不是「等你」、这一刻是。一直挂着的「等你」只在开始那一下提醒。
+    /// - 上一刻**不是**睡着 / 找网络、也不是第一次看到这个房间（`previousMood == nil`）——
+    ///   断线重连回来看到的是早就挂着的那句，不是「刚开始等你」（跟 `CCFaceEvent.detect`
+    ///   「首份状态不算事件」同一个理由：那句你断线前已经被提醒过了）。
+    /// - app 不在前台看着这个房间（`appViewingRoom == false`）—— 正看着屏幕，脸已经变了，
+    ///   app 里还有叮声（`CCFaceChime`），锁屏提醒是给**没在看**的时候的。
+    /// - wait 去空白后非空，且同一房间同一句 60 秒内没提醒过（时钟往回拨不算「刚提醒过」）。
+    static func shouldAlert(previousMood: CCFaceMood?, mood: CCFaceMood, room: String, wait: String,
+                            lastAlert: AlertMark?, appViewingRoom: Bool, now: Date) -> Bool {
+        guard mood == .waiting, let prev = previousMood, prev != .waiting else { return false }
+        guard prev != .asleep, prev != .searching else { return false }
+        guard !appViewingRoom else { return false }
+        let text = wait.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        if let l = lastAlert, l.room == room, l.text == text {
+            let dt = now.timeIntervalSince(l.at)
+            if dt >= 0 && dt < alertRepeatWindow { return false }
+        }
+        return true
+    }
+
+    /// 提醒的正文：wait 那句去空白、截到 `alertBodyMax`。标题是 bot 名（＝房间名），调用方直接用。
+    static func alertBody(wait: String) -> String {
+        truncate(wait.trimmingCharacters(in: .whitespacesAndNewlines), max: alertBodyMax)
+    }
+
+    // MARK: - 快捷回复（2026-10-05）
+
+    /// 回复发出后状态行显示「已回复：没问题，请继续」多久（完整原句，不是按钮上的简写）。
+    static let repliedShowFor: TimeInterval = 3
+
+    /// 刚回复过的那句还在显示窗口里吗：`[at, at + 3 秒)`，左闭右开；时钟往回拨不算。
+    /// 在窗口里返回整句状态行（「已回复：没问题，请继续」），否则 nil。
+    static func repliedLine(text: String?, at: Date?, now: Date) -> String? {
+        guard let text, let at else { return nil }
+        let dt = now.timeIntervalSince(at)
+        guard dt >= 0, dt < repliedShowFor else { return nil }
+        return "已回复：\(text)"
+    }
+
+    /// 「已回复」到点要撤下 —— 这不是属性变化，没人通知，得自己定闹钟。窗口外返回 nil。
+    static func repliedRecheck(at: Date?, now: Date) -> Date? {
+        guard let at, repliedLine(text: "", at: at, now: now) != nil else { return nil }
+        return at.addingTimeInterval(repliedShowFor)
+    }
+
     // MARK: - 卡片上写什么
 
     /// 计时起点。
@@ -248,15 +314,21 @@ nonisolated enum CCLiveActivityPolicy {
                           snapHeadline: String?, runningSubtasks: Int, timerStart: Date,
                           isActive: Bool, isPaused: Bool, canReplay: Bool,
                           peers: [(name: String, dot: CCPresenceDot)],
-                          play: PlayMark = .none) -> CCLiveActivityState {
+                          play: PlayMark = .none,
+                          wait: String = "", repliedLine: String? = nil) -> CCLiveActivityState {
         // 子任务数跟状态行同一条规矩：断线时是残值，不显示。
         let live = mood != .asleep && mood != .searching
-        return CCLiveActivityState(
+        // 等你回话：卡片上把暂停 / 重播换成快捷回复。刚回复过（「已回复」还在显示）就先不给，
+        // 免得 bot 还没来得及清掉 wait 时又被按一次。
+        let waitTrim = wait.trimmingCharacters(in: .whitespacesAndNewlines)
+        let quick = mood == .waiting && repliedLine == nil
+        var s = CCLiveActivityState(
             room: room,
             mood: mood.rawValue,
             skin: (skin ?? .classic).rawValue,
             presence: presence.rawValue,
-            headline: headline(mood: mood, snapHeadline: snapHeadline),
+            headline: repliedLine.map { truncate($0, max: headlineMax) }
+                ?? headline(mood: mood, snapHeadline: snapHeadline),
             subtasks: live ? max(0, runningSubtasks) : 0,
             timerStart: timerStart,
             isPlaying: isActive && !isPaused,
@@ -270,5 +342,10 @@ nonisolated enum CCLiveActivityPolicy {
             playTotal: play.total,
             playedAtPause: isActive && !isPaused ? nil : play.played
         )
+        // 两个新字段**不在等你时写 nil 而不是 false / 空串**：JSON 里就不出现这两个键，
+        // 体积不变、也就等于旧 app 的格式（`playStart` 那三个同一个理由）。
+        s.showsQuickReply = quick ? true : nil
+        s.waitText = mood == .waiting && !waitTrim.isEmpty ? truncate(waitTrim, max: headlineMax) : nil
+        return s
     }
 }

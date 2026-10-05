@@ -19,6 +19,7 @@
     // Sendable 诊断降级。tommy 编过之后可以试着去掉它，看是否还干净。
     @preconcurrency import ActivityKit
     import Foundation
+    import LiveKit
     import Observation
     import UIKit
 
@@ -74,6 +75,15 @@
         /// 上一次算出来的播放进度（`CCLiveActivityPolicy.playMark` 靠它判断「能不能沿用」）。按房间记。
         private var playMemo: (room: String, mark: CCLiveActivityPolicy.PlayMark)?
 
+        /// 上一次锁屏提醒的是哪句（60 秒内同一句不再提醒，见 `CCLiveActivityPolicy.shouldAlert`）。
+        private var lastAlert: CCLiveActivityPolicy.AlertMark?
+        /// 判定该提醒、但还没推出去的那次（节流窗口没到）。下一次真正推的时候带上提醒。
+        /// 推出去、或卡片内容已经跟推过的一样（没东西可推了）就清掉 —— 不然一个过期的提醒
+        /// 会挂在 10 分钟后那次续期上响出来。
+        private var pendingAlert: (title: String, body: String)?
+        /// 刚快捷回复过的那句（状态行显示「已回复：…」3 秒）。
+        private var replied: (room: String, text: String, at: Date)?
+
         /// 替卡片挂着号的那个播放器（`CCPlaybackRemote.acquirePolling`）。
         ///
         /// 锁屏时 `CCPlaybackBar` 被渲染闸门退了号，没有这一份的话进度就不再更新 ——
@@ -98,6 +108,9 @@
             // 卡片上的按钮在 app 进程里落到这儿（为什么是 app 进程，见 CCLiveActivityAttributes.swift 文件头）。
             CCLiveActivityBridge.handler = { [weak self] action, room in
                 await self?.perform(action, room: room)
+            }
+            CCLiveActivityBridge.replyHandler = { [weak self] room, text in
+                await self?.quickReply(room: room, text: text)
             }
 
             // 上一个进程留下的卡（app 被杀、崩溃）：此刻一个房间都没连，统统收掉 ——
@@ -132,6 +145,7 @@
             var skin: CCFaceSkin?
             var presence: CCPresenceDot = .off
             var snapHeadline: String?
+            var wait = ""
             var on = false
             var sec: Double = 0
             var subs = 0
@@ -176,6 +190,7 @@
                 skin: CCRoomIcons.shared.faceSkin(for: slot.name),
                 presence: presence,
                 snapHeadline: snap?.headline,
+                wait: snap?.wait ?? "",
                 on: snap?.on ?? false,
                 sec: snap?.sec ?? 0,
                 subs: snap?.subs.run ?? 0,
@@ -225,6 +240,21 @@
             let enabled = ActivityAuthorizationInfo().areActivitiesEnabled
             noteIfCardGone(now: now, enabled: enabled)
 
+            // 「等你回话」锁屏提醒：必须在 makeState 之前判 —— makeState 会把 moodMemo 改成这一刻的脸，
+            // 之后就拿不到「上一刻是什么脸」了。
+            let prevMood = moodMemo?.room == i.room ? moodMemo?.mood : nil
+            if i.mood != .waiting {
+                pendingAlert = nil
+            } else if CCLiveActivityPolicy.shouldAlert(
+                previousMood: prevMood, mood: i.mood, room: i.room, wait: i.wait,
+                lastAlert: lastAlert,
+                // 卡片跟着当前房间走，所以「在前台」就是「正看着这个房间」。
+                appViewingRoom: UIApplication.shared.applicationState == .active,
+                now: now) {
+                lastAlert = .init(room: i.room, text: i.wait.trimmingCharacters(in: .whitespacesAndNewlines), at: now)
+                pendingAlert = (i.room, CCLiveActivityPolicy.alertBody(wait: i.wait))
+            }
+
             let state = makeState(i, now: now)
             let life = CCLiveActivityPolicy.lifecycle(
                 enabled: enabled,
@@ -261,7 +291,10 @@
                 }
                 if let at = lastPushAt { wakeAt.append(at.addingTimeInterval(CCLiveActivityPolicy.keepAliveAfter)) }
                 if let s = cardStartedAt { wakeAt.append(s.addingTimeInterval(CCLiveActivityPolicy.rolloverAfter)) }
+                if let t = CCLiveActivityPolicy.repliedRecheck(at: replied?.at, now: now) { wakeAt.append(t) }
             }
+            // 提醒没推出去、而卡片已经没东西可推（推过了 / 开卡时直接带进去了 / 没卡）⇒ 作废。
+            if activityID == nil || lastPushed == state { pendingAlert = nil }
             if let f = lastStartFailure, life == .start || life == .rollover {
                 wakeAt.append(f.addingTimeInterval(CCLiveActivityPolicy.startRetry))
             }
@@ -295,11 +328,13 @@
                 isActive: i.isActive, isPaused: i.isPaused, played: i.played, total: i.total, fid: i.fid,
                 previous: playMemo?.room == i.room ? playMemo?.mark : nil, now: now)
             playMemo = (i.room, play)
+            let line = replied?.room == i.room
+                ? CCLiveActivityPolicy.repliedLine(text: replied?.text, at: replied?.at, now: now) : nil
             return CCLiveActivityPolicy.makeState(
                 room: i.room, mood: i.mood, skin: i.skin, presence: i.presence,
                 snapHeadline: i.snapHeadline, runningSubtasks: i.subs, timerStart: start,
                 isActive: i.isActive, isPaused: i.isPaused, canReplay: i.canReplay,
-                peers: i.peers, play: play)
+                peers: i.peers, play: play, wait: i.wait, repliedLine: line)
         }
 
         // MARK: - ActivityKit
@@ -364,9 +399,19 @@
             lastPushAt = now
             let id = activityID
             let content = ActivityContent(state: state, staleDate: CCLiveActivityPolicy.staleDate(now: now))
+            // 等你回话的那一下：带 AlertConfiguration 推 —— 系统据此展开灵动岛、点亮锁屏、响一声。
+            let alert = pendingAlert
+            pendingAlert = nil
             Task {
                 guard let a = Self.find(id) else { return }
-                await a.update(content)
+                if let alert {
+                    // 标题 / 正文是运行时字符串：走字符串插值进 LocalizedStringResource
+                    // （没有对应的本地化条目，系统按原文显示）。
+                    await a.update(content, alertConfiguration: AlertConfiguration(
+                        title: "\(alert.title)", body: "\(alert.body)", sound: .default))
+                } else {
+                    await a.update(content)
+                }
             }
         }
 
@@ -420,6 +465,28 @@
                 await slot.playback.replay()
                 print("[CCLiveActivity] 按钮 replay \(room) → \(slot.playback.lastError ?? "ok")")
             }
+        }
+
+        /// 快捷回复：**走 app 本来的文字通道** —— 跟聊天框（`ChatInputView`）同一个
+        /// `session.send(text:)`，LiveKit 文本流 `lk.chat`。bot 本体（`<房间名>-speaker`）收下后
+        /// 注入它自己的对话；语音助手不接（服务端契约见 CloseCrab `docs/livekit-cross-end-contract.md`）。
+        ///
+        /// SDK 的 send 顺手把这句记进本房间的聊天记录（loopback），回到 app 里能看到 —— 跟手打一样。
+        ///
+        /// ⚠️ 文本流是单向的：`send` 返回非 nil 只说明**发出去了**，不说明 bot 收下了
+        /// （例如 bot 那边没重启、还不认 `lk.chat`）。「已回复」按「已发出」显示。
+        private func quickReply(room: String, text: String) async {
+            guard let slot = rooms?.slots.first(where: { $0.name == room }) else {
+                print("[CCLiveActivity] 快捷回复：房间 \(room) 不在（app 可能刚被系统拉起，还没连）")
+                return
+            }
+            guard await slot.session.send(text: text) != nil else {
+                print("⚠️ [CCLiveActivity] 快捷回复没发出去：\(String(describing: slot.session.error))")
+                return
+            }
+            replied = (room, text, Date())
+            print("[CCLiveActivity] 快捷回复 \(room)：\(text)")
+            sync()
         }
     }
 

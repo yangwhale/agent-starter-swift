@@ -11,11 +11,14 @@ import WidgetKit
 /// ## 长什么样（方案页 `ios-live-activity-plan-20261005`）
 ///
 /// ```
-///  ◡ ◡   bunny ●
-///        跑 Q10 验收（3 个子任务）
+///  ◡ ◡  bunny ●            jarvis ● tommy ●
+///       跑 Q10 验收（3 个子任务）
 ///   0:12 ━━━━━━━━━━━━━━──────────── 0:48
-///        [⏸ 暂停] [↺ 重播]      jarvis ● tommy ●
+///   [   ⏸ 暂停   ] [   ↺ 重播   ]
 /// ```
+///
+/// 等你回话时最后一行换成 `[ ✓ 没问题，请继续 ] [ ✋ 按照你的想法来 ]`（快捷回复，
+/// 走 app 的文字通道发给 bot 本体；按钮放不下整句时显示简写「请继续」「按你的来」）。
 ///
 /// - 脸：按心情选定的**一帧**（实时活动里不能跑连续动画）。同一套形状和身份色金属。
 /// - 进度条：bot 有在播 / 能重播的语音时才出现；在播时用系统计时视图自己走，不靠每秒推更新。
@@ -23,6 +26,7 @@ import WidgetKit
 /// - 按钮：**两种音频模式都一直显示**（Chris 2026-10-05 后来简化的：不再按「系统播放控件」
 ///   开关藏起来）。点下去在 app 进程里执行（见 CCLiveActivityAttributes.swift 文件头）。
 /// - 过期（15 分钟没更新 ⇒ app 多半不在了）：睡着的脸、灰点、「已断开」，**不画按钮、不画进度条**。
+/// - 高度：锁屏卡片**不能超过 160pt**（Apple HIG：超了会被截）。预算见 `CCActivityLockScreen.body`。
 struct CCLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: CCLiveActivityAttributes.self) { context in
@@ -35,12 +39,14 @@ struct CCLiveActivityWidget: Widget {
             let stale = context.isStale
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    CCActivityFace(state: shown, side: 52)
+                    CCActivityFace(state: shown, side: 44)
                         .padding(.leading, 4)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
+                    // 自己的点在上，其他房间只画点（展开态横向放不下名字）。
                     VStack(alignment: .trailing, spacing: 4) {
                         CCActivityDot(dot: shown.dot, size: 8)
+                        CCActivityPeerDots(peers: shown.peers)
                     }
                     .padding(.trailing, 4)
                 }
@@ -57,11 +63,10 @@ struct CCLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 8) {
+                    // 展开态同样有 160pt 上限：中间名字＋状态 ≈64、这里 进度 16 ＋ 6 ＋ 按钮 44 ＝ 66。
+                    VStack(spacing: 6) {
                         if !stale && shown.playDisplay != .hidden { CCActivityProgress(state: shown) }
-                        if !stale { CCActivityControls(state: shown) }
-                        CCActivityPeers(peers: shown.peers)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
+                        if !stale { CCActivityActionRow(state: shown) }
                     }
                 }
             } compactLeading: {
@@ -87,17 +92,39 @@ struct CCActivityLockScreen: View {
     // 布局：上面「脸 ＋ 名字状态」，下面**两颗占满宽度的大按钮**。
     // Chris 2026-10-05：「主要操作就是重播、暂停／恢复这两件事，做成大按钮。」
     // 锁屏上按的是一只拇指，小胶囊按钮（原来 caption 字、5pt 内边距）很难按准。
+    //
+    // ## 高度预算（≤ 160pt，Apple HIG：锁屏实时活动超过 160pt 会被截）
+    //
+    // 原来约 180pt+（脸 52、按钮 48、内边距 14×2、行距 10、底下还单独一行其他房间）。现在：
+    //
+    //   上下内边距               10 ＋ 10                         ＝  20
+    //   第一行   max(脸 44, 名字行 22 ＋ 间距 2 ＋ 状态两行 2×20)  ＝  64
+    //   行距 6 ＋ 进度条（caption 一行）16                        ＝  22   （只在有语音时）
+    //   行距 6 ＋ 按钮 44                                          ＝  50
+    //   ─────────────────────────────────────────────────────────
+    //   合计（最坏：两行状态 ＋ 进度 ＋ 按钮）                     ＝ 156 ≤ 160
+    //
+    // 其他房间的小圆点挪进名字那一行右侧，不再单独占一行（省下 ≈ 22）。
+    // 字号按系统默认（Large）算；用户把动态字体调大时系统会自己缩实时活动里的字，
+    // 但调到辅助功能那几档时这份预算不保证 —— 那时状态行会先被截成一行。
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(alignment: .center, spacing: 12) {
-                CCActivityFace(state: shown, side: 52)
-                VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 6) {
+            HStack(alignment: .center, spacing: 10) {
+                CCActivityFace(state: shown, side: 44)
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(shown.room)
                             .font(.headline)
                             .lineLimit(1)
+                            .layoutPriority(1)
                         CCActivityDot(dot: shown.dot, size: 8)
                         Spacer(minLength: 4)
+                        // 放不下名字就只画点，再放不下就不画 —— 绝不把自己的名字挤没。
+                        ViewThatFits(in: .horizontal) {
+                            CCActivityPeers(peers: shown.peers)
+                            CCActivityPeerDots(peers: shown.peers)
+                            EmptyView()
+                        }
                     }
                     Text(shown.statusLine)
                         .font(.subheadline)
@@ -107,14 +134,11 @@ struct CCActivityLockScreen: View {
             }
             // 语音进度：有正在播 / 能重播的那段才出现（样子照 app 里的 CCPlaybackBar）。
             if !stale && shown.playDisplay != .hidden { CCActivityProgress(state: shown) }
-            if !stale { CCActivityControls(state: shown) }
-            if !shown.peers.isEmpty {
-                CCActivityPeers(peers: shown.peers)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
+            if !stale { CCActivityActionRow(state: shown) }
         }
         .foregroundStyle(.white)
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         // 读屏：一句话念完（脸是纯图形，不能只靠形状传信息 —— 跟 app 里活脸同一条）。
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(verbatim: "\(shown.room)，\(shown.faceMood.spoken)，\(shown.statusLine)，\(shown.dot.spoken)"))
@@ -184,13 +208,70 @@ struct CCActivityControls: View {
         }
     }
 
-    /// 大按钮：两颗平分整行，高 48pt（远大于 44pt 的最小可点区域），图标 ＋ 字。
     private func big(_ title: String, systemImage: String) -> some View {
+        CCActivityBigLabel(title: title, systemImage: systemImage)
+    }
+}
+
+/// 大按钮的样子：两颗平分整行，**高 44pt**（Apple 的最小可点区域，正好卡住 160pt 预算；
+/// 原来 48pt 时整张卡超高被截）。字从 title3 降到 headline，44pt 里放得下图标 ＋ 字。
+struct CCActivityBigLabel: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.title3.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
+            .font(.headline)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white.opacity(0.18)))
             .contentShape(Rectangle())
+    }
+}
+
+/// 卡片最下面那一行：平时是暂停 / 重播，**bot 在等你回话时换成快捷回复**。
+/// 两种同高（44pt），换来换去卡片不跳。
+struct CCActivityActionRow: View {
+    let state: CCLiveActivityState
+
+    var body: some View {
+        if state.quickReplyShown {
+            CCActivityQuickReplies(state: state)
+        } else {
+            CCActivityControls(state: state)
+        }
+    }
+}
+
+/// 快捷回复：「没问题，请继续」「按照你的想法来」。点下去在 app 进程里走 app 的文字通道
+/// （`session.send(text:)`，跟聊天框同一条）发给 bot 本体，**不经过语音助手**
+/// （见 `CCLiveActivityQuickReplyIntent`）。发出的永远是完整原句；按钮放不下时只是**显示**简写。
+/// 发出后状态行显示「已回复：<完整原句>」3 秒，这两颗按钮在那 3 秒里先收起来（防连按）。
+struct CCActivityQuickReplies: View {
+    let state: CCLiveActivityState
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(CCLiveActivityState.quickReplies, id: \.self) { r in
+                Button(intent: CCLiveActivityQuickReplyIntent(room: state.room, text: r.text)) {
+                    // 先试整句，放不下再用简写 —— 两种同高，换了卡片不跳。
+                    ViewThatFits(in: .horizontal) {
+                        CCActivityBigLabel(title: r.text, systemImage: Self.icon(for: r))
+                        CCActivityBigLabel(title: r.short, systemImage: Self.icon(for: r))
+                    }
+                }
+                .buttonStyle(.plain)
+                // 读屏念完整原句（简写只是视觉上的退让）。
+                .accessibilityLabel(Text(verbatim: r.text))
+                .accessibilityHint(Text(verbatim: state.waitText.map { "回复 \(state.room)：\($0)" } ?? ""))
+            }
+        }
+    }
+
+    /// 第一颗「没问题，请继续」打勾，第二颗「按照你的想法来」是交给它定（`hand.thumbsup`）。
+    /// 按位置不按字面，改了措辞图标不会错位。
+    static func icon(for r: CCLiveActivityState.QuickReply) -> String {
+        r == CCLiveActivityState.quickReplies.first ? "checkmark" : "hand.thumbsup"
     }
 }
 
@@ -267,6 +348,19 @@ struct CCActivityProgress: View {
     }
 }
 
+/// 其他房间只画小圆点（地方不够放名字时：灵动岛展开态、名字行挤不下时）。
+struct CCActivityPeerDots: View {
+    let peers: [CCLiveActivityState.Peer]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(peers, id: \.name) { p in
+                CCActivityDot(dot: CCPresenceDot(rawValue: p.dot) ?? .off, size: 6)
+            }
+        }
+    }
+}
+
 /// 其他房间的名字 ＋ 小圆点。
 struct CCActivityPeers: View {
     let peers: [CCLiveActivityState.Peer]
@@ -278,6 +372,7 @@ struct CCActivityPeers: View {
                     Text(p.name)
                         .font(.caption2)
                         .lineLimit(1)
+                        .fixedSize()
                     CCActivityDot(dot: CCPresenceDot(rawValue: p.dot) ?? .off, size: 6)
                 }
             }
