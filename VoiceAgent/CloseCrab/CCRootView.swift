@@ -302,6 +302,10 @@ private struct CCShell: View {
         //    合并的话以后想让后台继续画（比如画中画）就会顺手把麦也放开。
         .onChange(of: scenePhase, initial: true) { _, phase in
             rooms.enforceGlobalMic(foreground: phase == .active)
+            // ⭐ 回前台立刻把断着的房间连回去。Chris 2026-10-05：
+            //    「断开以后就不再连了 …… 就算点到 app 里边去，它也没声。」
+            //    后台时 iOS 可能把 app 挂起，退避循环跟着睡死；回前台这一下必须主动踢。
+            if phase == .active { rooms.kick(reason: "回前台") }
         }
     }
 

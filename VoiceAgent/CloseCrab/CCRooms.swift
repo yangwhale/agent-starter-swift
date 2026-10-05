@@ -1,5 +1,6 @@
 import Combine
 import LiveKit
+import Network
 import SwiftUI
 
 /// 一个房间的全套家当：连接、本地媒体、音频选项、麦克风策略。
@@ -46,6 +47,14 @@ final class CCRoomSlot: Identifiable {
     private var handledTracks: Set<ObjectIdentifier> = []
 
     private var bag = Set<AnyCancellable>()
+
+    /// 连接从「连着」掉到「断了」的那一刻叫一声。`CCRooms` 靠它接手重连。
+    ///
+    /// 只在 true → false 那一下触发，不在「本来就没连」时触发 ——
+    /// 后者（启动连不上）由 `connectAwait` 自己兜，不走这里。
+    /// 注意 `session.isConnected` 在 SDK 自己重连（`.reconnecting`）时仍是 true，
+    /// 所以这里叫的时候，SDK 那 10 次已经试完、彻底放弃了。
+    var onConnectionLost: (() -> Void)?
 
     init(name: String) {
         self.name = name
@@ -233,7 +242,11 @@ final class CCRoomSlot: Identifiable {
     /// 无脑赋值等于每次都通知，属性级追踪就白做了。
     private func refresh() {
         let c = session.isConnected
-        if c != isConnected { isConnected = c }
+        if c != isConnected {
+            let lost = isConnected && !c
+            isConnected = c
+            if lost { onConnectionLost?() }
+        }
 
         let sp = session.ccIsSpeaking
         if sp != isSpeaking { isSpeaking = sp }
@@ -434,9 +447,25 @@ final class CCRooms {
 
     private let config = CloseCrabConfig.shared
 
+    // MARK: 断线重连（规则见 `CCReconnectPolicy`）
+
+    /// 用户的意图：按过「开始」、还没按「挂断」。**重连只看这个，不看界面在哪一页。**
+    private(set) var wantConnected = false
+    /// 每个房间最多一条重连循环。带个 id —— `kick()` 会换掉旧循环，
+    /// 旧循环收尾时只能清自己那一格，不能把新换上的清掉。
+    private var reconnectTasks: [String: (id: UUID, task: Task<Void, Never>)] = [:]
+    /// 网络从「没有」变成「有」的那一刻立刻重连，不等退避。
+    private let pathMonitor = NWPathMonitor()
+    private var pathSatisfied = true
+
     init() {
         activeName = config.room
         sync()
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let ok = path.status == .satisfied
+            Task { @MainActor in self?.networkChanged(satisfied: ok) }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "cc.reconnect.path"))
         // 勾选变了就增删槽位。用 `objectWillChange` 而不是盯具体字段：
         // 勾选、当前房间、服务端名单三者都会影响 onlineRooms，盯一个会漏。
         //
@@ -479,6 +508,11 @@ final class CCRooms {
         let shouldConnect = isAnyConnected
         for name in plan.toAdd {
             let slot = CCRoomSlot(name: name)
+            slot.onConnectionLost = { [weak self, weak slot] in
+                guard let self, let slot else { return }
+                print("[CCReconnect] \(slot.name) 断线（SDK 已放弃自带重连）")
+                self.scheduleReconnect(slot)
+            }
             slots.append(slot)
             if shouldConnect { connect(slot) }
         }
@@ -515,6 +549,7 @@ final class CCRooms {
                 await slot.session.end()
             }
         }
+        for name in plan.toRemove { cancelReconnect(name) }
         slots.removeAll { plan.toRemove.contains($0.name) }
 
         slots.sort { (plan.order.firstIndex(of: $0.name) ?? 0) < (plan.order.firstIndex(of: $1.name) ?? 0) }
@@ -526,6 +561,7 @@ final class CCRooms {
 
     /// 把所有在线房间都连上。启动页那颗按钮走这里。
     func startAll() async {
+        wantConnected = true
         sync()
         // 并发连，不要一个个排队 —— 六个房间串行连，最后一个要等到天荒地老。
         await withTaskGroup(of: Void.self) { group in
@@ -536,6 +572,9 @@ final class CCRooms {
     }
 
     func endAll() async {
+        // 先撤意图、停掉所有重连循环 —— 否则挂断途中某个循环醒来，又把房间连回去。
+        wantConnected = false
+        for name in Array(reconnectTasks.keys) { cancelReconnect(name) }
         // 先清「连接中」：挂断发生在某个房间还在连的途中时，
         // 那个名字会永远留在集合里，方块上的转圈就再也停不下来。
         connecting.removeAll()
@@ -562,6 +601,74 @@ final class CCRooms {
         enforceGlobalMic(foreground: true)
         connecting.remove(slot.name)
         onRoomsChanged?()      // 连上了 —— 该把 avatar 开关报给这个房间
+        // 没连上（网络不通、取 token 失败）：交给重连循环。
+        // 如果本来就是重连循环调进来的，那条循环还在，这里的调用会被它挡掉。
+        if !slot.session.isConnected { scheduleReconnect(slot) }
+    }
+
+    // MARK: - 断线重连
+
+    /// 给这个房间起一条重连循环（已经有了就什么都不做）。
+    ///
+    /// 循环一直跑到：连上了 / 用户挂断了 / 房间被移除了。**没有次数上限。**
+    /// `immediate`：第一次不等退避直接试 —— 回前台、网络恢复时用。
+    func scheduleReconnect(_ slot: CCRoomSlot, immediate: Bool = false) {
+        let name = slot.name
+        // 必须还在名单里：退掉一个房间时 `sync()` 会异步 `end()` 它，
+        // 那一下同样触发「断线」回调 —— 不挡的话，刚退掉的房间会被自己连回来。
+        guard wantConnected, reconnectTasks[name] == nil,
+              slots.contains(where: { $0 === slot }) else { return }
+        let id = UUID()
+        let task = Task { [weak self, weak slot] in
+            var attempt = 0
+            while !Task.isCancelled {
+                guard let self, let slot, self.slots.contains(where: { $0 === slot }) else { break }
+                if !(immediate && attempt == 0) {
+                    let wait = CCReconnectPolicy.delay(attempt: attempt)
+                    print("[CCReconnect] \(name) \(Int(wait)) 秒后第 \(attempt + 1) 次重连")
+                    try? await Task.sleep(for: .seconds(wait))
+                    if Task.isCancelled { break }
+                }
+                // 睡醒再判一次：这段时间里用户可能挂断了，SDK 也可能自己连回来了。
+                guard CCReconnectPolicy.shouldRetry(
+                    wantConnected: self.wantConnected,
+                    isConnected: slot.session.isConnected,
+                    inFlight: self.connecting.contains(name)
+                ) else { break }
+                await self.connectAwait(slot)
+                if slot.session.isConnected {
+                    print("[CCReconnect] \(name) 第 \(attempt + 1) 次重连成功")
+                    break
+                }
+                attempt += 1
+            }
+            // 只清自己那一格：`kick()` 可能已经换上了新循环。
+            if let self, self.reconnectTasks[name]?.id == id { self.reconnectTasks[name] = nil }
+        }
+        reconnectTasks[name] = (id, task)
+    }
+
+    private func cancelReconnect(_ name: String) {
+        reconnectTasks[name]?.task.cancel()
+        reconnectTasks[name] = nil
+    }
+
+    /// 「现在很可能连得上」—— 回前台、网络恢复时调。
+    ///
+    /// 对每个断着的房间：掐掉正在睡退避的那条循环，立刻重试一次。
+    /// 连着的、正在连的不碰。
+    func kick(reason: String) {
+        guard wantConnected else { return }
+        for slot in slots where !slot.session.isConnected && !connecting.contains(slot.name) {
+            print("[CCReconnect] \(slot.name) 立刻重连（\(reason)）")
+            cancelReconnect(slot.name)
+            scheduleReconnect(slot, immediate: true)
+        }
+    }
+
+    private func networkChanged(satisfied: Bool) {
+        defer { pathSatisfied = satisfied }
+        if satisfied && !pathSatisfied { kick(reason: "网络恢复") }
     }
 
     // MARK: - 切换 / 静音
