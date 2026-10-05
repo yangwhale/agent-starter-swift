@@ -16,8 +16,8 @@
 | `CCAvatarRoles.swift` | `CCAvatarRolesTests.swift` | 48 | 双击的互斥语义（含「抢过来再双击是全关不是弹回」）、**关掉的角色必须显式写 `false`**、老键只镜像 principal、存盘规范形与解析容错、角色 rawValue 与服务端 `policy.py` 逐字对齐 |
 | `CCReconnectPolicy.swift` | `CCReconnectPolicyTests.swift` | 18 | 断线重连：退避单调、封顶、**不设次数上限**、2×2×2 真值表（用户挂断不连、SDK 自己重连时 app 不插手、已在连时不重复发起）|
 | `CCPresence.swift` | `CCPresenceTests.swift` | 52 | 在线小圆点五态：挂断灰不是红、断线想连是红、刚连上质量未知是绿、SDK 重连是黄；非 connected 时不看 bot/质量；读屏文字齐全且互异 |
-| `CCFaceMood.swift`（＋`CCPresence.swift`） | `CCFaceMoodTests.swift` | 227 | 活脸八张脸：没连上不看残值、「等你」压过「在说话」、静音不画说话、「刚干完」3 秒窗口左闭右开且时间倒退不算；128 行真值表对照参考实现；叮声只认边沿（刚连上第一份不叮、wait 挂着不重复叮、干完必须带总结）、3 秒去重按房间×事件分键 |
-| `CCFaceMotion.swift`（＋`CCFaceMood` `CCPresence` `CCFaceGrokEyes` `CCMetalGlow`） | `CCFaceMotionTests.swift` | 255 | AgentTouch 移植的数逐字对原固件：眨眼 320 ms／闭 134 ms、GCFG 间隔与进场先眨、胶囊干活眨 grok 不眨；扫视 3.8 s；表情池 V0 进场、绝不连着同一张、needs ≥3 s、180 ms 过渡；grok 弹簧过冲、池子首张进场、眨眼绕质心压扁；**眼白下沿恒为 271＋浮动**；减弱动态时画面不随时间变；小尺寸无心情道具但有头饰；遮罩不透明度层次与「切口＝挖掉」；跟声音柱子共用的阴影参数 |
+| `CCFaceMood.swift`（＋`CCPresence.swift`） | `CCFaceMoodTests.swift` | 311 | 活脸八张脸：没连上不看残值、**连着但 bot 不在＝睡着**、**「在听」压过「等你」**（原固件 listening 压过 needs_you）、「等你」压过「在说话」、静音不画说话、「刚干完」3 秒窗口左闭右开且时间倒退不算；128 行真值表对照参考实现；叮声只认边沿（刚连上第一份不叮、wait 挂着不重复叮、干完必须带总结）、3 秒去重按房间×事件分键 |
+| `CCFaceMotion.swift`（＋`CCFaceMood` `CCPresence` `CCFaceGrokEyes` `CCMetalGlow`） | `CCFaceMotionTests.swift` | 276 | AgentTouch 移植的数逐字对原固件：眨眼 320 ms／闭 134 ms、GCFG 间隔与进场先眨、胶囊干活眨 grok 不眨；扫视 3.8 s；问号 / 省略号点阵逐位对 glcdfont；**空闲满 10 分钟每 2–5 分钟「没人理」4.5 秒**（只插进空闲、叹气算一次换状态）；表情池 V0 进场、绝不连着同一张、needs ≥3 s、180 ms 过渡；grok 弹簧按原固件 30 fps 半隐式欧拉推（第一帧 0.262、过冲 1.6%、第 11 帧贴死）、池子首张进场、眨眼绕质心压扁；**眼白下沿恒为 271＋浮动**；减弱动态时画面不随时间变；小尺寸无心情道具但有头饰；遮罩不透明度层次与「切口＝挖掉」；跟声音柱子共用的阴影参数 |
 
 > `CCVisibilityPolicy` 那条不对称最值得留意：**两个方向的代价完全不一样。**
 > 误判成「看不见」会让正在看的人画面断掉并重起（首帧 1.26 秒 + 重抢槽位），
@@ -64,7 +64,7 @@ docker run --rm -v /tmp/swtest:/w -w /w swift:6.2-noble \
 弹簧过阻尼、grok 进场与同表情变形、眨眼不压扁、**下沿跟着开合动**、眼皮切口高度、
 减弱动态仍眨 / zz 仍飘、小尺寸画问号、robo 圆角、猫耳坐标、内耳不改写、切口不挖、
 出汗不等 3 分钟、打字点不居中、说话映射错、拿掉 `CCFaceMask` / `CCFaceMotion` 的 `nonisolated`。
-唯一「漏」的是拿掉嵌套类型 `Scene` 上的 `nonisolated` —— 查证后是**等价变异**：
+2026-10-05 对照原固件那轮新增的规则另做 10 条变异，**10 杀 0 漏**（「等你」「在听」换回去、去掉 bot 不在→睡着、弹簧子步改 1、10 分钟改 5 分钟、4.5 秒改 3 秒、问号点阵改回手画版、叹完不重新算、「没人理」漏进干活、叹气间隔下限 2 分钟改 1 分钟、弹簧少推一帧）。逐帧对照原固件的工具在 `tools/facebench/`。唯一「漏」的是拿掉嵌套类型 `Scene` 上的 `nonisolated` —— 查证后是**等价变异**：
 嵌在 `nonisolated` 类型里的嵌套类型本来就继承非隔离（单独写了个最小例子在 docker 里验过），
 那个标注是冗余的，不是测试漏洞。另有一条（「胶囊干活不眨」）是靠测试里的强制解包崩掉杀的，
 不是靠断言 —— 结论对，但报告形式是崩溃不是一行红字。

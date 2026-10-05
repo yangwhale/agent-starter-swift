@@ -3,6 +3,8 @@
 // 要钉住的是几条「写错了日常也看不出来」的规则：
 //   ① 没连上时其它信号一律不看（断线时 wait/on 是过期残值）；
 //   ② 「等你」排在「在说话」前面（唯一要你动手的状态不能被盖住）；
+//      「在听你说」排在「等你」前面（原固件 visualState：listening 压过一切 agent 状态）；
+//      连着但 bot 不在 ＝ 睡着（原固件 agent 没开 ＝ ST_OFF）；
 //   ③ 「刚干完」只挂 3 秒，用的是**传入的时间**，左闭右开、时间倒退不算；
 //   ④ 叮声只认边沿：刚连上的第一份状态不叮，wait 一直挂着不重复叮；
 //   ⑤ 同一事件 3 秒内只叮一次，不同房间/不同事件互不挡。
@@ -32,10 +34,10 @@ func check(_ label: String, _ cond: Bool, _ detail: String = "") {
 typealias M = CCFaceMood
 let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
-func mood(_ p: CCPresenceDot = .online, wait: String = "", on: Bool = false,
+func mood(_ p: CCPresenceDot = .online, bot: Bool = true, wait: String = "", on: Bool = false,
           hold: Bool = false, speak: Bool = false, muted: Bool = false,
           doneAt: Date? = nil, now: Date = t0) -> M {
-    M.derive(presence: p, wait: wait, on: on, holding: hold, speaking: speak,
+    M.derive(presence: p, botPresent: bot, wait: wait, on: on, holding: hold, speaking: speak,
              muted: muted, finishedAt: doneAt, now: now)
 }
 
@@ -46,7 +48,12 @@ check("⭐ 灰点＝睡着，哪怕残留着「等你」「在忙」",
 check("⭐ 黄点＝迷糊找人，不看残值", mood(.connecting, wait: "x", on: true, speak: true) == .searching)
 check("⭐ 红点（断线重试）也是迷糊找人", mood(.retrying, wait: "x", on: true) == .searching)
 check("⭐ 等你 > 在说话", mood(wait: "批准方案", speak: true) == .waiting)
-check("⭐ 等你 > 在听你说", mood(wait: "批准方案", hold: true) == .waiting)
+check("⭐ 在听你说 > 等你（原固件 listening 压过 needs_you；松手就回到等你）",
+      mood(wait: "批准方案", hold: true) == .listening && mood(wait: "批准方案") == .waiting)
+check("⭐ 连着但 bot 不在＝睡着，哪怕残留着「等你」「在忙」（原固件 agent 没开＝ST_OFF）",
+      mood(.degraded, bot: false, wait: "批准方案", on: true, hold: true, speak: true, doneAt: t0) == .asleep)
+check("⭐ 网差但 bot 在＝照常往下判", mood(.degraded, bot: true, on: true) == .working)
+check("bot 不在时绿点（不该出现的组合）也按睡着", mood(.online, bot: false, on: true) == .asleep)
 check("⭐ 刚干完：事件当刻就是 done", mood(doneAt: t0, now: t0) == .done)
 check("⭐ 刚干完：2.999 秒还是 done", mood(doneAt: t0, now: t0 + 2.999) == .done)
 check("⭐ 刚干完：满 3 秒回空闲（右开）", mood(doneAt: t0, now: t0 + 3) == .idle)
@@ -60,20 +67,21 @@ check("刚干完窗口就是方案里的 3 秒", M.doneWindow == 3)
 
 // MARK: - 优先级链：从上往下逐个打开信号，每一档都必须压住下面所有档
 
+check("等你 > 在说话（链上下一档）", mood(wait: "x", speak: true) == .waiting)
 check("在听你说 > 在说话", mood(hold: true, speak: true) == .listening)
 check("在说话 > 在查东西", mood(on: true, speak: true) == .speaking)
 check("在查东西 > 刚干完", mood(on: true, doneAt: t0) == .working)
 check("静音时在说话落到在查东西", mood(on: true, speak: true, muted: true) == .working)
 check("什么都没有＝空闲", mood() == .idle)
 check("没有干完时刻＝空闲", mood(doneAt: nil) == .idle)
-check("橙点照常往下判（连着，只是网差/bot 不在）", mood(.degraded, on: true) == .working)
+check("橙点＋bot 在照常往下判（连着，只是网差）", mood(.degraded, on: true) == .working)
 check("橙点＋什么都没有＝空闲", mood(.degraded) == .idle)
 
 // MARK: - 真值表：连着时 5 个布尔 × 干完窗口内外，全组合对照参考实现
 
 func reference(wait: Bool, hold: Bool, speak: Bool, muted: Bool, on: Bool, inDone: Bool) -> M {
-    if wait { return .waiting }
     if hold { return .listening }
+    if wait { return .waiting }
     if speak && !muted { return .speaking }
     if on { return .working }
     if inDone { return .done }
@@ -95,12 +103,22 @@ for p in [CCPresenceDot.online, .degraded] {
 }
 check("真值表覆盖 128 行", rows == 128)
 
+// bot 不在：连着时任意组合都是睡着
+for p in [CCPresenceDot.online, .degraded] {
+    for w in [false, true] { for h in [false, true] { for s in [false, true] { for o in [false, true] {
+        check("bot 不在＝睡着 p=\(p) w=\(w) h=\(h) s=\(s) on=\(o)",
+              mood(p, bot: false, wait: w ? "x" : "", on: o, hold: h, speak: s, doneAt: t0, now: t0 + 1) == .asleep)
+    } } } }
+}
+
 // 没连上时：任意组合都只看小圆点。
 for p in [CCPresenceDot.off, .connecting, .retrying] {
     for w in [false, true] { for h in [false, true] { for s in [false, true] { for o in [false, true] {
-        let got = mood(p, wait: w ? "x" : "", on: o, hold: h, speak: s, doneAt: t0, now: t0 + 1)
-        check("未连接不看信号 p=\(p) w=\(w) h=\(h) s=\(s) on=\(o)",
-              got == (p == .off ? .asleep : .searching))
+        for b in [false, true] {
+            let got = mood(p, bot: b, wait: w ? "x" : "", on: o, hold: h, speak: s, doneAt: t0, now: t0 + 1)
+            check("未连接不看信号 p=\(p) bot=\(b) w=\(w) h=\(h) s=\(s) on=\(o)",
+                  got == (p == .off ? .asleep : .searching))
+        }
     } } } }
 }
 
@@ -153,7 +171,7 @@ check("去重窗口是 3 秒", CCChimeGate.window == 3)
 // MARK: - 编译期断言：画脸的闭包可能是 nonisolated 的
 
 nonisolated func readFromNonisolatedContext() -> Int {
-    let m = CCFaceMood.derive(presence: .online, wait: "", on: true, holding: false,
+    let m = CCFaceMood.derive(presence: .online, botPresent: true, wait: "", on: true, holding: false,
                               speaking: false, muted: false, finishedAt: nil, now: Date())
     var gate = CCChimeGate()
     _ = gate.admit("k", at: 0)

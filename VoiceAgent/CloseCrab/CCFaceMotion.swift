@@ -36,6 +36,9 @@ import Foundation
 /// - 打字点原来固定 3 个；方案页要求「有子任务时更多」，所以个数可变，
 ///   排法沿用原来的 28 px 间距、220 ms 错相，以 240 为中线居中。
 /// - 「在说话」原固件没有这个状态，借「被抚摸」那张脸（弯眼＋脸红＋轻晃）。
+/// - 「没人理」只看这个房间自己空闲了多久，也不插进「睡着」（见 `boredAfter`）。
+/// - 「被拿起来」（surprised）、「被摸」（petting 本身）、晕、吃、打嗝、伸懒腰
+///   都靠板子上的传感器 / 充电口 / 触摸，app 没有对应的事，不触发。
 /// - 动作的随机数换成确定性的 splitmix64（原来是按开机时刻播种的 LCG）。
 /// - **颜色不搬**：原固件是黑底上的白眼和几种道具色；我们没有底，材质用声音柱子那块
 ///   身份色金属（Chris 的决定），原来的颜色层次换成遮罩不透明度，见 `CCFaceMask`。
@@ -197,8 +200,11 @@ nonisolated public enum CCFacePrim: Sendable, Equatable {
 nonisolated public enum CCFaceLook: Int, Sendable, Equatable, CaseIterable {
     case off = 0, idle, working, needs, done, listening, bored, surprised, petting, offline
 
-    /// 我们的八张脸 → 他们的状态。`bored` / `surprised` 暂时没有对应信号（没人理、被拿起来），
-    /// 表照抄完整，留着以后接。
+    /// 我们的八张脸 → 他们的状态。另外两种：
+    /// - `bored`（没人理）不由心情直接给，而是空闲满 10 分钟后在动作层按原固件的节奏插进来，
+    ///   见 `CCFaceMotion.resolve`；
+    /// - `surprised`（被拿起来）原固件靠重力传感器 / 翻面，手机 app 没有对应的事，不接。
+    ///   表照抄完整（逐帧对照原固件时也画它）。
     public static func from(_ mood: CCFaceMood) -> CCFaceLook {
         switch mood {
         case .asleep: .off
@@ -443,18 +449,54 @@ nonisolated public enum CCFaceMotion {
     public static let springOmega: Double = 2 * .pi * 3.5
     public static let springZeta: Double = 0.72
 
-    /// 0 → 1 的弹簧进度，初速 0（原固件每次换表情都 `s_pos = 0; s_vel = 0`）。
+    /// 原固件主循环的帧间隔（main.cpp `if (now - lastFrame >= 33)`，约 30 fps）。
+    public static let springFrame: Double = 0.033
+
+    /// 原固件每帧推进弹簧后的进度：第 k 项 ＝ 换表情之后第 k 帧画出来的值（第 0 项是换之前的 0）。
     ///
-    /// 原固件用 16 ms 子步的欧拉积分推进（单步 50 ms 会发散），这里直接用欠阻尼的解析解 ——
-    /// 同一条曲线，但不依赖帧率。到 0.8 秒时离终点已不到万分之一，直接贴到 1
-    /// （原固件的「落定」判据：位置 > 0.999 且速度 < 0.05）。
+    /// ## 为什么不用解析解（2026-10-05 对照原固件逐帧测出来的）
+    ///
+    /// 第一版用的是这个微分方程的**解析解**（过冲 3.8%、0.4 秒才落稳）。但板子上跑的不是
+    /// 方程本身，而是 `grokDrawEyes` 里那段**半隐式欧拉**：每帧把 33 ms 拆成
+    /// `dtMs / 16 + 1` = 3 个 11 ms 子步，`v += a·h; x += v·h`，再加一条
+    /// 「位置 > 0.999 且速度 < 0.05 就贴到 1」。离散化让它比方程**更早起步、过冲只有约 1.6%、
+    /// 0.33 秒就贴死** —— 板子上看到的是这条曲线，不是方程。所以这里照原样按 30 fps 推一遍，
+    /// 把每帧的值记成表；视图按真实时间在相邻两帧之间线性插值（板子是逐帧跳，我们 30/60 fps
+    /// 画得更顺，形状和节奏不变）。
+    ///
+    /// 「换的那一帧就已经推进了一帧」也照搬：原固件在换表情的同一帧里接着积分了
+    /// 距上一帧的那 33 ms，所以变形从换的那一刻起就已经动了一小步。
+    static let springTable: [Double] = {
+        let w = springOmega, z = springZeta
+        let steps = Int(springFrame * 1000) / 16 + 1            // 33 / 16 + 1 = 3
+        let h = springFrame / Double(steps)
+        var pos = 0.0, vel = 0.0
+        var out: [Double] = [0]
+        for _ in 0..<120 {
+            if pos < 0.999 || abs(vel) > 0.001 {
+                for _ in 0..<steps {
+                    let acc = w * w * (1 - pos) - 2 * z * w * vel
+                    vel += acc * h
+                    pos += vel * h
+                }
+                if pos > 0.999 && abs(vel) < 0.05 { pos = 1; vel = 0 }
+            }
+            out.append(pos)
+            if pos == 1 { break }
+        }
+        return out
+    }()
+
+    /// 0 → 1 的弹簧进度（原固件每次换表情都 `s_pos = 0; s_vel = 0`），`tau` ＝ 换表情之后的秒数。
+    /// 曲线见 `springTable`；`tau < 0`（还没换）是 0，表尾之后恒为 1。
     public static func spring(_ tau: Double) -> Double {
-        guard tau > 0 else { return 0 }
-        guard tau < 0.8 else { return 1 }
-        let z = springZeta, w = springOmega
-        let s = (1 - z * z).squareRoot()
-        let wd = w * s
-        return 1 - exp(-z * w * tau) * (cos(wd * tau) + z / s * sin(wd * tau))
+        guard tau >= 0, tau.isFinite else { return 0 }
+        let x = tau / springFrame
+        let k = Int(x)
+        let tab = springTable
+        guard k + 2 < tab.count else { return 1 }
+        let f = x - Double(k)
+        return tab[k + 1] + (tab[k + 2] - tab[k + 1]) * f
     }
 
     /// 此刻 grok 在变向哪个表情：(从哪个, 到哪个, 什么时候开始变)。
@@ -486,6 +528,79 @@ nonisolated public enum CCFaceMotion {
             i += 2
         }
         return (from, cur, at)
+    }
+
+    // MARK: 没人理（main.cpp「lonely sighs」）
+
+    /// 原固件 main.cpp：所有席位都空闲 / 没开、而且 **10 分钟**没人碰它 →
+    /// 先等 5–60 秒叹第一口气，之后每 2–5 分钟叹一次，每次挂 **4.5 秒** bored 脸
+    /// （`boredUntil = now + 4500`，`nextBored = now + random(120000, 300000)`）。
+    ///
+    /// 我们这边的对应：**这个房间连续空闲满 10 分钟**。跟原固件的两点不同：
+    /// - 原固件看的是「所有席位都闲」＋「没人碰」（摸、拿起、按键都会清零）；
+    ///   我们一个房间一张脸、手机上也没有摸它这回事，所以只看这个房间自己空闲了多久。
+    /// - 只插进「空闲」。原固件里睡着的宠物（agent 没开）也会叹气；我们「睡着」＝你挂断了，
+    ///   那是你自己的选择，不该对着你叹气。
+    public static let boredAfter: Double = 600
+    public static let boredLength: Double = 4.5
+
+    /// 一小时一个重放窗口里的叹气起点（同 `blink` 的窗口思路，免得空闲一整天每帧从头数）。
+    /// 窗口 0 从「满 10 分钟」起等 5–60 秒；之后的窗口从窗口起点等 2–5 分钟（就当刚叹过一口）。
+    static func boredStarts(since: Double, window w: Double, seed: UInt64) -> [Double] {
+        let base = since + boredAfter + w * window
+        let key = streamKey(seed, since, w, salt: 0xB0BE)
+        var s = base + (w == 0 ? lerp(5, 60, unit(key, 0)) : lerp(120, 300, unit(key, 0)))
+        var out: [Double] = []
+        var i: Int64 = 1
+        while s < base + window {
+            out.append(s)
+            s += lerp(120, 300, unit(key, i))
+            i += 1
+        }
+        return out
+    }
+
+    /// `t` 时刻跟「没人理」的关系：正在叹的那一次的起点，或者最近一次叹完的 (起点, 终点)。
+    public static func boredEpisode(since: Double, t: Double, seed: UInt64)
+        -> (current: Double?, last: (start: Double, end: Double)?)
+    {
+        guard t.isFinite, since.isFinite, t - since >= boredAfter else { return (nil, nil) }
+        let w = ((t - since - boredAfter) / window).rounded(.down)
+        var starts = boredStarts(since: since, window: w, seed: seed)
+        if w > 0 { starts = boredStarts(since: since, window: w - 1, seed: seed) + starts }
+        var last: (Double, Double)?
+        for s in starts where s <= t {
+            if t < s + boredLength { return (s, last) }
+            last = (s, s + boredLength)
+        }
+        return (nil, last)
+    }
+
+    /// 此刻**真正显示**的视觉状态、它是什么时候进入的、进入时正显示的 grok 表情。
+    ///
+    /// 除了空闲时插进来的「没人理」，其余原样返回。插进来的那一段跟原固件一样
+    /// 是一次完整的「换状态」：眨眼重新排、表情池回到 V0、grok 从当前表情变过去；
+    /// 叹完回到空闲也一样再换一次。
+    static func resolve(look: CCFaceLook, since: Double, t: Double, seed: UInt64, grokFrom: Int?)
+        -> (look: CCFaceLook, since: Double, grokFrom: Int?)
+    {
+        guard look == .idle else { return (look, since, grokFrom) }
+        let ep = boredEpisode(since: since, t: t, seed: seed)
+        // 进入那一段之前，空闲是从哪一刻（以及从哪张 grok 表情）开始算的
+        let idleSince = ep.last?.end ?? since
+        let idleFrom = ep.last.map { grokExpression(look: .bored, since: $0.start, t: $0.end, seed: seed,
+                                                    enteredFrom: nil).to } ?? grokFrom
+        if let s = ep.current {
+            let from = grokExpression(look: .idle, since: idleSince, t: s, seed: seed, enteredFrom: idleFrom).to
+            return (.bored, s, from)
+        }
+        return (.idle, idleSince, idleFrom)
+    }
+
+    /// 此刻 grok 正显示（或正变向）的表情 —— 视图换心情时记下它，新状态从它变形过来。
+    public static func grokShowing(mood: CCFaceMood, since: Double, t: Double, seed: UInt64, grokFrom: Int?) -> Int {
+        let r = resolve(look: CCFaceLook.from(mood), since: since, t: t, seed: seed, grokFrom: grokFrom)
+        return grokExpression(look: r.look, since: r.since, t: t, seed: seed, enteredFrom: r.grokFrom).to
     }
 
     // MARK: - 一帧
@@ -537,8 +652,19 @@ nonisolated public enum CCFaceMotion {
     }
 
     public static func scene(_ i: Input) -> Scene {
+        scene(look: CCFaceLook.from(i.mood), i)
+    }
+
+    /// 按原固件的视觉状态出一帧（`i.mood` 不参与）。我们的心情只映射到其中八种，
+    /// `bored` / `surprised` 只能从这里画 —— 对照原固件逐帧比对（tools/facebench）用它。
+    static func scene(look moodLook: CCFaceLook, _ input: Input) -> Scene {
+        // 空闲满 10 分钟会插进「没人理」（见 `resolve`）：之后的一切都按真正显示的那个状态算
+        let r = resolve(look: moodLook, since: input.since, t: input.t, seed: input.seed, grokFrom: input.grokFrom)
+        var i = input
+        i.since = r.since
+        i.grokFrom = r.grokFrom
+        let look = r.look
         var b = Builder(skin: i.skin, t: i.t, reduce: i.reduceMotion)
-        let look = CCFaceLook.from(i.mood)
         let t = i.t
         let mo: Double = i.reduceMotion ? 0 : 1        // 动作幅度总开关
         let grok = i.skin == .grok
@@ -858,7 +984,7 @@ nonisolated public enum CCFaceMotion {
         }
 
         /// 原固件用 Adafruit GFX 自带的 5×7 点阵字（`setTextSize(n)` ＝ 每个点 n×n 像素）
-        /// 写「?」「z」「...」。点阵是这里照着那个样子重画的；`(x, y)` 是字符格左上角。
+        /// 写「?」「z」「...」。点阵逐位抄自 glcdfont（见 `question` 那几行）；`(x, y)` 是字符格左上角。
         mutating func glyph(_ rows: [String], x: Double, y: Double, scale s: Double, _ col: CCFaceInk) {
             for (r, row) in rows.enumerated() {
                 for (c, ch) in row.enumerated() where ch == "#" {
@@ -868,9 +994,12 @@ nonisolated public enum CCFaceMotion {
         }
     }
 
-    static let question = [".###.", "#...#", "....#", "...#.", "..#..", ".....", "..#.."]
+    // 逐位抄自 Arduino_GFX 的 glcdfont.h（经典 5×7，列存、bit0 在最上）：
+    // '?' = 02 01 59 09 06、'z' = 44 64 54 4C 44、'.' = 00 00 60 60 00。
+    // 第一版是照着样子手画的，'?' 第 4 行少了一格、'.' 整体往左偏了一列 —— 对照原固件渲染才发现。
+    static let question = [".###.", "#...#", "....#", "..##.", "..#..", ".....", "..#.."]
     static let zee = [".....", ".....", "#####", "...#.", "..#..", ".#...", "#####"]
-    static let dot = [".....", ".....", ".....", ".....", ".....", ".##..", ".##.."]
+    static let dot = [".....", ".....", ".....", ".....", ".....", "..##.", "..##."]
 
     // MARK: - 随机与小工具
 

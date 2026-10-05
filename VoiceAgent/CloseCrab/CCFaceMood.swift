@@ -8,20 +8,25 @@ import Foundation
 ///
 /// ## 八张脸，按优先级取第一个命中的
 ///
-/// | 脸 | 信号 |
-/// |---|---|
-/// | 睡着 `asleep` | 小圆点灰：没连 / 已挂断 |
-/// | 迷糊找人 `searching` | 小圆点黄、红：正在连 / 断线重试 |
-/// | 等你回话 `waiting` | bot 状态 `wait` 不为空（等你批准或回答） |
-/// | 在听你说 `listening` | 你按住说话 |
-/// | 在说话 `speaking` | 这个房间在出声（**且你没把它静音**） |
-/// | 在查东西 `working` | bot 状态 `on == true` |
-/// | 刚干完 `done` | `on` 真→假且带了一句总结，**之后 3 秒内** |
-/// | 空闲 `idle` | 其余 |
+/// | 脸 | 信号 | 原固件（AgentTouch main.cpp / host）对应 |
+/// |---|---|---|
+/// | 睡着 `asleep` | 小圆点灰：没连 / 已挂断；**或连着但 bot 不在房间** | `ST_OFF`：agent 没开 → 宠物睡觉 |
+/// | 迷糊找人 `searching` | 小圆点黄、红：正在连 / 断线重试 | `offline`：跟 Mac 断了 → 灰色耷拉眼 |
+/// | 在听你说 `listening` | 你按住说话 | `listening`：按住语音键，压过一切 agent 状态 |
+/// | 等你回话 `waiting` | bot 状态 `wait` 不为空（等你批准或回答） | `ST_NEEDS_YOU` |
+/// | 在说话 `speaking` | 这个房间在出声（**且你没把它静音**） | （原固件没有，借「被摸」那张脸） |
+/// | 在查东西 `working` | bot 状态 `on == true` | `ST_WORKING` |
+/// | 刚干完 `done` | `on` 真→假且带了一句总结，**之后 3 秒内** | `ST_DONE`（原 host 挂 90 秒，见 `doneWindow`） |
+/// | 空闲 `idle` | 其余 | `ST_IDLE`（满 10 分钟会叹气，在 `CCFaceMotion` 里） |
 ///
-/// 两条排序理由：
+/// 排序理由：
 /// - **没连上时其它都不看。** 断线时 `wait` / `on` 是上一次连着时的残值，
-///   拿它画「在查东西」等于把过期的消息当成现况。
+///   拿它画「在查东西」等于把过期的消息当成现况。**bot 不在房间时同理** ——
+///   它的状态属性是走之前留下的；原固件里 agent 没开就是睡着（`ST_OFF`），一样。
+/// - **「在听你说」压过「等你」**（2026-10-05 对照原固件改的；第一版是反过来的）。
+///   原固件 `visualState()` 里 listening 排在所有 agent 状态之前，包括 needs_you。
+///   道理也通：你按住说话时多半就是在回它的话，这时候脸该告诉你「我在听」；
+///   一松手「等你」就回来，不会漏。
 /// - **「等你」排在「在说话」前面** —— 那是唯一需要你动手的状态，
 ///   bot 一边念一边等你批准时，念的内容你可以晚点听，批准不能漏。
 ///
@@ -35,10 +40,18 @@ nonisolated public enum CCFaceMood: String, Sendable, Equatable, CaseIterable {
     case asleep, searching, waiting, listening, speaking, working, done, idle
 
     /// 「刚干完」那张笑脸挂多久。**这是唯一的旋钮**，测试只钉区间不钉值。
+    ///
+    /// ⚠️ 跟原固件**有意不同**：AgentTouch 的 host 在 Stop 之后挂 90 秒 done
+    /// （`agentpet_host.py` `DONE_LINGER = 90`）。我们用 3 秒是 Chris 批的方案
+    /// （`ios-bot-face-plan-20261005`：「三秒后回空闲」）—— 板子是桌上的一块常亮小屏，
+    /// 90 秒的笑脸是「你回头瞥一眼就知道它干完了」；手机 app 里这张脸旁边还有总结文字和叮声，
+    /// 用不着挂那么久。
     public static let doneWindow: TimeInterval = 3
 
     /// - Parameters:
     ///   - presence: 在线小圆点（`CCRooms.presence(for:)`）。
+    ///   - botPresent: bot 在不在房间（`CCRoomSlot.botPresent`）。橙点同时代表「bot 不在」
+    ///     和「网差」两件事，脸要分开：bot 不在 ＝ 睡着，网差 ＝ 照常。
     ///   - wait: bot 状态里的 `wait`；没收到过状态传空串。
     ///   - on: bot 状态里的 `on`；没收到过状态传 false。
     ///   - holding: 你正按住说话。
@@ -48,6 +61,7 @@ nonisolated public enum CCFaceMood: String, Sendable, Equatable, CaseIterable {
     ///   - now: **由调用方传入** —— 不读系统时钟，测试才能把边界钉死。
     public static func derive(
         presence: CCPresenceDot,
+        botPresent: Bool,
         wait: String,
         on: Bool,
         holding: Bool,
@@ -59,12 +73,13 @@ nonisolated public enum CCFaceMood: String, Sendable, Equatable, CaseIterable {
         switch presence {
         case .off: return .asleep
         case .connecting, .retrying: return .searching
-        // 橙点（连着但 bot 不在 / 网差）**照常往下判**：它还是连着的，
-        // bot 状态也是新鲜的。网差这件事小圆点已经在说了，脸不用再说一遍。
+        // 橙点里「网差」那一半**照常往下判**：它还是连着的，bot 状态也是新鲜的，
+        // 网差这件事小圆点已经在说了，脸不用再说一遍。「bot 不在」那一半看下一行。
         case .degraded, .online: break
         }
-        if !wait.isEmpty { return .waiting }
+        if !botPresent { return .asleep }
         if holding { return .listening }
+        if !wait.isEmpty { return .waiting }
         if speaking && !muted { return .speaking }
         if on { return .working }
         if let f = finishedAt, isWithinDoneWindow(finishedAt: f, now: now) { return .done }

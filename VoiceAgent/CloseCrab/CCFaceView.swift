@@ -62,6 +62,7 @@ struct CCSlotFace: View {
         let snap = slot.botStatus.snap
         return CCFaceMood.derive(
             presence: presence,
+            botPresent: slot.botPresent,
             wait: snap?.wait ?? "",
             on: snap?.on ?? false,
             holding: slot.micPolicy.isHolding,
@@ -138,8 +139,7 @@ final class CCFaceClock {
     func enter(_ m: CCFaceMood, skin s: CCFaceSkin, t: Double, seed: UInt64) {
         guard m != mood || s != skin else { return }
         if let old = mood, s == .grok, skin == .grok {
-            grokFrom = CCFaceMotion.grokExpression(look: CCFaceLook.from(old), since: since, t: t,
-                                                   seed: seed, enteredFrom: grokFrom).to
+            grokFrom = CCFaceMotion.grokShowing(mood: old, since: since, t: t, seed: seed, grokFrom: grokFrom)
         } else {
             grokFrom = nil
         }

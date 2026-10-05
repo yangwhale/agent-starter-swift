@@ -5,7 +5,7 @@
 //      进入状态后不久先眨一次（lo·0.4 … hi·0.6）；胶囊皮肤干活时 3–6 s 眨，grok 干活不眨；
 //   ② 扫视：左 -14 停、右 +12 停、回正，3.8 s 一圈；
 //   ③ 表情池：进入时 V0、绝不连着两次同一张、间隔按表（needs 至少 3 s）、180 ms 过渡；
-//   ④ grok：池子第一张进场、阻尼弹簧 ω=2π·3.5、ζ=0.72（约 3.8% 过冲）、眨眼绕质心压扁；
+//   ④ grok：池子第一张进场、阻尼弹簧 ω=2π·3.5、ζ=0.72 按原固件 30 fps 半隐式欧拉推（约 1.6% 过冲）、眨眼绕质心压扁；
 //   ⑤ 眼睛下沿固定在 271（换状态、眨眼只动上眼皮）；
 //   ⑥ 减弱动态效果：画面不随时间变（只换形状）；小尺寸不画心情道具，但皮肤头饰照画；
 //   ⑦ 头饰坐标逐字对原固件；颜色不搬（材质用柱子那块金属），层次变成遮罩不透明度；
@@ -278,9 +278,16 @@ do {
 // MARK: - ④ grok
 
 check("⭐ 弹簧 ω = 2π·3.5、ζ = 0.72", close(F.springOmega, 2 * .pi * 3.5) && F.springZeta == 0.72)
-check("弹簧从 0 开始、初速 0", F.spring(0) == 0 && F.spring(0.001) < 0.01)
-let peak = (1..<800).map { F.spring(Double($0) * 0.001) }.max()!
-check("⭐ 弹簧有一点过冲（约 3.8%）", peak > 1.02 && peak < 1.06, "\(peak)")
+check("还没换表情时进度是 0", F.spring(-0.001) == 0 && F.spring(-5) == 0)
+// 原固件换表情的那一帧里就接着积分了距上一帧的 33 ms（3 个 11 ms 子步），所以一换就已经走了一截
+check("⭐ 换的那一帧已经推进了一帧（33 ms、3 个子步）", close(F.springTable[1], 0.2621, 0.001) && F.spring(0) == F.springTable[1],
+      "\(F.springTable[1])")
+let peak = (0..<800).map { F.spring(Double($0) * 0.001) }.max()!
+// 半隐式欧拉离散化后的过冲（解析解是 3.8% —— 板子上看到的不是那条）
+check("⭐ 弹簧过冲约 1.6%（原固件 30 fps 欧拉积分，不是解析解的 3.8%）", peak > 1.012 && peak < 1.02, "\(peak)")
+let snapK = F.springTable.firstIndex(of: 1) ?? -1
+check("⭐ 弹簧第 11 帧贴死到 1（> 0.999 且速度 < 0.05）", snapK == 11, "\(snapK)")
+check("表是 30 fps 一格", F.springFrame == 0.033)
 check("弹簧最终落定在 1", F.spring(0.8) == 1 && F.spring(5) == 1)
 check("弹簧 280 ms 左右过半程很久", F.spring(0.28) > 0.9)
 check("弹簧连续（接缝处也连续）", (1..<1000).allSatisfy { abs(F.spring(Double($0) * 0.001) - F.spring(Double($0 - 1) * 0.001)) < 0.05 })
@@ -332,6 +339,53 @@ do {
         let c0 = open.map(\.y).reduce(0, +) / 48 - scene(.idle, .grok, t: t + 0.4).gazeY
         check("⭐ grok 眨眼绕质心（质心 y 不动）", abs(c1 - c0) < 0.01, "\(c1) vs \(c0)")
     } else { check("grok 眨过眼", false) }
+}
+
+// MARK: - ④b 没人理（原固件 main.cpp「lonely sighs」：空闲 10 分钟后每 2–5 分钟叹一次，每次 4.5 s）
+
+do {
+    check("⭐ 空闲不满 10 分钟不会没人理", (0..<600).allSatisfy { scene(.idle, t: T0 + Double($0)).look == .idle })
+    // 扫两小时（跨一个重放窗口），1 秒步长找每一次「没人理」
+    var starts: [Double] = [], lens: [Double] = []
+    var inEp = false, epStart = 0.0
+    var tt = T0 + 600
+    while tt < T0 + 600 + 7200 {
+        let b = scene(.idle, t: tt).look == .bored
+        if b && !inEp { inEp = true; epStart = tt; starts.append(tt) }
+        if !b && inEp { inEp = false; lens.append(tt - epStart) }
+        tt += 0.25
+    }
+    check("⭐ 第一次叹气在满 10 分钟后 5–60 秒", starts.first.map { $0 - T0 - 600 >= 5 - 0.25 && $0 - T0 - 600 <= 60 + 0.25 } ?? false,
+          "\(starts.first.map { $0 - T0 } ?? -1)")
+    check("⭐ 每次 4.5 秒（boredUntil = now + 4500）", !lens.isEmpty && lens.allSatisfy { abs($0 - 4.5) <= 0.25 + 1e-9 }, "\(lens.prefix(5))")
+    let gaps = zip(starts.dropFirst(), starts).map { $0 - $1 }
+    check("⭐ 叹气间隔 2–5 分钟（跨重放窗口的那一次也不短于 2 分钟、不长于 10 分钟）",
+          gaps.count >= 20 && gaps.allSatisfy { $0 >= 120 - 0.25 && $0 <= 600 + 0.25 }
+          && gaps.filter { $0 <= 300 + 0.25 }.count >= gaps.count - 2, "\(gaps.min() ?? 0) … \(gaps.max() ?? 0)")
+    for m in [CCFaceMood.asleep, .searching, .waiting, .listening, .speaking, .working] {
+        check("⭐ 只有空闲会没人理：\(m) 挂两小时也不会", stride(from: 600.0, to: 7800, by: 7).allSatisfy {
+            scene(m, t: T0 + $0).look == CCFaceLook.from(m) })
+    }
+    if let s0 = starts.first {
+        let ep = scene(.idle, t: s0 + 1)
+        check("没人理时画沉眼皮＋省略号", ep.hasProps && ep.prims.contains { if case .rect(_, _, 3, 3, _) = $0 { return true }; return false })
+        // 一次「没人理」就是一次换状态：表情池回到 V0，叹完回到空闲也是
+        let r = F.resolve(look: .idle, since: T0, t: s0 + 0.5, seed: seedA, grokFrom: nil)
+        check("⭐ 叹气那一段从它自己开始算（since ＝ 起点）", r.look == .bored && abs(r.since - s0) < 0.25 + 1e-9)
+        let after = F.resolve(look: .idle, since: T0, t: s0 + 10, seed: seedA, grokFrom: nil)
+        check("⭐ 叹完回到空闲也重新算（since ＝ 叹完那一刻）", after.look == .idle && abs(after.since - (r.since + 4.5)) < 1e-9)
+        check("叹气开头是 bored 的 V0", F.variant(look: .bored, since: r.since, t: r.since + 0.01, seed: seedA).index == 0)
+        // grok：从空闲那张变到 bored 池子第一张
+        let gFrom = r.grokFrom
+        check("⭐ grok 叹气时从空闲当时那张表情变过去", gFrom != nil && g(.idle).pool.contains(gFrom!))
+        let gs = scene(.idle, .grok, t: s0 + 1)
+        check("grok 叹气时是 bored 的表情", gs.grokExpr.map { g(.bored).pool.contains($0) } ?? false)
+    }
+    // 换心情那一刻记下的 grok 表情，要算上「没人理」
+    if let s0 = starts.first {
+        let shown = F.grokShowing(mood: .idle, since: T0, t: s0 + 1, seed: seedA, grokFrom: nil)
+        check("⭐ 叹气中途换心情：记下的是 bored 那张", g(.bored).pool.contains(shown))
+    }
 }
 
 // MARK: - ⑤ 眼睛下沿固定
@@ -473,7 +527,10 @@ check("⭐ 干活满 3 分钟后、每 25 秒那一下出汗（彩蛋）", scene
 let q = scene(.waiting, t: T0, reduce: true).prims.compactMap { p -> Double? in
     if case let .rect(x, _, w, _, c) = p, c == CCFaceInk.eye, w == 5 { return x }; return nil
 }
-check("⭐ 问号是 5 倍点阵（9 个点）、从 x=362 起", q.min() == 362 && q.count == 9)
+// glcdfont 的 '?'（02 01 59 09 06）一共 10 个点；第一版手画少了第 4 行那一格（9 个点）
+check("⭐ 问号是 5 倍点阵（glcdfont 的 10 个点）、从 x=362 起", q.min() == 362 && q.count == 10)
+let dots = F.dot
+check("⭐ 省略号的点在第 3、4 列（glcdfont '.' = 00 00 60 60 00）", dots[5] == "..##." && dots[6] == "..##.")
 check("睡着画 zz", scene(.asleep, t: T0).hasProps)
 check("睡着是两条 64×10 横条", scene(.asleep, t: T0, reduce: true).prims.filter {
     if case let .roundRect(_, _, w, h, _, _) = $0 { return w == 64 && h == 10 }; return false
