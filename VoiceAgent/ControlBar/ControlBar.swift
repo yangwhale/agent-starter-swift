@@ -163,8 +163,10 @@ struct ControlBar: View {
             return Button {
                 CCAudioSessionPolicy.shared.setHeadsetControl(!on)
             } label: {
-                // 开：耳机；关：混音的小喇叭 —— 形状不同，不只靠高亮区分。
-                Image(systemName: on ? "airpods" : "speaker.wave.2.fill")
+                // 播放三角：亮 ＝ 用系统播放控件（锁屏卡片＋耳机按键），灰 ＝ 不用。
+                // ⚠️ 别用喇叭：旁边「从哪儿播」那颗就是喇叭，Chris 10-05 说两颗太像。
+                Image(systemName: on ? "play.circle.fill" : "play.circle")
+                    .foregroundStyle(on ? Color.fg1 : Color.fg4)
                     .frame(width: Constants.buttonWidth, height: Constants.buttonHeight)
                     .contentShape(Rectangle())
                     .glassEffect(.identity.interactive(), in: .capsule)
@@ -177,7 +179,7 @@ struct ControlBar: View {
                     borderColor: .separator1
                 )
             )
-            .accessibilityLabel(Text(verbatim: on ? "耳机控制：开（音频独占）" : "耳机控制：关（混音）"))
+            .accessibilityLabel(Text(verbatim: on ? "系统播放控件：开（锁屏卡片、耳机按键可用，音频独占）" : "系统播放控件：关（混音）"))
         }
     #endif
 
