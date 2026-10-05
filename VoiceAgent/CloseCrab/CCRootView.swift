@@ -672,7 +672,18 @@ private struct CCShell: View {
     private func errors() -> some View {
         #if !os(visionOS)
             VStack(spacing: CC.Space.tight) {
-                if let error = active.connectionError, !active.isConnected {
+                // 断线后 app 在自己重试（`CCRooms.retryStatus`）：前几次只显示一行安静的
+                // 「正在重连」，试了一阵还不行才亮红条（`CCReconnectPolicy.showsError`）。
+                if !active.isConnected, let retry = rooms.retryStatus[active.name] {
+                    if CCReconnectPolicy.showsError(failures: retry.failures), let error = active.connectionError {
+                        ErrorView(error: error, room: active.name,
+                                  retryNote: reconnectLine(retry, prefix: "还在自动重试")) {
+                            active.session.dismissError()
+                        }
+                    } else {
+                        reconnectingPill(retry)
+                    }
+                } else if let error = active.connectionError, !active.isConnected {
                     ErrorView(error: error, room: active.name) { active.session.dismissError() }
                 }
 
@@ -689,6 +700,31 @@ private struct CCShell: View {
             // 怀疑自己看错了，滑走才读得出「刚才那个问题解决了」。
             .ccAnimation(CC.Motion.snap, value: active.isConnected)
         #endif
+    }
+
+    /// 「第 N 次，X 秒后」。倒计时靠外面那层 `TimelineView` 每秒重算。
+    private func reconnectLine(_ r: (failures: Int, nextAt: Date), prefix: String, now: Date = .now) -> String {
+        let left = max(0, Int(r.nextAt.timeIntervalSince(now).rounded(.up)))
+        return left > 0 ? "\(prefix)：第 \(r.failures + 1) 次，\(left) 秒后" : "\(prefix)：第 \(r.failures + 1) 次，正在连…"
+    }
+
+    /// 安静的重连提示：一行小字加转圈，不用红色 —— 这是「正在处理」，不是「出事了」。
+    private func reconnectingPill(_ r: (failures: Int, nextAt: Date)) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            HStack(spacing: CC.Space.tight) {
+                ProgressView()
+                    #if !os(macOS)
+                        .controlSize(.small)
+                    #endif
+                Text(verbatim: "\(active.name) " + reconnectLine(r, prefix: "正在重连", now: ctx.date))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.fg2)
+            }
+            .padding(.horizontal, 3 * .grid)
+            .padding(.vertical, 1.5 * .grid)
+            .background(.bg2, in: Capsule())
+            .safeAreaPadding(4 * .grid)
+        }
     }
 
     // MARK: - 样式

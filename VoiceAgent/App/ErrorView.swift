@@ -6,6 +6,8 @@ struct ErrorView: View {
     /// 哪个房间出的错。多房间之后「出错了」三个字不够用 ——
     /// 屏幕上同时挂着四个房间，不说是谁，这条提示等于没说。
     var room: String? = nil
+    /// app 还在后台自动重试时补一句（「还在自动重试：第 N 次，X 秒后」）。
+    var retryNote: String? = nil
     let onDismiss: () -> Void
 
     var body: some View {
@@ -27,14 +29,11 @@ struct ErrorView: View {
                 .font(.system(size: 15))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            // 「Connection failed: Timed out」对着用户是句废话 —— 它不说
-            // 该怎么办，也不说要不要紧。补一句人话。
-            //
-            // 判据是**匹配错误正文里的关键词**，不是错误码：SDK 把底层错误
-            // 包了两层，到这儿只剩 localizedDescription 这一个可用的信号。
-            // 匹配不上就不加这一行，不硬凑。
-            if error.localizedDescription.localizedCaseInsensitiveContains("timed out") {
-                Text(verbatim: "多半是同时连好几个房间时挤在一起了。在房间抽屉里少勾两个，或者下拉重连一次。")
+            // ⛔ 这里原来对「timed out」补一句「多半是同时连好几个房间挤在一起了」。
+            //    2026-10-05 那次真因是 jarvis 正在重启，这句话把人往错的方向带 ——
+            //    **猜不准的原因不如不说**。现在只说事实：app 还在不在自己重试。
+            if let retryNote {
+                Text(verbatim: retryNote)
                     .font(.system(size: 13))
                     .opacity(0.85)
                     .frame(maxWidth: .infinity, alignment: .leading)

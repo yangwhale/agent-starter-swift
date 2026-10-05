@@ -496,6 +496,9 @@ final class CCRooms {
     /// 每个房间最多一条重连循环。带个 id —— `kick()` 会换掉旧循环，
     /// 旧循环收尾时只能清自己那一格，不能把新换上的清掉。
     private var reconnectTasks: [String: (id: UUID, task: Task<Void, Never>)] = [:]
+    /// 每个房间的重连进度：已经失败几次、下一次什么时候试。界面拿它显示「正在重连」。
+    /// 循环结束（连上 / 挂断 / 房间移除）时清掉。
+    private(set) var retryStatus: [String: (failures: Int, nextAt: Date)] = [:]
     /// 网络从「没有」变成「有」的那一刻立刻重连，不等退避。
     private let pathMonitor = NWPathMonitor()
     private var pathSatisfied = true
@@ -673,6 +676,7 @@ final class CCRooms {
                 guard let self, let slot, self.slots.contains(where: { $0 === slot }) else { break }
                 if !(immediate && attempt == 0) {
                     let wait = CCReconnectPolicy.delay(attempt: attempt)
+                    self.retryStatus[name] = (attempt, Date().addingTimeInterval(wait))
                     print("[CCReconnect] \(name) \(Int(wait)) 秒后第 \(attempt + 1) 次重连")
                     try? await Task.sleep(for: .seconds(wait))
                     if Task.isCancelled { break }
@@ -691,7 +695,10 @@ final class CCRooms {
                 attempt += 1
             }
             // 只清自己那一格：`kick()` 可能已经换上了新循环。
-            if let self, self.reconnectTasks[name]?.id == id { self.reconnectTasks[name] = nil }
+            if let self, self.reconnectTasks[name]?.id == id {
+                self.reconnectTasks[name] = nil
+                self.retryStatus[name] = nil
+            }
         }
         reconnectTasks[name] = (id, task)
     }
@@ -709,6 +716,7 @@ final class CCRooms {
     private func cancelReconnect(_ name: String) {
         reconnectTasks[name]?.task.cancel()
         reconnectTasks[name] = nil
+        retryStatus[name] = nil
     }
 
     /// 「现在很可能连得上」—— 回前台、网络恢复时调。

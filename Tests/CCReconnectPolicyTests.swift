@@ -61,5 +61,15 @@ check("⭐ SDK 自己在重连（isConnected 仍 true）时 app 不插手",
 check("已有一次连接在路上时不重复发起",
       !P.shouldRetry(wantConnected: true, isConnected: false, inFlight: true))
 
+// MARK: - 红条什么时候亮
+
+check("⭐ 第一次失败不亮红条", !P.showsError(failures: 0))
+check("⭐ 安静期吃得下一次 bot 重启（前几次等待合计 ≥10 秒）",
+      (0..<P.quietAttempts).map { P.delay(attempt: $0) }.reduce(0, +) >= 10)
+check("⭐ 安静期不超过 1 分钟（真坏了要让人知道）",
+      (0..<P.quietAttempts).map { P.delay(attempt: $0) }.reduce(0, +) <= 60)
+check("安静期边界：第 quietAttempts 次失败起亮红条", P.showsError(failures: P.quietAttempts))
+check("安静期边界：前一次不亮", !P.showsError(failures: P.quietAttempts - 1))
+
 print(failed == 0 ? "✓ \(passed) 条全过" : "✗ \(failed) 条失败 / \(passed) 条通过")
 exit(failed == 0 ? 0 : 1)

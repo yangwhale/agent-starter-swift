@@ -31,6 +31,19 @@ public enum CCReconnectPolicy {
         return delays[min(attempt, delays.count - 1)]
     }
 
+    /// 前几次重试**不亮红条**，只显示一行安静的「正在重连」。
+    ///
+    /// Chris 2026-10-05 截图：jarvis 那边正好在重启，app 一连就超时，屏幕上挂一条
+    /// 红色「jarvis 连不上」—— 而 app 其实正在后台自己重试，几秒后就会好。
+    /// 红条只该留给「试了一阵还不行、需要人看一眼」的情况。
+    /// 前 4 次的等待合计 1+2+4+8 = 15 秒（再加每次连接本身的超时），够吃掉一次 bot 重启。
+    public static let quietAttempts = 4
+
+    /// 已经失败 `failures` 次（从 0 起）时，界面该不该亮红条。
+    public static func showsError(failures: Int) -> Bool {
+        failures >= quietAttempts
+    }
+
     /// 该不该再试一次。
     ///
     /// - `wantConnected`：用户的意图 —— 按过「开始」且没按「挂断」。
