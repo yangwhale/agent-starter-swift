@@ -27,11 +27,15 @@ struct ControlBar: View {
             if voiceEnabled {
                 audioControls()
                 flexibleSpacer()
-                // 「从哪儿播」——抄 Discord 的作业，用系统路由选择器。
-                // 放在麦克风旁边：输入输出挨着，不用满屏找。
-                outputControls()
-                flexibleSpacer()
                 #if os(iOS)
+                    // 「从哪儿播」——抄 Discord 的作业，用系统路由选择器。
+                    // 放在麦克风旁边：输入输出挨着，不用满屏找。
+                    //
+                    // ⚠️ **只在 iOS 上放进来**：macOS 上 `CCAudioOutputButton` 是 EmptyView，
+                    //    但外面那层 `.frame(width:)` 还占着 44pt，再加一个间隔 ——
+                    //    Mac 控制栏三颗按钮的间距就一宽一窄（Chris 2026-10-05 截图）。
+                    outputControls()
+                    flexibleSpacer()
                     headsetControlButton()
                     flexibleSpacer()
                 #endif
