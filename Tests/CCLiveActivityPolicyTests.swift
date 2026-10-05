@@ -241,6 +241,10 @@ check("⭐ 找网络时不用残值", P.headline(mood: .searching, snapHeadline:
 check("在查东西 ⇒ 用 bot 状态那句", P.headline(mood: .working, snapHeadline: "跑 Q10 验收") == "跑 Q10 验收")
 check("等你 ⇒ 用 bot 状态那句", P.headline(mood: .waiting, snapHeadline: "要批准 rm -rf？") == "要批准 rm -rf？")
 check("没收到过状态 ⇒ 用脸的说法", P.headline(mood: .idle, snapHeadline: nil) == CCFaceMood.idle.spoken)
+check("⭐ 在说话 ⇒ 写「在说话」，不用 bot 状态那句「空闲」",
+      P.headline(mood: .speaking, snapHeadline: "空闲") == CCFaceMood.speaking.spoken)
+check("⭐ 在听你说 ⇒ 用脸的说法", P.headline(mood: .listening, snapHeadline: "空闲") == CCFaceMood.listening.spoken)
+check("空闲 ⇒ 用脸的说法（不吃残留的旧动作）", P.headline(mood: .idle, snapHeadline: "在读文件") == CCFaceMood.idle.spoken)
 check("状态是空白 ⇒ 用脸的说法", P.headline(mood: .working, snapHeadline: "  \n ") == CCFaceMood.working.spoken)
 check("首尾空白去掉", P.headline(mood: .working, snapHeadline: "  读文件 \n") == "读文件")
 let long = String(repeating: "查", count: 200)

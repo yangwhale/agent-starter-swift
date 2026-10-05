@@ -217,9 +217,14 @@ nonisolated enum CCLiveActivityPolicy {
     /// 睡着 / 找网络时**不用 bot 状态** —— 那是断线前的残值，跟脸的规则一样
     /// （`CCFaceMood.derive` 没连上时不看 `wait` / `on`）。脸写着「睡着了」、
     /// 底下却写着「在读某某文件」，看的人会信后者。
+    ///
+    /// **在说话 / 在听你说 / 空闲 也用脸的说法，不用 bot 状态**（Chris 2026-10-05 截图：
+    /// 脸是笑眼在说话，底下却一直写「空闲」）。bot 状态只描述「这个回合在不在干活」：
+    /// 回合一结束它就回「空闲」，而语音是回合结束**之后**才开始播的 —— 所以说话的那一整段
+    /// bot 状态都是「空闲」。只有「在查东西」「等你」这两种，bot 状态那句才比脸说得具体。
     static func headline(mood: CCFaceMood, snapHeadline: String?) -> String {
         switch mood {
-        case .asleep, .searching:
+        case .asleep, .searching, .speaking, .listening, .idle:
             return mood.spoken
         default:
             let h = (snapHeadline ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
