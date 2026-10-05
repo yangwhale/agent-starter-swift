@@ -56,10 +56,10 @@ struct CCLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack(spacing: 8) {
+                    VStack(spacing: 8) {
                         if !stale { CCActivityControls(state: shown) }
-                        Spacer(minLength: 0)
                         CCActivityPeers(peers: shown.peers)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                 }
             } compactLeading: {
@@ -88,27 +88,32 @@ struct CCActivityLockScreen: View {
 
     private var shown: CCLiveActivityState { stale ? state.staleVersion : state }
 
+    // 布局：上面「脸 ＋ 名字状态 ＋ 计时」，下面**两颗占满宽度的大按钮**。
+    // Chris 2026-10-05：「主要操作就是重播、暂停／恢复这两件事，做成大按钮。」
+    // 锁屏上按的是一只拇指，小胶囊按钮（原来 caption 字、5pt 内边距）很难按准。
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            CCActivityFace(state: shown, side: 60)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text(shown.room)
-                        .font(.headline)
-                        .lineLimit(1)
-                    CCActivityDot(dot: shown.dot, size: 8)
-                    Spacer(minLength: 4)
-                    if !stale { CCActivityTimer(state: shown, font: .headline) }
+        VStack(spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                CCActivityFace(state: shown, side: 52)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(shown.room)
+                            .font(.headline)
+                            .lineLimit(1)
+                        CCActivityDot(dot: shown.dot, size: 8)
+                        Spacer(minLength: 4)
+                        if !stale { CCActivityTimer(state: shown, font: .headline) }
+                    }
+                    Text(shown.statusLine)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .lineLimit(2)
                 }
-                Text(shown.statusLine)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(2)
-                HStack(spacing: 8) {
-                    if !stale { CCActivityControls(state: shown) }
-                    Spacer(minLength: 0)
-                    CCActivityPeers(peers: shown.peers)
-                }
+            }
+            if !stale { CCActivityControls(state: shown) }
+            if !shown.peers.isEmpty {
+                CCActivityPeers(peers: shown.peers)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .foregroundStyle(.white)
@@ -176,25 +181,26 @@ struct CCActivityControls: View {
     let state: CCLiveActivityState
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Button(intent: CCLiveActivityToggleIntent(room: state.room)) {
-                pill(state.isPlaying ? "暂停" : "继续",
-                     systemImage: state.isPlaying ? "pause.fill" : "play.fill")
+                big(state.isPlaying ? "暂停" : "继续",
+                    systemImage: state.isPlaying ? "pause.fill" : "play.fill")
             }
             .buttonStyle(.plain)
             Button(intent: CCLiveActivityReplayIntent(room: state.room)) {
-                pill("重播", systemImage: "arrow.counterclockwise")
+                big("重播", systemImage: "arrow.counterclockwise")
             }
             .buttonStyle(.plain)
         }
     }
 
-    private func pill(_ title: String, systemImage: String) -> some View {
+    /// 大按钮：两颗平分整行，高 48pt（远大于 44pt 的最小可点区域），图标 ＋ 字。
+    private func big(_ title: String, systemImage: String) -> some View {
         Label(title, systemImage: systemImage)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(.white.opacity(0.18)))
+            .font(.title3.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
+            .contentShape(Rectangle())
     }
 }
 
