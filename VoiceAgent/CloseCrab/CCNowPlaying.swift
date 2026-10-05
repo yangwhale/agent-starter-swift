@@ -117,6 +117,14 @@
         /// 交替说话时来回跳，而你捏耳机想控制的永远是你正在听的那个。
         func attach(_ remote: CCPlaybackRemote?, room: String) {
             wireIfNeeded()
+            // 开关关着（混音模式）：wireIfNeeded 刚把命令全 enable 了，按回去，
+            // 否则 app 一启动锁屏上又冒出那张空白卡片。
+            if !CCAudioSessionPolicy.shared.headsetControl {
+                target = remote
+                self.room = room
+                setSystemControls(false)
+                return
+            }
             target = remote
             self.room = room
             // 换了房间就立刻按新房间的状态重画一次，别让卡片停在上一个房间上。
@@ -186,6 +194,26 @@
         /// 交还卡片。断开连接、或者这个房间彻底没东西可播时调。
         func clear() {
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        }
+
+        /// 「系统播放控件」开关。关的时候**光清 nowPlayingInfo 不够**：
+        ///
+        /// Chris 2026-10-05 截图：关掉开关后锁屏上还挂着一张空白播放卡片
+        /// （没标题、`--:--`，按钮还能按），重启 app 才消失。因为远程命令
+        /// （播放 / 暂停 / 下一首…）还是 enabled、处理器也还挂着 —— 系统据此
+        /// 认为我们仍是「可被控制的播放 app」，就留着那张卡。
+        /// 所以关：清信息 ＋ 把注册过的命令全部 disable；开：重新 enable，
+        /// 下一次进度轮询的 `publish` 会把卡片画回来。
+        func setSystemControls(_ on: Bool) {
+            if on { wireIfNeeded() }
+            let c = MPRemoteCommandCenter.shared()
+            for cmd in [c.togglePlayPauseCommand, c.playCommand, c.pauseCommand,
+                        c.stopCommand, c.nextTrackCommand,
+                        c.skipForwardCommand, c.skipBackwardCommand] {
+                cmd.isEnabled = on
+            }
+            c.previousTrackCommand.isEnabled = false   // 一直关着，见 wireIfNeeded
+            if !on { clear() }
         }
 
         // MARK: - 注册处理器

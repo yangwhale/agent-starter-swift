@@ -213,8 +213,9 @@ final class CCAudioSessionPolicy {
         CCStore.headsetControl = on
         observer.setHeadsetControl(on)
         #if os(iOS)
-            // 关的时候锁屏卡片当场撤掉；开的时候不用管 —— 在播时每秒一次的进度轮询会把它画回来。
-            if !on { CCNowPlaying.shared.clear() }
+            // 关：撤卡片 ＋ 禁掉远程命令（只清信息的话系统会留一张空白卡，见 setSystemControls）。
+            // 开：重新启用，在播时的进度轮询会把卡片画回来。
+            CCNowPlaying.shared.setSystemControls(on)
         #endif
         log("耳机控制 → \(on ? "开（独占）" : "关（混音）")")
     }
