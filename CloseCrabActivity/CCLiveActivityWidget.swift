@@ -42,19 +42,16 @@ struct CCLiveActivityWidget: Widget {
                     CCActivityFace(state: shown, side: 44)
                         .padding(.leading, 4)
                 }
-                DynamicIslandExpandedRegion(.trailing) {
-                    // 自己的点在上，其他房间只画点（展开态横向放不下名字）。
-                    VStack(alignment: .trailing, spacing: 4) {
-                        CCActivityDot(dot: shown.dot, size: 8)
-                        CCActivityPeerDots(peers: shown.peers)
-                    }
-                    .padding(.trailing, 4)
-                }
+                // 右上角不放东西：岛的圆角很大，原来那列小圆点（自己 ＋ 其他房间）
+                // 被切掉一半（Chris 2026-10-06 截图）。在线点挪到名字前面，其他房间只在锁屏卡片上显示。
                 DynamicIslandExpandedRegion(.center) {
                     VStack(spacing: 2) {
-                        Text(shown.room)
-                            .font(.headline)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            CCActivityDot(dot: shown.dot, size: 8)
+                            Text(shown.room)
+                                .font(.headline)
+                                .lineLimit(1)
+                        }
                         Text(shown.statusLine)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
@@ -64,10 +61,15 @@ struct CCLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     // 展开态同样有 160pt 上限：中间名字＋状态 ≈64、这里 进度 16 ＋ 6 ＋ 按钮 44 ＝ 66。
+                    // 岛的下沿两角是大圆弧：按钮贴边会被切掉角（同一张截图），
+                    // 所以左右各缩 12pt、按钮矮到 38pt，给下沿留出圆弧的位置。
                     VStack(spacing: 6) {
                         if !stale && shown.playDisplay != .hidden { CCActivityProgress(state: shown) }
                         if !stale { CCActivityActionRow(state: shown) }
                     }
+                    .environment(\.ccActivityButtonHeight, 38)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 4)
                 }
             } compactLeading: {
                 CCActivityFace(state: shown, side: 22)
@@ -218,12 +220,13 @@ struct CCActivityControls: View {
 struct CCActivityBigLabel: View {
     let title: String
     let systemImage: String
+    @Environment(\.ccActivityButtonHeight) private var height
 
     var body: some View {
         Label(title, systemImage: systemImage)
             .font(.headline)
             .lineLimit(1)
-            .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white.opacity(0.18)))
             .contentShape(Rectangle())
     }
@@ -372,5 +375,17 @@ struct CCActivityPeers: View {
             }
         }
         .foregroundStyle(.white.opacity(0.8))
+    }
+}
+
+/// 大按钮高度：锁屏卡片 44pt，灵动岛展开态 38pt（岛下沿是大圆弧，要让出位置）。
+private struct CCActivityButtonHeightKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 44
+}
+
+extension EnvironmentValues {
+    var ccActivityButtonHeight: CGFloat {
+        get { self[CCActivityButtonHeightKey.self] }
+        set { self[CCActivityButtonHeightKey.self] = newValue }
     }
 }
