@@ -85,7 +85,11 @@ struct CCTileNeckView: View {
 ///
 /// 上窄下宽是有意的 —— 视觉上像从方块「淌下来」汇入窗口，
 /// 等宽的直筒看着像一根柱子把两块东西顶开，方向感反了。
-private struct CCTileNeckShape: Shape {
+///
+/// `nonisolated`：工程默认隔离是 MainActor，Xcode 27 起 `Shape` 一致性不再允许
+/// 被推断成主线程隔离（SwiftUI 可能在别的线程算路径）。这里只有纯几何计算，
+/// 不碰任何主线程状态，所以整块声明为非隔离是对的，不是糊过去。
+nonisolated private struct CCTileNeckShape: Shape {
     var centerX: CGFloat
 
     /// 让 `centerX` 可动画。不实现这个的话，切换时颈部是瞬移的，
