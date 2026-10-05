@@ -69,6 +69,7 @@ struct CCSlotFace: View {
             speaking: slot.isSpeaking,
             muted: slot.isMuted,
             finishedAt: slot.botStatus.finishedAt,
+            speechEndedAt: slot.speechEndedAt,
             now: date
         )
     }

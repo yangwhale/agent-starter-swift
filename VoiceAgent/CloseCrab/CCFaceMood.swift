@@ -48,6 +48,15 @@ nonisolated public enum CCFaceMood: String, Sendable, Equatable, CaseIterable {
     /// 用不着挂那么久。
     public static let doneWindow: TimeInterval = 3
 
+    /// 说话停下之后，「在说话」那张脸再挂多久。
+    ///
+    /// Chris 2026-10-05：「你说话一截一截的，它就来回跳。」—— 语音是一句一句合成、
+    /// 一句一句播的，句间有停顿；`isSpeaking` 是服务端按音量做的活跃说话人检测，
+    /// 一停顿就掉成 false，脸就跳回空闲，下一句又跳回来。
+    /// 挂一个宽限把句间停顿吃掉（跟主页面数字人画面那个 1.4 秒宽限同一个思路）。
+    /// 太短吃不掉句间停顿，太长说完了还咧着嘴。
+    public static let speakingHold: TimeInterval = 1.5
+
     /// - Parameters:
     ///   - presence: 在线小圆点（`CCRooms.presence(for:)`）。
     ///   - botPresent: bot 在不在房间（`CCRoomSlot.botPresent`）。橙点同时代表「bot 不在」
@@ -68,6 +77,7 @@ nonisolated public enum CCFaceMood: String, Sendable, Equatable, CaseIterable {
         speaking: Bool,
         muted: Bool,
         finishedAt: Date?,
+        speechEndedAt: Date? = nil,
         now: Date
     ) -> CCFaceMood {
         switch presence {
@@ -80,10 +90,20 @@ nonisolated public enum CCFaceMood: String, Sendable, Equatable, CaseIterable {
         if !botPresent { return .asleep }
         if holding { return .listening }
         if !wait.isEmpty { return .waiting }
-        if speaking && !muted { return .speaking }
+        if (speaking || isWithinSpeakingHold(speechEndedAt: speechEndedAt, now: now)) && !muted {
+            return .speaking
+        }
         if on { return .working }
         if let f = finishedAt, isWithinDoneWindow(finishedAt: f, now: now) { return .done }
         return .idle
+    }
+
+    /// 刚停下的那一句还在宽限里吗：`[speechEndedAt, speechEndedAt + speakingHold)`，左闭右开。
+    /// 时钟往回调（now 早于停下时刻）不算，理由同 `isWithinDoneWindow`。
+    public static func isWithinSpeakingHold(speechEndedAt: Date?, now: Date) -> Bool {
+        guard let e = speechEndedAt else { return false }
+        let dt = now.timeIntervalSince(e)
+        return dt >= 0 && dt < speakingHold
     }
 
     /// `[finishedAt, finishedAt + 3s)` —— 左闭右开。

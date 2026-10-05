@@ -149,6 +149,8 @@ final class CCRoomSlot: Identifiable {
     /// 语义状态优先是有道理的：它表达的是「轮到它了」，比音量早一点点，
     /// 界面反应会显得跟手。旁路那条没有语义状态可用，只能退回音量。
     private(set) var isSpeaking: Bool = false
+    /// 最近一次「停止出声」的时刻。活脸的说话宽限用（`CCFaceMood.speakingHold`）。
+    private(set) var speechEndedAt: Date?
 
     /// 给波形用的**全部** bot 音轨 —— 语音助手的 ＋ 旁路的。
     ///
@@ -266,7 +268,12 @@ final class CCRoomSlot: Identifiable {
         }
 
         let sp = session.ccIsSpeaking
-        if sp != isSpeaking { isSpeaking = sp }
+        if sp != isSpeaking {
+            // 记下「刚停下」的时刻，活脸靠它把句间停顿吃掉（见 `CCFaceMood.speakingHold`）。
+            // 只在 true → false 那一下写 —— 每帧写会让读它的视图白白重算。
+            if isSpeaking && !sp { speechEndedAt = Date() }
+            isSpeaking = sp
+        }
 
         let ph: CCPresencePhase = switch session.room.connectionState {
         case .connecting: .connecting

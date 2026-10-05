@@ -36,9 +36,9 @@ let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
 func mood(_ p: CCPresenceDot = .online, bot: Bool = true, wait: String = "", on: Bool = false,
           hold: Bool = false, speak: Bool = false, muted: Bool = false,
-          doneAt: Date? = nil, now: Date = t0) -> M {
+          doneAt: Date? = nil, ended: Date? = nil, now: Date = t0) -> M {
     M.derive(presence: p, botPresent: bot, wait: wait, on: on, holding: hold, speaking: speak,
-             muted: muted, finishedAt: doneAt, now: now)
+             muted: muted, finishedAt: doneAt, speechEndedAt: ended, now: now)
 }
 
 // MARK: - ⭐ 要害
@@ -179,6 +179,22 @@ nonisolated func readFromNonisolatedContext() -> Int {
     return CCFaceMood.typingDots(runningSubtasks: 0) + (m == .working ? 1 : 0)
 }
 check("能从 nonisolated 上下文调用（编译过就算过）", readFromNonisolatedContext() == 4)
+
+// MARK: - 说话宽限（句间停顿不跳脸）
+
+let hold = M.speakingHold
+check("⭐ 宽限长过一个句间停顿（≥0.8 秒）", hold >= 0.8, "实际 \(hold)")
+check("⭐ 宽限短到说完不会一直咧嘴（≤3 秒）", hold <= 3, "实际 \(hold)")
+check("⭐ 刚停下 0.5 秒仍是说话脸", mood(ended: t0, now: t0 + 0.5) == .speaking)
+check("宽限左闭：停下那一刻仍是说话", mood(ended: t0, now: t0) == .speaking)
+check("宽限右开：满宽限就回空闲", mood(ended: t0, now: t0 + hold) == .idle)
+check("宽限过后在忙就回在查东西", mood(on: true, ended: t0, now: t0 + hold + 0.1) == .working)
+check("宽限内但在忙：说话优先（跟正在出声一致）", mood(on: true, ended: t0, now: t0 + 0.2) == .speaking)
+check("宽限内被静音：不是说话脸", mood(muted: true, ended: t0, now: t0 + 0.2) == .idle)
+check("宽限不压过等你回话", mood(wait: "批准", ended: t0, now: t0 + 0.2) == .waiting)
+check("宽限不压过在听你说", mood(hold: true, ended: t0, now: t0 + 0.2) == .listening)
+check("时钟回拨不算宽限", mood(ended: t0, now: t0 - 1) == .idle)
+check("从没说过话不算宽限", mood(ended: nil) == .idle)
 
 print(failed == 0 ? "✓ \(passed) 条全过" : "✗ \(failed) 条失败 / \(passed) 条通过")
 exit(failed == 0 ? 0 : 1)
