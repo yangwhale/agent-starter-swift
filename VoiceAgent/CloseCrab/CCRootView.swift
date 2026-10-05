@@ -638,6 +638,9 @@ private struct CCShell: View {
 
             GlassEffectContainer(spacing: CC.Space.snug) {
                 VStack(spacing: CC.Space.snug) {
+                    // bot「等你回话」时浮出两颗快捷回复（iOS 竖屏和 Mac / iPad 宽屏共用这条底栏）。
+                    // 放进同一个玻璃容器：出现 / 消失时跟说话条融进融出。
+                    CCQuickReplyBar(slot: active, presence: rooms.presence(for: active))
                     CCTalkBar()
                     ControlBar(chat: $chat)
                 }

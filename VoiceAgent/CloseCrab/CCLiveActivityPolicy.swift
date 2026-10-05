@@ -244,25 +244,7 @@ nonisolated enum CCLiveActivityPolicy {
         truncate(wait.trimmingCharacters(in: .whitespacesAndNewlines), max: alertBodyMax)
     }
 
-    // MARK: - 快捷回复（2026-10-05）
-
-    /// 回复发出后状态行显示「已回复：没问题，请继续」多久（完整原句，不是按钮上的简写）。
-    static let repliedShowFor: TimeInterval = 3
-
-    /// 刚回复过的那句还在显示窗口里吗：`[at, at + 3 秒)`，左闭右开；时钟往回拨不算。
-    /// 在窗口里返回整句状态行（「已回复：没问题，请继续」），否则 nil。
-    static func repliedLine(text: String?, at: Date?, now: Date) -> String? {
-        guard let text, let at else { return nil }
-        let dt = now.timeIntervalSince(at)
-        guard dt >= 0, dt < repliedShowFor else { return nil }
-        return "已回复：\(text)"
-    }
-
-    /// 「已回复」到点要撤下 —— 这不是属性变化，没人通知，得自己定闹钟。窗口外返回 nil。
-    static func repliedRecheck(at: Date?, now: Date) -> Date? {
-        guard let at, repliedLine(text: "", at: at, now: now) != nil else { return nil }
-        return at.addingTimeInterval(repliedShowFor)
-    }
+    // 快捷回复的规则（文字、何时出现、「已回复」多久）在 `CCQuickReply`，跟 app 主界面共用。
 
     // MARK: - 卡片上写什么
 
@@ -319,7 +301,9 @@ nonisolated enum CCLiveActivityPolicy {
         // 子任务数跟状态行同一条规矩：断线时是残值，不显示。
         let live = mood != .asleep && mood != .searching
         // 等你回话：卡片上把暂停 / 重播换成快捷回复。刚回复过（「已回复」还在显示）就先不给，
-        // 免得 bot 还没来得及清掉 wait 时又被按一次。
+        // 免得 bot 还没来得及清掉 wait 时又被按一次。判据跟 app 主界面同一条（`CCQuickReply.display`
+        // 的 `.offer` 分支 ＝ 脸是等你、且不在「已回复」窗口里）—— 调用方传进来的 repliedLine
+        // 就是 `CCQuickReply.repliedLine` 算的。
         let waitTrim = wait.trimmingCharacters(in: .whitespacesAndNewlines)
         let quick = mood == .waiting && repliedLine == nil
         var s = CCLiveActivityState(

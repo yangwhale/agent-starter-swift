@@ -73,6 +73,7 @@
 				CloseCrab/CCLiveActivityState.swift,
 				CloseCrab/CCMetalGlow.swift,
 				CloseCrab/CCPresence.swift,
+				CloseCrab/CCQuickReply.swift,
 				Helpers/CCColorPrimitives.swift,
 			);
 			target = CC1A0000000000000000000B /* CloseCrabActivity */;

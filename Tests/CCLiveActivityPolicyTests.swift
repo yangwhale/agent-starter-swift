@@ -588,20 +588,7 @@ check("等你时带上 wait 原文（去空白）", qs(wait: " 要我继续吗�
 check("不在等你 ⇒ 不带 wait", qs(mood: .working).waitText == nil)
 check("wait 截到 80 字符", qs(wait: longWait).waitText?.count == P.headlineMax)
 check("等你但 wait 是空白 ⇒ waitText 为 nil（按钮照出）", qs(wait: "  ").waitText == nil && qs(wait: "  ").quickReplyShown)
-check("⭐ 发给 bot 的是 Chris 定的两句完整原句", S.quickReplies.map(\.text) == ["没问题，请继续", "按照你的想法来"])
-check("按钮放不下时的简写", S.quickReplies.map(\.short) == ["请继续", "按你的来"])
-check("简写真的更短（否则 ViewThatFits 那一步没意义）", S.quickReplies.allSatisfy { $0.short.count < $0.text.count })
-check("两句都在服务端 1–2000 字范围内", S.quickReplies.allSatisfy { !$0.text.isEmpty && $0.text.count <= 2000 })
-check("两句互不相同（不然两颗按钮一样）", Set(S.quickReplies.map(\.text)).count == 2)
-
-check("⭐ 回复后 0 秒 ⇒ 已回复", P.repliedLine(text: "没问题，请继续", at: t0, now: t0) == "已回复：没问题，请继续")
-check("回复后 2.999 秒 ⇒ 仍显示", P.repliedLine(text: "没问题，请继续", at: t0, now: at(2.999)) != nil)
-check("⭐ 回复后正好 3 秒 ⇒ 撤下", P.repliedLine(text: "没问题，请继续", at: t0, now: at(3)) == nil)
-check("时钟往回拨 ⇒ 不显示", P.repliedLine(text: "没问题，请继续", at: at(10), now: t0) == nil)
-check("没回复过 ⇒ nil", P.repliedLine(text: nil, at: nil, now: t0) == nil)
-check("显示窗口是 3 秒", P.repliedShowFor == 3)
-check("重算时刻 ＝ 回复时刻 ＋ 3 秒", P.repliedRecheck(at: t0, now: at(1)) == at(3))
-check("窗口外不定闹钟", P.repliedRecheck(at: t0, now: at(3)) == nil && P.repliedRecheck(at: nil, now: t0) == nil)
+// 两句原文、「已回复」窗口的规则本身在 CCQuickReplyTests（app 主界面和卡片共用一份 `CCQuickReply`）。
 let rq = qs(replied: "已回复：没问题，请继续")
 check("⭐ 已回复窗口里：状态行换成「已回复：没问题，请继续」", rq.headline == "已回复：没问题，请继续")
 check("⭐ 已回复窗口里：快捷回复先收起（防连按）", !rq.quickReplyShown)
@@ -643,8 +630,7 @@ nonisolated func touchFromNonisolated() -> Int {
     let shown = s.playDisplay == .hidden ? 1 : 0
     let a = P.shouldAlert(previousMood: .working, mood: .waiting, room: "x", wait: "?", lastAlert: nil,
                           appViewingRoom: false, now: Date()) ? 1 : 0
-    let r = (P.repliedLine(text: "a", at: Date(), now: Date()) ?? "").count + P.alertBody(wait: "b").count
-        + (s.quickReplyShown ? 1 : 0) + S.quickReplies.count
+    let r = P.alertBody(wait: "b").count + (s.quickReplyShown ? 1 : 0)
     return a + r + d + s.statusLine.count + s.faceMood.rawValue.count + Int(s.dot.signalHex & 1)
         + (m.isPlaying ? 1 : 0) + shown + S.clock(3).count + Int(S.fraction(played: 1, total: 2) * 2)
 }

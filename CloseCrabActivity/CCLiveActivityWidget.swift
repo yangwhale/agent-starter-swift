@@ -252,12 +252,12 @@ struct CCActivityQuickReplies: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ForEach(CCLiveActivityState.quickReplies, id: \.self) { r in
+            ForEach(CCQuickReply.choices, id: \.self) { r in
                 Button(intent: CCLiveActivityQuickReplyIntent(room: state.room, text: r.text)) {
                     // 先试整句，放不下再用简写 —— 两种同高，换了卡片不跳。
                     ViewThatFits(in: .horizontal) {
-                        CCActivityBigLabel(title: r.text, systemImage: Self.icon(for: r))
-                        CCActivityBigLabel(title: r.short, systemImage: Self.icon(for: r))
+                        CCActivityBigLabel(title: r.text, systemImage: r.symbol)
+                        CCActivityBigLabel(title: r.short, systemImage: r.symbol)
                     }
                 }
                 .buttonStyle(.plain)
@@ -266,12 +266,6 @@ struct CCActivityQuickReplies: View {
                 .accessibilityHint(Text(verbatim: state.waitText.map { "回复 \(state.room)：\($0)" } ?? ""))
             }
         }
-    }
-
-    /// 第一颗「没问题，请继续」打勾，第二颗「按照你的想法来」是交给它定（`hand.thumbsup`）。
-    /// 按位置不按字面，改了措辞图标不会错位。
-    static func icon(for r: CCLiveActivityState.QuickReply) -> String {
-        r == CCLiveActivityState.quickReplies.first ? "checkmark" : "hand.thumbsup"
     }
 }
 

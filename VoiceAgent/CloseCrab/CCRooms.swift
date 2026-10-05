@@ -22,6 +22,9 @@ final class CCRoomSlot: Identifiable {
     /// 遥控服务端那个播放器（bot 说话时那条控制栏）。
     /// **每个房间一份** —— 五个房间各播各的，共用一个就会控错人。
     let playback: CCPlaybackRemote
+    /// 「等你回话」时的快捷回复出口（主界面那两颗按钮、锁屏实时活动共用）。
+    /// **一个槽位一份**：「已回复」记在这里，两处看到的是同一个时刻。
+    let quickReply: CCQuickReplySender
 
     nonisolated var id: String { name }
 
@@ -90,6 +93,7 @@ final class CCRoomSlot: Identifiable {
         // 目标参与者是 `<房间名>-speaker`，名字在这儿就定死了，
         // 不用等连上 —— `CCPlaybackRemote` 每次调用前自己查它在不在。
         playback = CCPlaybackRemote(room: session.room, roomName: name)
+        quickReply = CCQuickReplySender(session: session)
 
         // 把连接的变化转发出去，方块才会自己刷新。
         // 包 `Task { @MainActor }`：sink 的闭包是 nonisolated 的，

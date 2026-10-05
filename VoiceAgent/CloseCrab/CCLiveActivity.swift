@@ -81,8 +81,6 @@
         /// 推出去、或卡片内容已经跟推过的一样（没东西可推了）就清掉 —— 不然一个过期的提醒
         /// 会挂在 10 分钟后那次续期上响出来。
         private var pendingAlert: (title: String, body: String)?
-        /// 刚快捷回复过的那句（状态行显示「已回复：…」3 秒）。
-        private var replied: (room: String, text: String, at: Date)?
 
         /// 替卡片挂着号的那个播放器（`CCPlaybackRemote.acquirePolling`）。
         ///
@@ -146,6 +144,9 @@
             var presence: CCPresenceDot = .off
             var snapHeadline: String?
             var wait = ""
+            /// 刚快捷回复过的那句和时刻（`CCQuickReplySender`，主界面点的也算 —— 一个槽位一份）。
+            var repliedText: String?
+            var repliedAt: Date?
             var on = false
             var sec: Double = 0
             var subs = 0
@@ -191,6 +192,8 @@
                 presence: presence,
                 snapHeadline: snap?.headline,
                 wait: snap?.wait ?? "",
+                repliedText: slot.quickReply.repliedText,
+                repliedAt: slot.quickReply.repliedAt,
                 on: snap?.on ?? false,
                 sec: snap?.sec ?? 0,
                 subs: snap?.subs.run ?? 0,
@@ -291,7 +294,7 @@
                 }
                 if let at = lastPushAt { wakeAt.append(at.addingTimeInterval(CCLiveActivityPolicy.keepAliveAfter)) }
                 if let s = cardStartedAt { wakeAt.append(s.addingTimeInterval(CCLiveActivityPolicy.rolloverAfter)) }
-                if let t = CCLiveActivityPolicy.repliedRecheck(at: replied?.at, now: now) { wakeAt.append(t) }
+                if let t = CCQuickReply.repliedRecheck(at: i.repliedAt, now: now) { wakeAt.append(t) }
             }
             // 提醒没推出去、而卡片已经没东西可推（推过了 / 开卡时直接带进去了 / 没卡）⇒ 作废。
             if activityID == nil || lastPushed == state { pendingAlert = nil }
@@ -328,8 +331,7 @@
                 isActive: i.isActive, isPaused: i.isPaused, played: i.played, total: i.total, fid: i.fid,
                 previous: playMemo?.room == i.room ? playMemo?.mark : nil, now: now)
             playMemo = (i.room, play)
-            let line = replied?.room == i.room
-                ? CCLiveActivityPolicy.repliedLine(text: replied?.text, at: replied?.at, now: now) : nil
+            let line = CCQuickReply.repliedLine(text: i.repliedText, at: i.repliedAt, now: now)
             return CCLiveActivityPolicy.makeState(
                 room: i.room, mood: i.mood, skin: i.skin, presence: i.presence,
                 snapHeadline: i.snapHeadline, runningSubtasks: i.subs, timerStart: start,
@@ -480,13 +482,11 @@
                 print("[CCLiveActivity] 快捷回复：房间 \(room) 不在（app 可能刚被系统拉起，还没连）")
                 return
             }
-            guard await slot.session.send(text: text) != nil else {
-                print("⚠️ [CCLiveActivity] 快捷回复没发出去：\(String(describing: slot.session.error))")
-                return
-            }
-            replied = (room, text, Date())
-            print("[CCLiveActivity] 快捷回复 \(room)：\(text)")
-            sync()
+            // 跟主界面那两颗按钮走同一个出口（`CCQuickReplySender`）：「已回复」的时刻记在槽位上，
+            // 主界面和卡片看到的是同一份 —— 在锁屏上点了，回到 app 也是「已回复」。
+            // 卡片的重算靠观察那两个属性（readInputs 里读了），不用在这里手动 sync。
+            let ok = await slot.quickReply.send(text)
+            print("[CCLiveActivity] 快捷回复 \(room)：\(text) → \(ok ? "已发出" : (slot.quickReply.lastError ?? "失败"))")
         }
     }
 
