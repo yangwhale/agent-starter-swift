@@ -4,6 +4,11 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- 锁屏 / 灵动岛实时活动（扩展 CloseCrabActivity）。Apple 要求宿主 app 声明这一条
+	     才允许开实时活动；漏了的话锁屏上什么都不出（不是崩溃，也不一定有日志）。
+	     macOS / visionOS 上这个键无效。 -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

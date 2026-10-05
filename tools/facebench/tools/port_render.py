@@ -1,6 +1,6 @@
 """facebench: rasterise CCFaceMotion draw lists exactly the way CCFacePainter does.
 
-Mirrors VoiceAgent/CloseCrab/CCFaceView.swift → CCFacePainter.paint / shape():
+Mirrors VoiceAgent/CloseCrab/CCFaceGlyph.swift → CCFacePainter.paint / shape():
   * every prim becomes a Path in 480-space, scaled by side/480;
   * ink → mask alpha via CCFaceMask.alpha (exported alongside each prim);
   * CCFaceMask.replaces(ink): destinationOut with opacity (1 − a)  → dst *= 1 − (1−a)·cov

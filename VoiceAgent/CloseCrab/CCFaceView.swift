@@ -14,6 +14,8 @@ import SwiftUI
 /// - 这一帧长什么样：`CCFaceMotion.scene`（AgentTouch 的移植，纯函数，离线测过）
 /// - 材质：`CCMetal` ＋ `ccMetalGlow` —— **跟声音柱子同一份**（Chris 的要求）
 /// - 这里：每帧取信号 → 算清单 → 画成遮罩 → 金属透过遮罩露出来
+/// - 画成遮罩那一步（`CCFaceGlyph` / `CCFacePainter`）在 `CCFaceGlyph.swift` ——
+///   锁屏实时活动的扩展也要画这张脸，而扩展不链 LiveKit，所以跟这个文件拆开了
 ///
 /// ## 没有自己的底
 ///
@@ -103,27 +105,6 @@ struct CCFacePreview: View {
     }
 }
 
-/// 一帧：金属透过脸形遮罩露出来，再套柱子那三道阴影。
-struct CCFaceGlyph: View {
-    let scene: CCFaceMotion.Scene
-    let tint: Color
-    let side: CGFloat
-
-    var body: some View {
-        // 先取出来再进闭包：Canvas 的绘制闭包在不同 SDK 上的隔离标注不一定一样，
-        // 只捕获 Sendable 的值（清单是纯数据）最稳。
-        let prims = scene.prims
-        CCMetal(tint: tint)
-            .mask {
-                Canvas { ctx, size in
-                    CCFacePainter.paint(&ctx, size: size, prims: prims)
-                }
-            }
-            .frame(width: side, height: side)
-            .ccMetalGlow(tint: tint, glow: CCMetalGlowSpec.faceGlow(side: Double(side)))
-    }
-}
-
 /// 记「进入当前心情的时刻」。眨眼调度、换脸、出汗都从这个时刻算起（见 `CCFaceMotion`）。
 ///
 /// **普通 class，不是 @Observable** —— 它在 body 里被改写，要是可观察的，
@@ -147,94 +128,5 @@ final class CCFaceClock {
         mood = m
         skin = s
         since = t
-    }
-}
-
-/// 绘制清单 → 遮罩。坐标从原屏 480×480 等比缩放到视图里。
-///
-/// `nonisolated`：Canvas 的绘制闭包在新 SDK 上可能不在 MainActor 上跑，
-/// 这里只碰 `GraphicsContext` / `Path` / `Color` 这些值类型，从哪个上下文调都安全。
-nonisolated enum CCFacePainter {
-    static func paint(_ ctx: inout GraphicsContext, size: CGSize, prims: [CCFacePrim]) {
-        let side = min(size.width, size.height)
-        let s = side / 480
-        let tf = CGAffineTransform(a: s, b: 0, c: 0, d: s,
-                                   tx: (size.width - side) / 2, ty: (size.height - side) / 2)
-        // 独立图层：下面的「挖掉」（destinationOut）只作用在这张脸自己画的东西上。
-        ctx.drawLayer { layer in
-            for p in prims {
-                let (path, ink, stroked) = shape(p)
-                let a = CCFaceMask.alpha(ink)
-                let pathT = path.applying(tf)
-                if CCFaceMask.replaces(ink) {
-                    // 改写成不透明度 a：底下（白眼 / 白耳朵）是满的，destinationOut 掉 (1 − a) 就剩 a。
-                    // 切口 a = 0 ＝ 整块挖掉 —— 这就是「眼皮用裁剪实现」。
-                    layer.blendMode = .destinationOut
-                    layer.fill(pathT, with: .color(Color.white.opacity(1 - a)))
-                    layer.blendMode = .normal
-                } else if stroked {
-                    // 原固件是 1 px 细线（猫胡须）；缩小之后至少留 0.6 pt，不然在方块上直接没了。
-                    layer.stroke(pathT, with: .color(Color.white.opacity(a)), lineWidth: max(0.6, 1.5 * s))
-                } else {
-                    layer.fill(pathT, with: .color(Color.white.opacity(a)), style: FillStyle(eoFill: true))
-                }
-            }
-        }
-    }
-
-    /// 一笔 → 路径（480 坐标）。约定跟 Arduino_GFX 一样：y 朝下，角度 0 在三点钟。
-    static func shape(_ p: CCFacePrim) -> (Path, CCFaceInk, Bool) {
-        switch p {
-        case let .roundRect(x, y, w, h, r, ink):
-            let rr = max(0, min(r, w / 2, h / 2))
-            return (Path(roundedRect: CGRect(x: x, y: y, width: w, height: h), cornerRadius: rr, style: .circular), ink, false)
-        case let .rect(x, y, w, h, ink):
-            return (Path(CGRect(x: x, y: y, width: w, height: h)), ink, false)
-        case let .triangle(a, b, c, ink):
-            var path = Path()
-            path.move(to: CGPoint(x: a.x, y: a.y))
-            path.addLine(to: CGPoint(x: b.x, y: b.y))
-            path.addLine(to: CGPoint(x: c.x, y: c.y))
-            path.closeSubpath()
-            return (path, ink, false)
-        case let .circle(cx, cy, r, ink):
-            return (Path(ellipseIn: CGRect(x: cx - r, y: cy - r, width: 2 * r, height: 2 * r)), ink, false)
-        case let .arc(cx, cy, r1, r2, from, to, ink):
-            // 圆环的一段：外弧正着走、内弧倒着回来。逐点采样，不用 addArc ——
-            // addArc 的 clockwise 在 y 朝下的坐标里是反的，写错了弯眼就倒过来成了「∪」。
-            let ro = max(r1, r2), ri = min(r1, r2)
-            let n = 32
-            var path = Path()
-            for k in 0...n {
-                let a = (from + (to - from) * Double(k) / Double(n)) * .pi / 180
-                let pt = CGPoint(x: cx + ro * cos(a), y: cy + ro * sin(a))
-                if k == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
-            }
-            for k in stride(from: n, through: 0, by: -1) {
-                let a = (from + (to - from) * Double(k) / Double(n)) * .pi / 180
-                path.addLine(to: CGPoint(x: cx + ri * cos(a), y: cy + ri * sin(a)))
-            }
-            path.closeSubpath()
-            return (path, ink, false)
-        case let .pill(cx, cy, len, thick, deg, ink):
-            let base = Path(roundedRect: CGRect(x: -len / 2, y: -thick / 2, width: len, height: thick),
-                            cornerRadius: thick / 2, style: .circular)
-            let tf = CGAffineTransform(rotationAngle: deg * .pi / 180)
-                .concatenating(CGAffineTransform(translationX: cx, y: cy))
-            return (base.applying(tf), ink, false)
-        case let .line(a, b, ink):
-            var path = Path()
-            path.move(to: CGPoint(x: a.x, y: a.y))
-            path.addLine(to: CGPoint(x: b.x, y: b.y))
-            return (path, ink, true)
-        case let .polygon(pts, ink):
-            var path = Path()
-            if let f = pts.first {
-                path.move(to: CGPoint(x: f.x, y: f.y))
-                for q in pts.dropFirst() { path.addLine(to: CGPoint(x: q.x, y: q.y)) }
-                path.closeSubpath()
-            }
-            return (path, ink, false)
-        }
     }
 }

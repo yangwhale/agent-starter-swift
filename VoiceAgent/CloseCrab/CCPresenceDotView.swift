@@ -25,13 +25,6 @@ struct CCPresenceDotView: View {
 
     @State private var breathing = false
 
-    private var color: Color {
-        switch dot {
-        case .off: Color(hex: 0x9AA0A6)        // 灰
-        case .retrying: Color(hex: 0xD93025)   // 红
-        case .connecting: Color(hex: 0xF9AB00) // 黄
-        case .degraded: Color(hex: 0xE37400)   // 橙
-        case .online: Color(hex: 0x1E8E3E)     // 绿
-        }
-    }
+    /// 色值在 `CCPresenceDot.signalHex`（锁屏实时活动也用同一份）。
+    private var color: Color { Color(hex: dot.signalHex) }
 }

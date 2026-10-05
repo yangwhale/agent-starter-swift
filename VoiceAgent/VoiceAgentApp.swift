@@ -27,6 +27,10 @@ struct VoiceAgentApp: App {
         let rooms = CCRooms()
         self.rooms = rooms
         CCAvatarLink.shared.attach(rooms: rooms)
+        #if os(iOS) && canImport(ActivityKit)
+        // 锁屏 / 灵动岛实时活动：连上开、挂断关，跟着当前房间走。规则在 `CCLiveActivityPolicy`。
+        CCLiveActivity.shared.attach(rooms: rooms)
+        #endif
 
         // ⭐ **要在连任何房间之前。** SDK 文档明确说
         //    `isAutomaticConfigurationEnabled` 得在连接前设；而且连上的那一刻

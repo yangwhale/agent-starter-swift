@@ -53,6 +53,21 @@ nonisolated public enum CCPresenceDot: String, Sendable, Equatable {
         }
     }
 
+    /// 信号色（sRGB 十六进制）。取 Google Chat / Material 的状态色，浅色深色同一套。
+    ///
+    /// 放在这里（Foundation 层）而不是视图里：app 里的 `CCPresenceDotView` 和
+    /// 锁屏实时活动扩展（不链 LiveKit、不带 app 的资源目录）**都要画这颗点**，
+    /// 颜色只能有一份 —— 两边各写一份的话，迟早一边改了另一边没改。
+    public var signalHex: UInt32 {
+        switch self {
+        case .off: 0x9AA0A6         // 灰
+        case .retrying: 0xD93025    // 红
+        case .connecting: 0xF9AB00  // 黄
+        case .degraded: 0xE37400    // 橙
+        case .online: 0x1E8E3E      // 绿
+        }
+    }
+
     /// 读屏念的那句。颜色信息不能只靠颜色（色觉障碍用户看到的是灰点）。
     public var spoken: String {
         switch self {

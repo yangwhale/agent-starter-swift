@@ -320,18 +320,9 @@
                 return .noActionableNowPlayingItem
             }
             Task {
-                await remote.refresh()
-                let before = "active=\(remote.isActive) paused=\(remote.isPaused)"
-                let action: String
-                if remote.isActive {
-                    if remote.isPaused { action = "resume"; await remote.resume() }
-                    else { action = "pause"; await remote.pause() }
-                } else if remote.canReplay {
-                    action = "replay"; await remote.replay()
-                } else {
-                    action = "无事可做"
-                }
-                log("\(name) [\(before)] → \(action)：\(remote.lastError ?? "ok")")
+                // 判定（含先 refresh）在 `CCPlaybackRemote.smartToggle` —— 锁屏实时活动那颗键也走它。
+                let r = await remote.smartToggle()
+                log("\(name) [\(r.before)] → \(r.action)：\(remote.lastError ?? "ok")")
             }
             return .success
         }

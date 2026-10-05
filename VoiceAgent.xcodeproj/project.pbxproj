@@ -12,6 +12,7 @@
 		ACAEBA692DE6EF4B0072E93E /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = ACAEBA682DE6EF4B0072E93E /* LiveKit */; };
 		B5E1B90F2D14E9EC00A38CB6 /* LiveKitComponents in Frameworks */ = {isa = PBXBuildFile; productRef = B5E1B90E2D14E9EC00A38CB6 /* LiveKitComponents */; };
 		B5E1B9122D14E9F500A38CB6 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = B5E1B9112D14E9F500A38CB6 /* LiveKit */; };
+		CC1A00000000000000000002 /* CloseCrabActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CC1A00000000000000000001 /* CloseCrabActivity.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -21,6 +22,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = ACAEBA572DE6EE970072E93E;
 			remoteInfo = BroadcastExtension;
+		};
+		CC1A00000000000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B5B5E3AA2D124AE00099C9BE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CC1A0000000000000000000B;
+			remoteInfo = CloseCrabActivity;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -32,6 +40,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				ACAEBA622DE6EE970072E93E /* BroadcastExtension.appex in Embed Foundation Extensions */,
+				CC1A00000000000000000002 /* CloseCrabActivity.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -42,9 +51,32 @@
 		ACAEBA582DE6EE970072E93E /* BroadcastExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BroadcastExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		ACAEBA5A2DE6EE970072E93E /* ReplayKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReplayKit.framework; path = System/Library/Frameworks/ReplayKit.framework; sourceTree = SDKROOT; };
 		B5B5E3B22D124AE00099C9BE /* VoiceAgent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceAgent.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC1A00000000000000000001 /* CloseCrabActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = CloseCrabActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		CC1A00000000000000000006 /* Exceptions for "CloseCrabActivity" folder in "CloseCrabActivity" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = CC1A0000000000000000000B /* CloseCrabActivity */;
+		};
+		CC1A00000000000000000007 /* Exceptions for "VoiceAgent" folder in "CloseCrabActivity" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				CloseCrab/CCFaceGlyph.swift,
+				CloseCrab/CCFaceGrokEyes.swift,
+				CloseCrab/CCFaceMood.swift,
+				CloseCrab/CCFaceMotion.swift,
+				CloseCrab/CCLiveActivityAttributes.swift,
+				CloseCrab/CCLiveActivityState.swift,
+				CloseCrab/CCMetalGlow.swift,
+				CloseCrab/CCPresence.swift,
+				Helpers/CCColorPrimitives.swift,
+			);
+			target = CC1A0000000000000000000B /* CloseCrabActivity */;
+		};
 		ACAEBA662DE6EE970072E93E /* Exceptions for "BroadcastExtension" folder in "BroadcastExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -75,8 +107,17 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				B577A91F2D15FDB800B59A0B /* Exceptions for "VoiceAgent" folder in "VoiceAgent" target */,
+				CC1A00000000000000000007 /* Exceptions for "VoiceAgent" folder in "CloseCrabActivity" target */,
 			);
 			path = VoiceAgent;
+			sourceTree = "<group>";
+		};
+		CC1A00000000000000000005 /* CloseCrabActivity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				CC1A00000000000000000006 /* Exceptions for "CloseCrabActivity" folder in "CloseCrabActivity" target */,
+			);
+			path = CloseCrabActivity;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -100,6 +141,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CC1A00000000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -116,6 +164,7 @@
 			children = (
 				B5B5E3B42D124AE00099C9BE /* VoiceAgent */,
 				ACAEBA5C2DE6EE970072E93E /* BroadcastExtension */,
+				CC1A00000000000000000005 /* CloseCrabActivity */,
 				ACAEBA592DE6EE970072E93E /* Frameworks */,
 				B5B5E3B32D124AE00099C9BE /* Products */,
 			);
@@ -126,6 +175,7 @@
 			children = (
 				B5B5E3B22D124AE00099C9BE /* VoiceAgent.app */,
 				ACAEBA582DE6EE970072E93E /* BroadcastExtension.appex */,
+				CC1A00000000000000000001 /* CloseCrabActivity.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -169,6 +219,7 @@
 			);
 			dependencies = (
 				ACAEBA612DE6EE970072E93E /* PBXTargetDependency */,
+				CC1A00000000000000000004 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				B5B5E3B42D124AE00099C9BE /* VoiceAgent */,
@@ -181,6 +232,28 @@
 			productName = VoiceAgent;
 			productReference = B5B5E3B22D124AE00099C9BE /* VoiceAgent.app */;
 			productType = "com.apple.product-type.application";
+		};
+		CC1A0000000000000000000B /* CloseCrabActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC1A0000000000000000000C /* Build configuration list for PBXNativeTarget "CloseCrabActivity" */;
+			buildPhases = (
+				CC1A00000000000000000008 /* Sources */,
+				CC1A00000000000000000009 /* Frameworks */,
+				CC1A0000000000000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				CC1A00000000000000000005 /* CloseCrabActivity */,
+			);
+			name = CloseCrabActivity;
+			packageProductDependencies = (
+			);
+			productName = CloseCrabActivity;
+			productReference = CC1A00000000000000000001 /* CloseCrabActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -197,6 +270,9 @@
 					};
 					B5B5E3B12D124AE00099C9BE = {
 						CreatedOnToolsVersion = 16.2;
+					};
+					CC1A0000000000000000000B = {
+						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
@@ -220,6 +296,7 @@
 			targets = (
 				B5B5E3B12D124AE00099C9BE /* VoiceAgent */,
 				ACAEBA572DE6EE970072E93E /* BroadcastExtension */,
+				CC1A0000000000000000000B /* CloseCrabActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -233,6 +310,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		B5B5E3B02D124AE00099C9BE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CC1A0000000000000000000A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -256,6 +340,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CC1A00000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -268,9 +359,76 @@
 			target = ACAEBA572DE6EE970072E93E /* BroadcastExtension */;
 			targetProxy = ACAEBA602DE6EE970072E93E /* PBXContainerItemProxy */;
 		};
+		CC1A00000000000000000004 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				ios,
+			);
+			target = CC1A0000000000000000000B /* CloseCrabActivity */;
+			targetProxy = CC1A00000000000000000003 /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		CC1A0000000000000000000D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CloseCrabActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CloseCrab;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.higcp.closecrab.voice.activity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CC1A0000000000000000000E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = CloseCrabActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = CloseCrab;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.higcp.closecrab.voice.activity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		ACAEBA642DE6EE970072E93E /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -571,6 +729,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		CC1A0000000000000000000C /* Build configuration list for PBXNativeTarget "CloseCrabActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC1A0000000000000000000D /* Debug */,
+				CC1A0000000000000000000E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		ACAEBA632DE6EE970072E93E /* Build configuration list for PBXNativeTarget "BroadcastExtension" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

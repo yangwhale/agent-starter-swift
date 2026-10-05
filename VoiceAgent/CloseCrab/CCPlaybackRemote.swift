@@ -100,6 +100,28 @@ final class CCPlaybackRemote {
     /// 让客户端先查一次进度再重播是没必要的往返（它注释里专门写了这点）。
     func replay() async { await call("replay") }
 
+    /// 「一颗键」的判定：在播就停，停着就继续，**播完了就重播**。
+    /// 返回 refresh 之后、动手之前的状态和做了什么（给诊断日志看 —— 2026-09-24 查
+    /// 「耳机 resume 不好使」就是靠「之前什么状态」那一栏）。
+    ///
+    /// 捏 AirPods（`CCNowPlaying`）和锁屏实时活动上那颗暂停键（`CCLiveActivity`）共用 ——
+    /// 两处原来要各写一份同样的三档判断，迟早写歪一个。
+    ///
+    /// ⚠️ **先 `refresh()` 再判断，这条是承重的**：锁屏时进度轮询是停的（渲染闸门），
+    /// 本地状态一定是旧的，拿旧状态判断的后果是**做反**（想停，它反而从头重播）。
+    /// 完整理由见 `CCNowPlaying.toggle(via:)` 上面那段。
+    func smartToggle() async -> (before: String, action: String) {
+        await refresh()
+        let before = "active=\(isActive) paused=\(isPaused)"
+        if isActive {
+            if isPaused { await resume(); return (before, "resume") }
+            await pause()
+            return (before, "pause")
+        }
+        if canReplay { await replay(); return (before, "replay") }
+        return (before, "无事可做")
+    }
+
     /// 前后拖。`delta` 是**比例**不是秒数，范围 -1…1，
     /// 超出范围服务端会直接回失败（不会静默截断）。
     func seek(_ delta: Double) async {
