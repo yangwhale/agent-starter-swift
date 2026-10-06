@@ -45,59 +45,38 @@ struct CCLiveActivityWidget: Widget {
                 // Chris 2026-10-06 截图：等你回话时「中间名字 ＋ 小播放条 ＋ 一行回答」叠下来，
                 // 上面左右两块空着、最下面那行回答被岛的下沿切掉一半。
                 //
-                // ⇒ 等你回话时（Chris 同日的排法）：
-                //   摄像头左侧（leading）  名字 ＋ 在等你什么（各一行）
-                //   最下（bottom）第一行   小播放条：暂停 ⟷ 进度 ⟷ 重播 —— 跟锁屏卡片同一个零件
-                //   最下（bottom）第二行   一行 2~4 颗回答
-                //   脸让位（状态行已经写着在等你什么）。平时不变。
+                // ⇒ 排法（Chris 同日定的，平时和等你回话一样）：
+                //   摄像头左侧（leading）   头像：房间选的 emoji（`CCActivityAvatar`）
+                //   摄像头右侧（trailing）  名字 ＋ 在线点，下面一行在干嘛 / 在等你什么
+                //   最下（bottom）          平时：进度 ＋ 暂停 / 重播大按钮
+                //                           等你回话：小播放条（暂停 ⟷ 进度 ⟷ 重播）＋ 一行 2~4 颗回答
+                //   `.center` 不用 —— 摄像头下面那一行整个让给 bottom。
                 //
-                // ⚠️ 小播放条**不能放 `.center`**：leading / center / trailing 是**并排的三列**，
-                //    center 夹在中间、leading 是它左边一条竖栏。小播放条要撑满宽度，
-                //    于是把 leading 挤成一条缝 —— 名字和问题只剩一个绿点和「…」（Chris 同日第二张截图）。
-                //    `.bottom` 才是横跨整个宽度、排在三列下面的那一块。
+                // ⚠️ 宽的东西**不能放 `.center`**：leading / center / trailing 是**并排的三列**，
+                //    center 撑满宽度就把 leading 挤成一条缝 —— 名字和问题只剩一个绿点和「…」
+                //    （Chris 同日第二张截图）。`.bottom` 才是横跨整个宽度、排在三列下面的那一块。
                 let waiting = !stale && shown.quickReplyShown
                 let keys = waiting && (shown.playDisplay != .hidden || shown.canReplay)
-                // 等你时右边和中间都空着，让 leading 多分宽度（priority 高的先拿）。
-                DynamicIslandExpandedRegion(.leading, priority: waiting ? 1 : 0) {
-                    if waiting {
-                        VStack(alignment: .leading, spacing: 1) {
-                            HStack(spacing: 5) {
-                                CCActivityDot(dot: shown.dot, size: 7)
-                                Text(shown.room)
-                                    .font(.subheadline.weight(.semibold))
-                                    .lineLimit(1)
-                            }
-                            Text(shown.statusLine)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
+                DynamicIslandExpandedRegion(.leading) {
+                    CCActivityAvatar(state: shown, side: 40)
                         .padding(.leading, 6)
-                    } else {
-                        CCActivityAvatar(state: shown, side: 44)
-                            .padding(.leading, 4)
-                    }
                 }
-                // 右上角不放东西：岛的圆角很大，原来那列小圆点（自己 ＋ 其他房间）
-                // 被切掉一半（Chris 2026-10-06 截图）。在线点挪到名字前面，其他房间只在锁屏卡片上显示。
-                DynamicIslandExpandedRegion(.center) {
-                    if waiting {
-                        EmptyView()
-                    } else {
-                        VStack(spacing: 2) {
-                            HStack(spacing: 6) {
-                                CCActivityDot(dot: shown.dot, size: 8)
-                                Text(shown.room)
-                                    .font(.headline)
-                                    .lineLimit(1)
-                            }
-                            Text(shown.statusLine)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                                .multilineTextAlignment(.center)
+                DynamicIslandExpandedRegion(.trailing) {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        HStack(spacing: 5) {
+                            Text(shown.room)
+                                .font(.subheadline.weight(.semibold))
+                                .lineLimit(1)
+                            CCActivityDot(dot: shown.dot, size: 7)
                         }
+                        Text(shown.statusLine)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(waiting ? 1 : 2)
+                            .multilineTextAlignment(.trailing)
                     }
+                    // 右上角是大圆弧（之前那列小圆点就是在这儿被切掉一半的）：往里收一点。
+                    .padding(.trailing, 8)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     // 展开态同样有 160pt 上限：中间名字＋状态 ≈64、这里 进度 16 ＋ 6 ＋ 按钮 44 ＝ 66。

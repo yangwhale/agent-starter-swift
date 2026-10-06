@@ -342,14 +342,31 @@ nonisolated enum CCLiveActivityPolicy {
         return s
     }
 
-    /// 卡片头像字符（见 `CCLiveActivityState.avatar`）：房间设了 emoji 用 emoji；
-    /// 选了活脸（`skin` 非 nil）⇒ nil 画脸；都没有 ⇒ 名字首字母大写（跟 app 里方块同一条）。
-    /// emoji 和活脸在 app 里是互斥的（选一样会清掉另一样），这里 emoji 优先只是兜底。
+    /// 卡片头像字符（见 `CCLiveActivityState.avatar`）。**卡片上不画脸了**（Chris 2026-10-06：
+    /// 「头像别用动脸，用我给 bunny 选的兔子、jarvis 选的机器人那个」——卡片上的脸本来也不动，
+    /// 换成 emoji 一眼更清楚）：
+    ///
+    /// 1. 房间设了 emoji ⇒ 那个 emoji
+    /// 2. 房间选的是活脸 ⇒ 那套脸对应的 emoji（兔子 🐰、机器人 🤖、小猫 🐱、小芽 🌱）——
+    ///    app 里 emoji 和活脸互斥，选了活脸的房间没有 emoji，就用脸的「名字」那个 emoji
+    /// 3. 都没有（或经典 / Grok 这两套没有对应物）⇒ 名字首字母大写（跟 app 里方块同一条）
+    ///
+    /// 永远不返回 nil；nil 只出现在旧 app 推的卡上（扩展那边照旧画脸）。
     static func avatar(room: String, skin: CCFaceSkin?, emoji: String?) -> String? {
         let e = (emoji ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if !e.isEmpty { return String(e.prefix(4)) }
-        if skin != nil { return nil }
-        let initial = String(room.prefix(1)).uppercased()
-        return initial.isEmpty ? nil : initial
+        if let s = skin.flatMap(skinEmoji) { return s }
+        return String(room.prefix(1)).uppercased()
+    }
+
+    /// 活脸 → 对应的 emoji。经典（胶囊眼）、Grok（黑脸多边形眼）没有像样的对应物 ⇒ nil。
+    static func skinEmoji(_ skin: CCFaceSkin) -> String? {
+        switch skin {
+        case .bunny: "🐰"
+        case .robo: "🤖"
+        case .kitty: "🐱"
+        case .sprout: "🌱"
+        case .classic, .grok: nil
+        }
     }
 }

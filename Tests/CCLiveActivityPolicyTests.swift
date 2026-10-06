@@ -610,7 +610,13 @@ check("过期版不带推荐", qs(opts: ["A"]).staleVersion.replyOptions == nil)
 
 // 头像（2026-10-06：「别用动脸，用房间选的 emoji」）
 check("⭐ 设了 emoji ⇒ 头像是 emoji", P.avatar(room: "bunny", skin: nil, emoji: "🐰") == "🐰")
-check("⭐ 选了活脸、没 emoji ⇒ nil（画脸）", P.avatar(room: "bunny", skin: .bunny, emoji: nil) == nil)
+check("⭐ 选了兔子脸 ⇒ 🐰（卡片不再画脸）", P.avatar(room: "bunny", skin: .bunny, emoji: nil) == "🐰")
+check("⭐ 选了机器人脸 ⇒ 🤖", P.avatar(room: "jarvis", skin: .robo, emoji: nil) == "🤖")
+check("经典 / Grok 没有对应 emoji ⇒ 首字母", P.avatar(room: "tommy", skin: .classic, emoji: nil) == "T"
+      && P.avatar(room: "hulk", skin: .grok, emoji: nil) == "H")
+check("每套脸都有判定（有 emoji 的四套各不相同）",
+      Set(CCFaceSkin.allCases.compactMap(P.skinEmoji)).count == 4)
+check("头像永不为 nil", CCFaceSkin.allCases.allSatisfy { P.avatar(room: "x", skin: $0, emoji: nil) != nil })
 check("都没有 ⇒ 首字母大写", P.avatar(room: "jarvis", skin: nil, emoji: nil) == "J")
 check("emoji 去空白；空白当没设", P.avatar(room: "x", skin: nil, emoji: " 🤖 ") == "🤖" && P.avatar(room: "x", skin: nil, emoji: "  ") == "X")
 check("makeState 带上头像", P.makeState(room: "bunny", mood: .idle, skin: nil, presence: .online, snapHeadline: nil,
