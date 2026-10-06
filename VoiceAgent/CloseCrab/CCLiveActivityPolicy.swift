@@ -13,8 +13,10 @@ import Foundation
 ///   `wantConnected` 从假变真时清掉）。
 /// - **断线重连期间卡片不关。** 判据是「用户想连着」（`wantConnected`），不是「此刻连着」——
 ///   重连时卡片上是那张迷糊找人的脸，这正是锁屏上该看到的；关掉再开会让卡片闪没。
-/// - **状态没变也要定期重推一次。** 每次推都把过期时间往后续 15 分钟；bot 安静地闲着
-///   半小时不等于 app 死了，不续的话卡片会自己变成「已断开」。
+/// - **状态没变也要定期重推一次。** 前台每次推都把过期时间往后续 15 分钟；bot 安静地闲着
+///   半小时不等于卡片该过期，不续的话卡片会自己变成「后台中」。
+/// - **后台推的只给 25 秒过期**（`backgroundStaleAfter`）：后台约 20 秒后系统就不收更新了，
+///   卡片要自己承认「这不是最新的」，而不是挂着一份旧内容装新鲜。
 /// - **节流是「至少隔 1 秒」，不是「丢掉 1 秒内的变化」。** 1 秒内来的最后一份必须
 ///   在窗口到点时补推，否则停在中间态上（比如停在「在说话」，而它早说完了）。
 nonisolated enum CCLiveActivityPolicy {
@@ -23,9 +25,19 @@ nonisolated enum CCLiveActivityPolicy {
     /// 1 → 2 秒（2026-10-06）：诊断页实测，隔 1~3 秒的连续更新会被系统丢掉（隔 8 秒以上的都收了）。
     /// 放宽一档减少被丢；被丢的那份由 app 回读后补推兜底（`CCLiveActivity.push`）。
     static let minUpdateInterval: TimeInterval = 2
-    /// 卡片多久没收到更新就算过期（显示「已断开」）。每次推都续。
+    /// **app 在前台时**推的卡多久没收到更新就算过期。每次推都续。
     static let staleAfter: TimeInterval = 15 * 60
-    /// 状态没变时多久重推一次（只为续过期时间）。**必须比 `staleAfter` 短**，测试钉着。
+    /// **app 不在前台时**推的卡多久算过期（2026-10-06）。
+    ///
+    /// 真机诊断实锤：app 退到后台大约 20 秒后，系统就不再收我们的 `Activity.update` 了
+    /// （苹果只让 APNs 推送在后台更新实时活动；我们的描述文件没有 aps-environment，改不了）。
+    /// 照旧给 15 分钟的话，卡片会一直停在退后台那一刻的内容上、还看着很新鲜 —— bot 早问了你问题，
+    /// 卡上还写着「在说话」。⇒ 后台推的每一份都只给 25 秒：最后一份被系统收下的，
+    /// 25 秒后由**系统自己**标成过期，扩展画成「后台中 · 打开 app 看最新」。
+    /// 问题本身改走本地通知（`CCAskNotifyPolicy`）。回到前台时 app 会强推一份长过期的把它刷回来。
+    static let backgroundStaleAfter: TimeInterval = 25
+    /// 状态没变时多久重推一次（只为续**前台**那 15 分钟过期时间）。**必须比 `staleAfter` 短**，测试钉着。
+    /// 跟后台那 25 秒无关：后台推的系统多半不收，续不了，也不该假装续得了。
     static let keepAliveAfter: TimeInterval = 10 * 60
     /// 一张卡最多用多久就换新的。系统上限是 8 小时（到点强制结束），留半小时余量。
     static let rolloverAfter: TimeInterval = 7.5 * 3600
@@ -116,8 +128,10 @@ nonisolated enum CCLiveActivityPolicy {
         return dt >= minUpdateInterval - timingSlack ? .now : .wait(minUpdateInterval - dt)
     }
 
-    /// 这一次推的过期时间。
-    static func staleDate(now: Date) -> Date { now.addingTimeInterval(staleAfter) }
+    /// 这一次推的过期时间：app 在前台 15 分钟，不在前台 25 秒（理由见 `backgroundStaleAfter`）。
+    static func staleDate(now: Date, foreground: Bool) -> Date {
+        now.addingTimeInterval(foreground ? staleAfter : backgroundStaleAfter)
+    }
 
     /// 时间相关的心情（「刚干完」3 秒、「在说话」句间宽限 1.5 秒）到点之后要重算一次 ——
     /// 这两样不是被观察的属性变化，没人会来通知「窗口过了」，卡片会停在笑脸上。

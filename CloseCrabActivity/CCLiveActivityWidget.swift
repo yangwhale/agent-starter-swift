@@ -25,7 +25,9 @@ import WidgetKit
 ///   卡片上**不再有「已查」那个计时**（Chris 2026-10-05 拿掉的，见下面 CCActivityDot 后那段）。
 /// - 按钮：**两种音频模式都一直显示**（Chris 2026-10-05 后来简化的：不再按「系统播放控件」
 ///   开关藏起来）。点下去在 app 进程里执行（见 CCLiveActivityAttributes.swift 文件头）。
-/// - 过期（15 分钟没更新 ⇒ app 多半不在了）：睡着的脸、灰点、「已断开」，**不画按钮、不画进度条**。
+/// - 过期（系统按 staleDate 标的 —— 最常见的是 app 在后台、系统不再收更新，见
+///   `CCLiveActivityState.staleVersion`）：状态行「后台中 · 打开 app 看最新」，不画进度条、
+///   不出快捷回复，**暂停 / 重播大按钮照常在**（app 活着，按了接得住）；心情和小圆点留最后一份。
 /// - 高度：锁屏卡片**不能超过 160pt**（Apple HIG：超了会被截）。预算见 `CCActivityLockScreen.body`。
 struct CCLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
@@ -55,6 +57,7 @@ struct CCLiveActivityWidget: Widget {
                 // ⚠️ 宽的东西**不能放 `.center`**：leading / center / trailing 是**并排的三列**，
                 //    center 撑满宽度就把 leading 挤成一条缝 —— 名字和问题只剩一个绿点和「…」
                 //    （Chris 同日第二张截图）。`.bottom` 才是横跨整个宽度、排在三列下面的那一块。
+                // 过期版本来就不带快捷回复（staleVersion 清掉了），`!stale` 是第二道保险。
                 let waiting = !stale && shown.quickReplyShown
                 let keys = waiting && (shown.playDisplay != .hidden || shown.canReplay)
                 DynamicIslandExpandedRegion(.leading) {
@@ -86,7 +89,8 @@ struct CCLiveActivityWidget: Widget {
                         if waiting {
                             if keys { CCActivityMiniPlayRow(state: shown) }
                             CCActivityQuickReplies(state: shown)
-                        } else if !stale {
+                        } else {
+                            // 过期时也画：staleVersion 没有进度、没有快捷回复 ⇒ 只剩两颗大按钮。
                             CCActivityBottom(state: shown)
                         }
                     }
@@ -171,7 +175,9 @@ struct CCActivityLockScreen: View {
                         .lineLimit(shown.quickReplyShown ? 1 : 2)
                 }
             }
-            if !stale { CCActivityBottom(state: shown) }
+            // 过期时照画（2026-10-06）：staleVersion 清掉了进度和快捷回复，这里只剩暂停 / 重播
+            // 两颗大按钮 —— app 在后台活着，按了接得住（见 `CCLiveActivityState.staleVersion`）。
+            CCActivityBottom(state: shown)
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 14)

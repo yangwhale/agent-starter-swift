@@ -105,29 +105,44 @@ nonisolated struct CCLiveActivityState: Codable, Hashable, Sendable {
     var faceSkin: CCFaceSkin { CCFaceSkin.parse(skin) ?? .classic }
     var dot: CCPresenceDot { CCPresenceDot(rawValue: presence) ?? .off }
 
-    /// 卡片过期了（15 分钟没收到更新 ⇒ app 多半已经不在了）时画的样子：
-    /// 睡着的脸、灰点、「已断开」，没在播。**按钮由扩展另外藏掉**（app 不在，按了也没人接）。
+    /// 卡片过期了（系统按 staleDate 标的）时画的样子：「后台中 · 打开 app 看最新」，
+    /// 不画进度条、不出快捷回复，**暂停 / 重播两颗大按钮照常在**。
     ///
-    /// 为什么不照旧画最后一份：最后一份可能写着「在查东西 · 12:48」而且计时还在走 ——
-    /// 一张停在半路却看着很忙的卡，比一张写着「已断开」的卡更骗人。
+    /// ## 过期 ≠ app 不在了（2026-10-06 改）
+    ///
+    /// 原来这里画的是「已断开」＋睡着的脸 ＋ 灰点、按钮全藏 —— 当时以为过期只会是 app 被杀了。
+    /// 真机诊断推翻了这个前提：**最常见的过期是 app 好好活着（后台音频），只是退到后台后
+    /// 系统不再收我们的更新**（约 20 秒后；苹果只认 APNs 推送，我们没有推送权限）。
+    /// 所以 app 在后台时推的每一份只给 25 秒过期（`CCLiveActivityPolicy.backgroundStaleAfter`），
+    /// 由系统自己把卡标旧。这时：
+    ///
+    /// - **按钮是好使的**：点下去系统在 app 进程里跑 intent（见 CCLiveActivityAttributes.swift 文件头），
+    ///   app 活着就接得住；而且那颗键先问服务端再决定停还是继续还是重播（`smartToggle`），
+    ///   图标是旧的也不会做反。⇒ 留着。
+    /// - **心情、小圆点留最后一份**：没有理由说它断了，画睡脸 / 灰点就是在说一件没发生的事。
+    /// - **进度条、快捷回复、子任务数、wait 清掉**：进度条按最后那份接着走是在编；
+    ///   快捷回复那个问题可能早就过去了（问题本身走本地通知，`CCAskNotifyPolicy`）。
+    ///
+    /// 状态行为什么不照旧写最后一份：它可能写着「在查东西」，而 bot 早干完了 ——
+    /// 一张停在半路却看着很忙的卡比一张老实说「我不是最新的」的卡更骗人。
     var staleVersion: CCLiveActivityState {
         var s = self
-        s.mood = CCFaceMood.asleep.rawValue
-        s.presence = CCPresenceDot.off.rawValue
-        s.headline = "已断开"
+        s.headline = Self.staleHeadline
         s.subtasks = 0
-        s.isPlaying = false
-        s.isPaused = false
-        // app 不在了，进度条按最后那份接着走就是在编（跟计时不走同一个理由）。
+        // 进度条按最后那份接着走就是在编（跟计时不走同一个理由）。isPlaying / isPaused 留着，
+        // 只决定那颗键画「暂停」还是「继续」—— 动作本身先问服务端，不会做反。
         s.playStart = nil
         s.playedAtPause = nil
-        // app 不在了，按了快捷回复也没人接。
+        // 那个问题可能早就过去了；问题本身走本地通知。
         s.showsQuickReply = nil
         s.waitText = nil
         s.replyOptions = nil
         s.replyLabels = nil
         return s
     }
+
+    /// 过期时的状态行。
+    static let staleHeadline = "后台中 · 打开 app 看最新"
 
     // MARK: - 播放进度怎么画
 

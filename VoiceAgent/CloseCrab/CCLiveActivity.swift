@@ -67,8 +67,15 @@
     ///
     /// ## 后台
     ///
-    /// 连着的时候 app 靠后台音频活着，这里的闹钟照常走。app 被杀 / 挂起的话就没人推了，
-    /// 卡片 15 分钟后过期，扩展那边画成「已断开」—— v1 不做苹果推送（方案页定的）。
+    /// 连着的时候 app 靠后台音频活着，这里的闹钟照常走 —— **但推出去的系统不一定收**：
+    /// 2026-10-06 真机诊断实锤，退到后台约 20 秒后系统就不再收 `Activity.update`
+    /// （苹果只认 APNs 推送在后台更新卡片；Google 通配描述文件没有 aps-environment，改不了）。
+    /// 所以：
+    /// - **退到后台那一刻强推一份**（这时还收），过期时间只给 25 秒；之后后台推的每一份也只给 25 秒
+    ///   （`CCLiveActivityPolicy.staleDate(now:foreground:)`）。最后一份被收下的 25 秒后由系统标成过期，
+    ///   扩展画「后台中 · 打开 app 看最新」—— 卡片老实降级，不挂一份旧内容装新鲜。
+    /// - **回到前台强推一份**，哪怕内容没变：过期标记只能靠一份带长过期时间的新内容清掉。
+    /// - bot 问你问题改走本地通知（`CCAskNotifier`），不指望卡片。
     ///
     /// ⚠️ **app 在后台时开不了新卡**（系统规定一般要在前台开）。所以 7.5 小时换卡如果
     /// 恰好落在后台，会失败；失败后 5 分钟再试一次，回到前台时立刻再试。
@@ -85,6 +92,9 @@
         private var cardStartedAt: Date?
         private var lastPushed: CCLiveActivityState?
         private var lastPushAt: Date?
+        /// 上一次推（或开卡）时 app 在不在前台 —— 决定那份带的是 15 分钟还是 25 秒的过期时间。
+        /// 回到前台时若上一份是后台推的，就要强推一份把过期标记刷掉（见 `attach` 里的观察）。
+        private var lastPushForeground = true
 
         /// 这一轮连接里用户在锁屏上划掉过卡片 ⇒ 不再开（直到下次按「开始」）。
         private var dismissedByUser = false
@@ -121,6 +131,7 @@
         private var armed = false
         private var wake: (at: Date, task: Task<Void, Never>)?
         private var foregroundObserver: (any NSObjectProtocol)?
+        private var backgroundObserver: (any NSObjectProtocol)?
 
         // MARK: - 接线
 
@@ -146,12 +157,29 @@
 
             // 回前台：开卡失败的退避清零（前台一定开得了），顺便重查一次系统开关 ——
             // 用户刚从「设置」里把实时活动打开回来，就是这条路。
+            //
+            // 上一份是后台推的（25 秒过期，多半已经被系统标旧了）⇒ **强推一份**，哪怕内容没变：
+            // 过期标记只能靠一份带长过期时间的新内容清掉，而 `push` 见内容相等会判 skip。
+            // 「忘掉推过什么」就是强推 —— `CCLiveActivityPolicy.push` 在 last 为 nil 时判 now。
             foregroundObserver = NotificationCenter.default.addObserver(
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in
-                    self?.lastStartFailure = nil
-                    self?.sync()
+                    guard let self else { return }
+                    self.lastStartFailure = nil
+                    if !self.lastPushForeground { self.lastPushed = nil }
+                    self.sync()
+                }
+            }
+            // 退后台：趁系统还收（约 20 秒内）强推一份 25 秒过期的 —— 不推的话，卡上挂的是
+            // 前台推的那份（15 分钟过期），之后后台推的系统又不收，卡片会顶着旧内容一直「新鲜」。
+            backgroundObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if self.lastPushForeground { self.lastPushed = nil }
+                    self.sync()
                 }
             }
 
@@ -435,16 +463,19 @@
 
         @discardableResult
         private func startCard(_ state: CCLiveActivityState, now: Date) -> Bool {
+            let foreground = UIApplication.shared.applicationState == .active
             do {
                 let a = try Activity<CCLiveActivityAttributes>.request(
                     attributes: CCLiveActivityAttributes(),
-                    content: ActivityContent(state: state, staleDate: CCLiveActivityPolicy.staleDate(now: now)),
+                    content: ActivityContent(
+                        state: state, staleDate: CCLiveActivityPolicy.staleDate(now: now, foreground: foreground)),
                     pushType: nil)
                 activityID = a.id
                 watchLanded(a.id)
                 cardStartedAt = now
                 lastPushed = state
                 lastPushAt = now
+                lastPushForeground = foreground
                 lastStartFailure = nil
                 CCLiveActivityLog.shared.log("开卡 \(state.room)")
                 return true
@@ -469,13 +500,17 @@
             // 先记账再 await：推的途中再来一份，节流要按这一次算。
             lastPushed = state
             lastPushAt = now
+            // 不在前台 ⇒ 只给 25 秒过期（系统约 20 秒后就不收后台更新了，见类注释「后台」那节）。
+            let foreground = UIApplication.shared.applicationState == .active
+            lastPushForeground = foreground
             let id = activityID
-            let content = ActivityContent(state: state, staleDate: CCLiveActivityPolicy.staleDate(now: now))
+            let content = ActivityContent(
+                state: state, staleDate: CCLiveActivityPolicy.staleDate(now: now, foreground: foreground))
             // 等你回话的那一下：带 AlertConfiguration 推 —— 系统据此展开灵动岛、点亮锁屏、响一声。
             let alert = pendingAlert
             pendingAlert = nil
             let brief = Self.brief(state)
-            CCLiveActivityLog.shared.log("推 → \(brief)\(alert != nil ? " ＋提醒" : "")")
+            CCLiveActivityLog.shared.log("推 → \(brief)\(alert != nil ? " ＋提醒" : "")\(foreground ? "" : " （后台，25 秒过期）")")
             Task {
                 guard let a = Self.find(id) else {
                     CCLiveActivityLog.shared.log("⚠️ 推不出去：系统里找不到这张卡")

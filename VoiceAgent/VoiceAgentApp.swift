@@ -31,6 +31,11 @@ struct VoiceAgentApp: App {
         // 锁屏 / 灵动岛实时活动：连上开、挂断关，跟着当前房间走。规则在 `CCLiveActivityPolicy`。
         CCLiveActivity.shared.attach(rooms: rooms)
         #endif
+        #if os(iOS)
+        // bot 举手问问题 → 本地通知（带回答按钮）。后台约 20 秒后系统就不收卡片更新了，问题不能只靠卡片。
+        // 要在这里接：通知点击的 delegate 必须在启动完成前装好（见 `CCAskNotifier.attach`）。
+        CCAskNotifier.shared.attach(rooms: rooms)
+        #endif
 
         // ⭐ **要在连任何房间之前。** SDK 文档明确说
         //    `isAutomaticConfigurationEnabled` 得在连接前设；而且连上的那一刻

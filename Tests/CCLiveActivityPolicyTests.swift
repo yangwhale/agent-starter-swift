@@ -4,7 +4,8 @@
 //   ① 断线重连期间卡片**不关**（判据是用户想连着，不是此刻连着）；挂断才关；
 //   ② 用户划掉卡片 ⇒ 这一轮不再开；系统 8 小时收走 / 关掉系统开关 ⇒ 不算划掉；
 //   ③ 节流是「至少隔 1 秒」而不是「丢掉 1 秒内的变化」—— 最后一份一定会推出去；
-//   ④ 状态不变也要在过期前续一次（否则安静闲着半小时卡片就变「已断开」）；
+//   ④ 状态不变也要在过期前续一次（否则安静闲着半小时卡片就变「后台中」）；
+//      后台推的只给 25 秒过期（系统约 20 秒后就不收后台更新了），过期版保留按钮、不说「已断开」；
 //   ⑤ 断线时状态行、子任务数不用 bot 状态的残值（跟活脸同一条规矩）；
 //   ⑥ 认不出的心情字符串不能让整份卡片解码失败（新 app ＋ 旧扩展）。
 //
@@ -144,7 +145,14 @@ let big = Date(timeIntervalSinceReferenceDate: 800_000_000.123)
 check("真实时刻量级下醒来再算 ⇒ 推",
       P.push(next: 2, last: 1, lastPushAt: big,
              now: big.addingTimeInterval(0.3).addingTimeInterval(P.minUpdateInterval - 0.3)) == .now)
-check("过期时间 = now + staleAfter", P.staleDate(now: t0) == at(P.staleAfter))
+check("前台推的过期时间 = now + staleAfter", P.staleDate(now: t0, foreground: true) == at(P.staleAfter))
+check("⭐ 后台推的过期时间 = now + backgroundStaleAfter", P.staleDate(now: t0, foreground: false) == at(P.backgroundStaleAfter))
+// 后台过期的区间（钉需求不钉值）：系统约 20 秒后不收后台更新 ——
+//   短于 1 分钟：不然一张收不到更新的卡要顶着旧内容「新鲜」好久，这正是要修的；
+//   长于节流窗口的几倍（≥ 10 秒）：退后台那一刻推的那份不能一落地就过期，后台头 20 秒里的变化还推得上去。
+check("⭐ 后台过期短于 1 分钟", P.backgroundStaleAfter <= 60)
+check("后台过期 ≥ 10 秒（且长于节流窗口）", P.backgroundStaleAfter >= 10 && P.backgroundStaleAfter > P.minUpdateInterval)
+check("⭐ 后台过期远短于前台过期", P.backgroundStaleAfter < P.staleAfter / 10)
 
 // ③ 模拟：一串乱序到来的变化，按「立刻推 / 等到点再算」驱动，检查两件事 ——
 //    任意两次推之间 ≥ 窗口；最后一份一定被推出去（不会停在中间态）。
@@ -288,8 +296,13 @@ check("小圆点颜色原样", ps[1].dot == "degraded")
 
 let base = mk(active: true, replay: true, peers: Array(many.prefix(3)))
 let st = base.staleVersion
-check("⭐ 过期版：睡着、灰点、已断开、不在播", st.faceMood == .asleep && st.dot == .off && st.headline == "已断开"
-      && !st.isPlaying && !st.isPaused && st.subtasks == 0)
+check("⭐ 过期版：「后台中 · 打开 app 看最新」、子任务数清零", st.headline == "后台中 · 打开 app 看最新"
+      && st.headline == S.staleHeadline && st.subtasks == 0 && st.statusLine == S.staleHeadline)
+check("⭐ 过期版不说「断开」：心情、小圆点留最后一份（不画睡脸、不画灰点）",
+      st.mood == base.mood && st.presence == base.presence && !st.headline.contains("断开")
+      && st.faceMood != .asleep && st.dot != .off)
+check("过期版保留播放键的样子（暂停 / 继续 / 能重播 —— 按钮照常画）",
+      st.isPlaying == base.isPlaying && st.isPaused == base.isPaused && st.canReplay == base.canReplay)
 check("过期版保留房间名和其他房间", st.room == base.room && st.peers == base.peers)
 check("状态行带子任务数", mk(subs: 3).statusLine == "跑 Q10 验收（3 个子任务）")
 check("没子任务不带括号", mk(subs: 0).statusLine == "跑 Q10 验收")
@@ -595,6 +608,9 @@ check("⭐ 已回复窗口里：状态行换成「已回复：没问题，请继
 check("⭐ 已回复窗口里：快捷回复先收起（防连按）", !rq.quickReplyShown)
 check("已回复也能盖住别的心情的状态行", qs(mood: .working, replied: "已回复：按照你的想法来").headline == "已回复：按照你的想法来")
 check("过期版不出快捷回复、不带 wait", !qs().staleVersion.quickReplyShown && qs().staleVersion.waitText == nil)
+// 扩展过期时照画 `CCActivityBottom`：不出快捷回复 ＋ 不画进度 ⇒ 只剩暂停 / 重播两颗大按钮。
+check("⭐ 等你时过期 ⇒ 下半截落回「只有两颗大按钮」（不出回答、不画进度）",
+      !qs().staleVersion.quickReplyShown && qs().staleVersion.playDisplay == .hidden && qs().staleVersion.canReplay)
 
 // 推荐答案（2026-10-06）：跟着按钮走，按钮不在就不带；没推荐 ⇒ nil（扩展用固定那两句）。
 check("⭐ 等你且带推荐 ⇒ 卡片带上", qs(opts: ["先修麦克风", "先做切房间"]).replyOptions == ["先修麦克风", "先做切房间"])
