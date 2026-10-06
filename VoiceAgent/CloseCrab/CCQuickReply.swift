@@ -42,19 +42,22 @@ nonisolated enum CCQuickReply {
     ///
     /// - 去空白、去空串、去重，最多 `maxOptions` 个；清完一个不剩 ⇒ 固定那两句
     /// - 只有一个也照用（bot 只想推荐一个答案时，不硬凑一个固定句子进来）
-    /// - 推荐答案没有单独的简写：`short` 就是原句，放不下时界面截断显示，发出去的仍是原句
+    /// - `labels`：跟 `options` 按下标一一对应的按钮短标签（快照 `optl`，同日补：
+    ///   「每个答案再给一个简短的 summary，显示在按钮上」）。**按钮上先试完整答案、放不下才用短标签**
+    ///   （`ViewThatFits`），所以 `short` 就是短标签；缺了 / 空的那个 ⇒ 用完整答案本身
     /// - 图标：第一个（bot 最推荐的）是星，第二个是箭头
-    static func choices(options: [String]?) -> [Choice] {
-        var seen: [String] = []
-        for o in options ?? [] {
+    static func choices(options: [String]?, labels: [String]? = nil) -> [Choice] {
+        var out: [Choice] = []
+        for (i, o) in (options ?? []).enumerated() {
             let t = o.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !t.isEmpty, !seen.contains(t) { seen.append(t) }
-            if seen.count == maxOptions { break }
+            guard !t.isEmpty, !out.contains(where: { $0.text == t }) else { continue }
+            let l = (labels ?? []).indices.contains(i)
+                ? labels![i].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            out.append(Choice(text: t, short: l.isEmpty ? t : l,
+                              symbol: out.isEmpty ? "star" : "arrow.turn.down.right"))
+            if out.count == maxOptions { break }
         }
-        guard !seen.isEmpty else { return choices }
-        return seen.enumerated().map { i, t in
-            Choice(text: t, short: t, symbol: i == 0 ? "star" : "arrow.turn.down.right")
-        }
+        return out.isEmpty ? choices : out
     }
 
     /// 推荐答案最多几个（主界面、锁屏卡片都只放得下两颗）。服务端也截到 2，这里再守一道。

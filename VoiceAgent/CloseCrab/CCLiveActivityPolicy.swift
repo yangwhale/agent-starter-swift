@@ -298,7 +298,7 @@ nonisolated enum CCLiveActivityPolicy {
                           peers: [(name: String, dot: CCPresenceDot)],
                           play: PlayMark = .none,
                           wait: String = "", repliedLine: String? = nil,
-                          options: [String] = []) -> CCLiveActivityState {
+                          options: [String] = [], labels: [String] = []) -> CCLiveActivityState {
         // 子任务数跟状态行同一条规矩：断线时是残值，不显示。
         let live = mood != .asleep && mood != .searching
         // 等你回话：卡片上把暂停 / 重播换成快捷回复。刚回复过（「已回复」还在显示）就先不给，
@@ -334,7 +334,9 @@ nonisolated enum CCLiveActivityPolicy {
         // 推荐答案只跟着按钮走：按钮不出现就不写（nil ⇒ JSON 里没这个键）。
         // 存的是清洗后的原句，扩展那边再过一遍 `CCQuickReply.choices(options:)`。
         let hasOwn = options.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        s.replyOptions = quick && hasOwn ? CCQuickReply.choices(options: options).map(\.text) : nil
+        let own = quick && hasOwn ? CCQuickReply.choices(options: options, labels: labels) : nil
+        s.replyOptions = own?.map(\.text)
+        s.replyLabels = own?.map(\.short)
         return s
     }
 }

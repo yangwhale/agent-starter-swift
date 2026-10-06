@@ -224,6 +224,8 @@ final class CCBotStatus {
         /// 合成的 Decodable 对非可选字段缺键直接抛错 —— 没重启的旧 bot 不发这个键，
         /// 写成非可选的话整份快照解不出来，状态条会停在上一份。
         var opts: [String]?
+        /// 跟 `opts` 一一对应的按钮短标签。同样可选（理由同上）。
+        var optl: [String]?
         /// 主 agent 此刻在调哪个工具。**这是过程，不是任务** ——
         /// 主行显示的是下面那两个，它只在没有任务可显示时兜底。
         var act: String = ""

@@ -84,6 +84,8 @@ nonisolated struct CCLiveActivityState: Codable, Hashable, Sendable {
     var showsQuickReply: Bool?
     /// bot 推荐的答案（2026-10-06 加）。nil / 空 ⇒ 按钮用固定那两句。同样必须可选。
     var replyOptions: [String]?
+    /// 跟 `replyOptions` 一一对应的按钮短标签。同样必须可选。
+    var replyLabels: [String]?
 
     // 按钮上的字、什么时候出现、「已回复」多久 —— 全在 `CCQuickReply`（app 主界面和这里共用一份）。
 
@@ -115,6 +117,7 @@ nonisolated struct CCLiveActivityState: Codable, Hashable, Sendable {
         s.showsQuickReply = nil
         s.waitText = nil
         s.replyOptions = nil
+        s.replyLabels = nil
         return s
     }
 

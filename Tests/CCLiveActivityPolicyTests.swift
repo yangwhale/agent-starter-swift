@@ -576,10 +576,10 @@ check("提醒正文按字符截到 60（含省略号）", P.alertBody(wait: long
 //   ⑯ 新字段可选：旧 app 推的卡新扩展照样解码、不出快捷回复；不在等你时 JSON 里没有这两个键。
 
 func qs(mood: CCFaceMood = .waiting, wait: String = "要我继续跑 Q11 吗？", replied: String? = nil,
-        opts: [String] = []) -> S {
+        opts: [String] = [], labels: [String] = []) -> S {
     P.makeState(room: "bunny", mood: mood, skin: .bunny, presence: .online, snapHeadline: wait,
                 runningSubtasks: 0, timerStart: t0, isActive: true, isPaused: false, canReplay: true,
-                peers: [], wait: wait, repliedLine: replied, options: opts)
+                peers: [], wait: wait, repliedLine: replied, options: opts, labels: labels)
 }
 check("⭐ 等你回话 ⇒ 出快捷回复", qs().quickReplyShown && qs().showsQuickReply == true)
 for m in [CCFaceMood.idle, .speaking, .working, .done, .listening, .asleep, .searching] {
@@ -598,7 +598,10 @@ check("过期版不出快捷回复、不带 wait", !qs().staleVersion.quickReply
 
 // 推荐答案（2026-10-06）：跟着按钮走，按钮不在就不带；没推荐 ⇒ nil（扩展用固定那两句）。
 check("⭐ 等你且带推荐 ⇒ 卡片带上", qs(opts: ["先修麦克风", "先做切房间"]).replyOptions == ["先修麦克风", "先做切房间"])
-check("⭐ 没推荐 ⇒ nil", qs().replyOptions == nil)
+check("⭐ 没推荐 ⇒ nil", qs().replyOptions == nil && qs().replyLabels == nil)
+let ql = qs(opts: ["先修启动时麦克风闪烁", "先做锁屏切房间"], labels: ["修麦克风", "切房间"])
+check("⭐ 带短标签 ⇒ 卡片带上，跟答案对齐", ql.replyLabels == ["修麦克风", "切房间"] && ql.replyOptions?.count == 2)
+check("没给标签 ⇒ 标签就是答案", qs(opts: ["A"]).replyLabels == ["A"])
 check("推荐全是空白 ⇒ nil", qs(opts: [" ", ""]).replyOptions == nil)
 check("推荐在卡片里也清洗过（去重、最多两个）", qs(opts: ["A", "A", "B", "C"]).replyOptions == ["A", "B"])
 check("不在等你 ⇒ 不带推荐", qs(mood: .working, opts: ["A"]).replyOptions == nil)
@@ -607,7 +610,7 @@ check("过期版不带推荐", qs(opts: ["A"]).staleVersion.replyOptions == nil)
 
 let noQuick = String(data: try! enc.encode(qs(mood: .working)), encoding: .utf8)!
 check("⭐ 不在等你时 JSON 里没有两个新键（体积不变、等于旧格式）",
-      !noQuick.contains("showsQuickReply") && !noQuick.contains("waitText") && !noQuick.contains("replyOptions"))
+      !noQuick.contains("showsQuickReply") && !noQuick.contains("waitText") && !noQuick.contains("replyOptions") && !noQuick.contains("replyLabels"))
 let withQuick = try! enc.encode(qs())
 check("等你时 JSON 带两个新键", String(data: withQuick, encoding: .utf8)!.contains("showsQuickReply"))
 check("⭐ 旧 app 推的卡 ⇒ 新扩展不出快捷回复", fromOld.map { !$0.quickReplyShown && $0.waitText == nil } == true)

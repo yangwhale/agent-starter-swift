@@ -93,7 +93,14 @@ check("超了截到 40（含省略号）", long.count == Q.promptMax && long.has
 
 check("⭐ 没带推荐答案 ⇒ 固定那两句", Q.choices(options: nil) == Q.choices && Q.choices(options: []) == Q.choices)
 check("⭐ 带了 ⇒ 用 bot 的，原句照发", Q.choices(options: ["先修麦克风", "先做切房间"]).map(\.text) == ["先修麦克风", "先做切房间"])
-check("推荐答案没有另外的简写", Q.choices(options: ["先修麦克风"]).allSatisfy { $0.short == $0.text })
+check("没给短标签 ⇒ 简写就是原句", Q.choices(options: ["先修麦克风"]).allSatisfy { $0.short == $0.text })
+let lab = Q.choices(options: ["先修启动时麦克风闪烁", "先做锁屏切房间"], labels: ["修麦克风", "切房间"])
+check("⭐ 带短标签 ⇒ 按钮简写用它，发出去的仍是完整答案",
+      lab.map(\.short) == ["修麦克风", "切房间"] && lab.map(\.text) == ["先修启动时麦克风闪烁", "先做锁屏切房间"])
+check("标签比答案少 / 空白 ⇒ 那颗用原句", Q.choices(options: ["A", "B"], labels: ["甲"]).map(\.short) == ["甲", "B"]
+      && Q.choices(options: ["A"], labels: ["  "]).map(\.short) == ["A"])
+check("⭐ 去重跳过的那个，标签也跟着跳（按原下标对齐）",
+      Q.choices(options: ["A", "A", "B"], labels: ["甲", "乙", "丙"]).map(\.short) == ["甲", "丙"])
 check("只带一个就一颗，不凑固定句", Q.choices(options: ["好"]).map(\.text) == ["好"])
 check("去空白、去空串、去重", Q.choices(options: [" A ", "", "  ", "A", "B"]).map(\.text) == ["A", "B"])
 check("⭐ 最多两颗", Q.choices(options: ["A", "B", "C"]).count == 2 && Q.maxOptions == 2)
