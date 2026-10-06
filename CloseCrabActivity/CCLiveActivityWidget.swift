@@ -110,10 +110,14 @@ struct CCActivityLockScreen: View {
     //
     //   上下内边距                                                ＝  20
     //   第一行   状态让成一行：max(脸 44, 22 ＋ 2 ＋ 20)          ＝  44
-    //   行距 6 ＋ 小播放条（暂停 ⟷ 进度 ⟷ 重播，图标键 28）       ＝  34
+    //   行距 6 ＋ 小播放条（暂停 ⟷ 进度 ⟷ 重播，图标键 36）       ＝  42
     //   行距 6 ＋ 回答 44                                          ＝  50
     //   ─────────────────────────────────────────────────────────
-    //   合计                                                       ＝ 148 ≤ 160
+    //   合计                                                       ＝ 156 ≤ 160
+    //
+    // 为什么停在 156 不顶到 160：上面的数是按字号估的不是量的，**156 是真机上验证过不被截的**
+    // （平时那套布局就是 156），160 没验证过。多出来的 8 全给了小播放条那两颗键 ——
+    // 没听清时要点重播，它是这一屏里最该好按的东西（Chris 2026-10-06：「这个高度极其稀缺，要用满」）。
     //
     // 其他房间的小圆点挪进名字那一行右侧，不再单独占一行（省下 ≈ 22）。
     // 字号按系统默认（Large）算；用户把动态字体调大时系统会自己缩实时活动里的字，
@@ -275,7 +279,7 @@ struct CCActivityBottom: View {
     }
 }
 
-/// 等你回话时的小播放条：左暂停 / 继续、中间进度、右重播。两颗键是 28pt 的圆形图标键 ——
+/// 等你回话时的小播放条：左暂停 / 继续、中间进度、右重播。两颗键是 36pt 的圆形图标键 ——
 /// 比大按钮扁，但仍是独立可点的键（同一个 intent，动作跟大按钮完全一样）。
 struct CCActivityMiniPlayRow: View {
     let state: CCLiveActivityState
@@ -298,13 +302,13 @@ struct CCActivityMiniPlayRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(Text(verbatim: "重播"))
         }
-        .frame(height: 28)
+        .frame(height: 36)
     }
 
     private func icon(_ name: String) -> some View {
         Image(systemName: name)
-            .font(.system(size: 13, weight: .bold))
-            .frame(width: 28, height: 28)
+            .font(.system(size: 15, weight: .bold))
+            .frame(width: 36, height: 36)
             .background(Circle().fill(.white.opacity(0.18)))
             .contentShape(Circle())
     }
