@@ -389,7 +389,11 @@
             let play: String
             switch s.playDisplay {
             case .hidden: play = "无进度"
-            case .running: play = "在播"
+            case let .running(r):
+                // 带上起点（时:分:秒）：重播时起点跳变、推没推出去，在诊断页上看得出来。
+                let f = DateFormatter()
+                f.dateFormat = "HH:mm:ss"
+                play = "在播(起 \(f.string(from: r.lowerBound)))"
             case .growing: play = "在播(生成中)"
             case let .still(p, t): play = "停@\(Int(p))/\(t.map { String(Int($0)) } ?? "?")"
             }
@@ -437,6 +441,7 @@
                     content: ActivityContent(state: state, staleDate: CCLiveActivityPolicy.staleDate(now: now)),
                     pushType: nil)
                 activityID = a.id
+                watchLanded(a.id)
                 cardStartedAt = now
                 lastPushed = state
                 lastPushAt = now
@@ -484,42 +489,26 @@
                 } else {
                     await a.update(content)
                 }
-                // 回读系统手里那份：跟刚推的不一样 ＝ 系统没收（节流 / 丢弃），不是我们没推。
-                // **现取一份新的**，不复用上面那个 `a` —— 它已经被 `update` 拿走（sending），
-                // 再碰它 Swift 6 编不过（见文件头「Activity 对象怎么拿」）。
-                //
-                // ## 没收就补推（2026-10-06 诊断页实锤）
-                //
-                // Chris 截的事件流：两次推隔 8 秒以上的都「系统已收」；隔 1~3 秒的连着几次
-                // 「系统没收：手里还是上一份」—— **系统把太密的更新丢了**。最要命的是最后一次被丢：
-                // 之后没有新变化就再也不推，卡片永远停在上一份（「在飞书点了重播、第二遍就失联」）。
-                // ⇒ 稍等再回读一次（刚推完立刻读可能还没落地），还不一样、而且我们没有更新的一份要推，
-                //    就把「上次推的」作废、定个闹钟重推 —— 最后一份一定会落地。
-                try? await Task.sleep(for: .seconds(1))
-                guard let b = Self.find(id) else { return }
-                // 不直接比整个结构体：里面的 Date 经系统编解码一圈可能差到亚毫秒，会被误判成「没收」
-                // 然后一直补推。比 `landedKey`（看得见的字段 ＋ 取整到秒的时间）。
-                let landed = Self.landedKey(b.content.state) == Self.landedKey(state)
-                let st = "\(b.activityState)"
-                if landed {
-                    self.missStreak = 0
-                    CCLiveActivityLog.shared.log("系统已收（\(st)）")
-                    return
-                }
-                CCLiveActivityLog.shared.log("⚠️ 系统没收：手里还是 \(Self.brief(b.content.state))（\(st)）")
-                // 期间又推过更新的一份：由那一份自己回读负责，这里不管。
-                guard self.lastPushed == state, self.activityID == id else { return }
-                self.missStreak += 1
-                // 连着被丢就退避（2、4、8…封顶 16 秒）：系统在限流时追着推只会继续被丢。
-                let backoff = min(16, pow(2, Double(min(self.missStreak, 4))))
-                self.lastPushed = nil
-                CCLiveActivityLog.shared.log("\(Int(backoff))s 后补推")
-                self.scheduleWake(Date().addingTimeInterval(backoff), now: Date())
+                // ⛔ 这里原来「等 1 秒回读 `content`，不一样就作废 lastPushed、定闹钟补推」。
+                //    第二张诊断截图证明它是错的，而且有害：
+                //    ① 回读的 `content` 会**滞后一份**（第一张图里每次「没收」显示的都正好是上一次推的），
+                //       所以「不一样」多半只是还没刷新，不是系统丢了；
+                //    ② 作废 lastPushed 之后，**下一次任何属性变化**（进度每秒一跳）都会立刻再推一次，
+                //       退避闹钟形同虚设 —— 变成每秒推一次，这才真把系统推到限流。
+                //    ⇒ 改为订阅系统**真正落地**的内容（`contentUpdates`，见 `watchLanded`），只记录不补推。
             }
         }
 
-        /// 连着「系统没收」几次了（补推退避用）。收了就清零。
-        private var missStreak = 0
+        /// 记录系统真正落地的卡片内容（`Activity.contentUpdates`）。开卡时起一条，卡没了自己结束。
+        /// 诊断页上「推 →」和「落地 ←」两行一对照：推了没落地、落地晚了几秒，一眼可见。
+        private func watchLanded(_ id: String) {
+            Task {
+                guard let a = Self.find(id) else { return }
+                for await c in a.contentUpdates {
+                    CCLiveActivityLog.shared.log("落地 ← \(Self.brief(c.state))")
+                }
+            }
+        }
 
         private func endCard(id: String? = nil) {
             let target = id ?? activityID
