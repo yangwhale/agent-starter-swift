@@ -68,7 +68,7 @@ struct CCLiveActivityWidget: Widget {
                         }
                         .padding(.leading, 6)
                     } else {
-                        CCActivityFace(state: shown, side: 44)
+                        CCActivityAvatar(state: shown, side: 44)
                             .padding(.leading, 4)
                     }
                 }
@@ -110,11 +110,11 @@ struct CCLiveActivityWidget: Widget {
                     .padding(.bottom, 4)
                 }
             } compactLeading: {
-                CCActivityFace(state: shown, side: 22)
+                CCActivityAvatar(state: shown, side: 22)
             } compactTrailing: {
                 CCActivityDot(dot: shown.dot, size: 6)
             } minimal: {
-                CCActivityFace(state: shown, side: 20)
+                CCActivityAvatar(state: shown, side: 20)
             }
             .keylineTint(CCIdentityColor.color(for: shown.room))
         }
@@ -163,7 +163,7 @@ struct CCActivityLockScreen: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack(alignment: .center, spacing: 10) {
-                CCActivityFace(state: shown, side: 44)
+                CCActivityAvatar(state: shown, side: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(shown.room)
@@ -198,6 +198,32 @@ struct CCActivityLockScreen: View {
 }
 
 // MARK: - 零件
+
+/// 卡片 / 灵动岛上的头像：**房间设的 emoji**，没设就是首字母；房间选的是活脸时才画脸。
+/// Chris 2026-10-06：「头像别用动脸，用我给房间选的那个 emoji。」规则在 `CCLiveActivityPolicy.avatar`。
+struct CCActivityAvatar: View {
+    let state: CCLiveActivityState
+    let side: CGFloat
+
+    var body: some View {
+        if let a = state.avatar {
+            Text(verbatim: a)
+                .font(.system(size: side * 0.78))
+                .minimumScaleFactor(0.5)
+                .lineLimit(1)
+                .frame(width: side, height: side)
+                // 首字母（不是 emoji）垫一块身份色圆底，跟 app 里方块一样；emoji 自带颜色不垫。
+                .background {
+                    if a.unicodeScalars.allSatisfy({ $0.isASCII }) {
+                        Circle().fill(CCIdentityColor.color(for: state.room).opacity(0.35))
+                    }
+                }
+                .accessibilityHidden(true)
+        } else {
+            CCActivityFace(state: state, side: side)
+        }
+    }
+}
 
 /// 一帧静态的活脸：按心情选定姿态，`reduceMotion: true` 保证跟时间无关
 /// （`CCFaceMotion` 的测试钉着「减弱动态时画面不随时间变」）。

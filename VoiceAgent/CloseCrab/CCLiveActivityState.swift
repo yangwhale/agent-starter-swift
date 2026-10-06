@@ -41,6 +41,13 @@ nonisolated struct CCLiveActivityState: Codable, Hashable, Sendable {
     var mood: String
     /// `CCFaceSkin.rawValue`。房间没选活脸时给 classic（卡片上总得有张脸，见 Policy）。
     var skin: String
+    /// 卡片上的头像字符：房间设的 emoji，没设就是名字首字母。**nil ＝ 画脸**（房间选的是活脸）。
+    ///
+    /// Chris 2026-10-06：「灵动岛和锁屏上的头像别用动脸，用我给房间选的那个 emoji。」
+    /// emoji 是几个字节的字符串，直接放进 ContentState；房间传的**照片**放不进来
+    /// （ContentState 有 4 KB 上限、扩展又读不到 app 的文件 —— 没有 App Groups），
+    /// 照片房间退回首字母。可选：旧 app 推的卡没这个键 ⇒ nil ⇒ 照旧画脸。
+    var avatar: String?
     /// `CCPresenceDot.rawValue`
     var presence: String
     /// 状态行：bot 此刻在干嘛（等你的那句话 / 在调的工具 / 空闲）。

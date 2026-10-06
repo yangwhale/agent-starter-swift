@@ -298,7 +298,8 @@ nonisolated enum CCLiveActivityPolicy {
                           peers: [(name: String, dot: CCPresenceDot)],
                           play: PlayMark = .none,
                           wait: String = "", repliedLine: String? = nil,
-                          options: [String] = [], labels: [String] = []) -> CCLiveActivityState {
+                          options: [String] = [], labels: [String] = [],
+                          emoji: String? = nil) -> CCLiveActivityState {
         // 子任务数跟状态行同一条规矩：断线时是残值，不显示。
         let live = mood != .asleep && mood != .searching
         // 等你回话：卡片上把暂停 / 重播换成快捷回复。刚回复过（「已回复」还在显示）就先不给，
@@ -331,6 +332,7 @@ nonisolated enum CCLiveActivityPolicy {
         // 体积不变、也就等于旧 app 的格式（`playStart` 那三个同一个理由）。
         s.showsQuickReply = quick ? true : nil
         s.waitText = mood == .waiting && !waitTrim.isEmpty ? truncate(waitTrim, max: headlineMax) : nil
+        s.avatar = avatar(room: room, skin: skin, emoji: emoji)
         // 推荐答案只跟着按钮走：按钮不出现就不写（nil ⇒ JSON 里没这个键）。
         // 存的是清洗后的原句，扩展那边再过一遍 `CCQuickReply.choices(options:)`。
         let hasOwn = options.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -338,5 +340,16 @@ nonisolated enum CCLiveActivityPolicy {
         s.replyOptions = own?.map(\.text)
         s.replyLabels = own?.map(\.short)
         return s
+    }
+
+    /// 卡片头像字符（见 `CCLiveActivityState.avatar`）：房间设了 emoji 用 emoji；
+    /// 选了活脸（`skin` 非 nil）⇒ nil 画脸；都没有 ⇒ 名字首字母大写（跟 app 里方块同一条）。
+    /// emoji 和活脸在 app 里是互斥的（选一样会清掉另一样），这里 emoji 优先只是兜底。
+    static func avatar(room: String, skin: CCFaceSkin?, emoji: String?) -> String? {
+        let e = (emoji ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !e.isEmpty { return String(e.prefix(4)) }
+        if skin != nil { return nil }
+        let initial = String(room.prefix(1)).uppercased()
+        return initial.isEmpty ? nil : initial
     }
 }

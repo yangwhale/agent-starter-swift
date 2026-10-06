@@ -141,6 +141,8 @@
             var room: String
             var mood: CCFaceMood = .asleep
             var skin: CCFaceSkin?
+            /// 房间设的 emoji（没设 nil）。卡片头像用它（`CCLiveActivityPolicy.avatar`）。
+            var emoji: String?
             var presence: CCPresenceDot = .off
             var snapHeadline: String?
             var wait = ""
@@ -191,6 +193,7 @@
                 room: slot.name,
                 mood: mood,
                 skin: CCRoomIcons.shared.faceSkin(for: slot.name),
+                emoji: CCRoomIcons.shared.hasCustomIcon(slot.name) ? CCRoomIcons.shared.icon(for: slot.name) : nil,
                 presence: presence,
                 snapHeadline: snap?.headline,
                 wait: snap?.wait ?? "",
@@ -340,7 +343,7 @@
                 room: i.room, mood: i.mood, skin: i.skin, presence: i.presence,
                 snapHeadline: i.snapHeadline, runningSubtasks: i.subs, timerStart: start,
                 isActive: i.isActive, isPaused: i.isPaused, canReplay: i.canReplay,
-                peers: i.peers, play: play, wait: i.wait, repliedLine: line, options: i.opts, labels: i.optl)
+                peers: i.peers, play: play, wait: i.wait, repliedLine: line, options: i.opts, labels: i.optl, emoji: i.emoji)
         }
 
         // MARK: - ActivityKit

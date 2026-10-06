@@ -608,6 +608,15 @@ check("不在等你 ⇒ 不带推荐", qs(mood: .working, opts: ["A"]).replyOpti
 check("已回复窗口里 ⇒ 不带推荐", qs(replied: "已回复：A", opts: ["A"]).replyOptions == nil)
 check("过期版不带推荐", qs(opts: ["A"]).staleVersion.replyOptions == nil)
 
+// 头像（2026-10-06：「别用动脸，用房间选的 emoji」）
+check("⭐ 设了 emoji ⇒ 头像是 emoji", P.avatar(room: "bunny", skin: nil, emoji: "🐰") == "🐰")
+check("⭐ 选了活脸、没 emoji ⇒ nil（画脸）", P.avatar(room: "bunny", skin: .bunny, emoji: nil) == nil)
+check("都没有 ⇒ 首字母大写", P.avatar(room: "jarvis", skin: nil, emoji: nil) == "J")
+check("emoji 去空白；空白当没设", P.avatar(room: "x", skin: nil, emoji: " 🤖 ") == "🤖" && P.avatar(room: "x", skin: nil, emoji: "  ") == "X")
+check("makeState 带上头像", P.makeState(room: "bunny", mood: .idle, skin: nil, presence: .online, snapHeadline: nil,
+      runningSubtasks: 0, timerStart: t0, isActive: false, isPaused: false, canReplay: false, peers: [],
+      emoji: "🐰").avatar == "🐰")
+
 let noQuick = String(data: try! enc.encode(qs(mood: .working)), encoding: .utf8)!
 check("⭐ 不在等你时 JSON 里没有两个新键（体积不变、等于旧格式）",
       !noQuick.contains("showsQuickReply") && !noQuick.contains("waitText") && !noQuick.contains("replyOptions") && !noQuick.contains("replyLabels"))
