@@ -385,6 +385,15 @@
             return "\(s.headline) · \(s.mood) · \(play)\(s.quickReplyShown ? " · 快捷回复" : "")"
         }
 
+        /// 判断「系统收没收」用的指纹：卡片上看得见的字段，时间取整到秒。
+        nonisolated private static func landedKey(_ s: CCLiveActivityState) -> String {
+            let sec: (Date?) -> String = { $0.map { String(Int($0.timeIntervalSince1970.rounded())) } ?? "-" }
+            return [brief(s), s.room, s.avatar ?? "-", sec(s.playStart), sec(s.timerStart),
+                    s.playTotal.map { String(Int($0.rounded())) } ?? "-",
+                    s.waitText ?? "-", (s.replyOptions ?? []).joined(separator: "|"),
+                    s.peers.map { "\($0.name)\($0.dot)" }.joined(separator: ",")].joined(separator: "§")
+        }
+
         /// 现取一份手上那张卡。**必须是 `nonisolated static`**，理由见文件头那节。
         nonisolated private static func find(_ id: String?) -> Activity<CCLiveActivityAttributes>? {
             guard let id else { return nil }
@@ -467,13 +476,39 @@
                 // 回读系统手里那份：跟刚推的不一样 ＝ 系统没收（节流 / 丢弃），不是我们没推。
                 // **现取一份新的**，不复用上面那个 `a` —— 它已经被 `update` 拿走（sending），
                 // 再碰它 Swift 6 编不过（见文件头「Activity 对象怎么拿」）。
-                if let b = Self.find(id) {
-                    let got = Self.brief(b.content.state)
-                    let st = "\(b.activityState)"
-                    CCLiveActivityLog.shared.log(got == brief ? "系统已收（\(st)）" : "⚠️ 系统没收：手里还是 \(got)（\(st)）")
+                //
+                // ## 没收就补推（2026-10-06 诊断页实锤）
+                //
+                // Chris 截的事件流：两次推隔 8 秒以上的都「系统已收」；隔 1~3 秒的连着几次
+                // 「系统没收：手里还是上一份」—— **系统把太密的更新丢了**。最要命的是最后一次被丢：
+                // 之后没有新变化就再也不推，卡片永远停在上一份（「在飞书点了重播、第二遍就失联」）。
+                // ⇒ 稍等再回读一次（刚推完立刻读可能还没落地），还不一样、而且我们没有更新的一份要推，
+                //    就把「上次推的」作废、定个闹钟重推 —— 最后一份一定会落地。
+                try? await Task.sleep(for: .seconds(1))
+                guard let b = Self.find(id) else { return }
+                // 不直接比整个结构体：里面的 Date 经系统编解码一圈可能差到亚毫秒，会被误判成「没收」
+                // 然后一直补推。比 `landedKey`（看得见的字段 ＋ 取整到秒的时间）。
+                let landed = Self.landedKey(b.content.state) == Self.landedKey(state)
+                let st = "\(b.activityState)"
+                if landed {
+                    self.missStreak = 0
+                    CCLiveActivityLog.shared.log("系统已收（\(st)）")
+                    return
                 }
+                CCLiveActivityLog.shared.log("⚠️ 系统没收：手里还是 \(Self.brief(b.content.state))（\(st)）")
+                // 期间又推过更新的一份：由那一份自己回读负责，这里不管。
+                guard self.lastPushed == state, self.activityID == id else { return }
+                self.missStreak += 1
+                // 连着被丢就退避（2、4、8…封顶 16 秒）：系统在限流时追着推只会继续被丢。
+                let backoff = min(16, pow(2, Double(min(self.missStreak, 4))))
+                self.lastPushed = nil
+                CCLiveActivityLog.shared.log("\(Int(backoff))s 后补推")
+                self.scheduleWake(Date().addingTimeInterval(backoff), now: Date())
             }
         }
+
+        /// 连着「系统没收」几次了（补推退避用）。收了就清零。
+        private var missStreak = 0
 
         private func endCard(id: String? = nil) {
             let target = id ?? activityID

@@ -19,7 +19,10 @@ import Foundation
 ///   在窗口到点时补推，否则停在中间态上（比如停在「在说话」，而它早说完了）。
 nonisolated enum CCLiveActivityPolicy {
     /// 两次推更新至少隔多久。
-    static let minUpdateInterval: TimeInterval = 1
+    ///
+    /// 1 → 2 秒（2026-10-06）：诊断页实测，隔 1~3 秒的连续更新会被系统丢掉（隔 8 秒以上的都收了）。
+    /// 放宽一档减少被丢；被丢的那份由 app 回读后补推兜底（`CCLiveActivity.push`）。
+    static let minUpdateInterval: TimeInterval = 2
     /// 卡片多久没收到更新就算过期（显示「已断开」）。每次推都续。
     static let staleAfter: TimeInterval = 15 * 60
     /// 状态没变时多久重推一次（只为续过期时间）。**必须比 `staleAfter` 短**，测试钉着。
