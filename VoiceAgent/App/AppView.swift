@@ -59,12 +59,10 @@ struct AppView: View {
                         // ⚠️ 第三个条件 `canReplay` 是 2026-09-22 补的：
                         //    播完之后 `isSpeaking` 和 `isActive` 都假了，
                         //    整条消失 —— 而那正是最想按重播的时刻。
-                        if slot.isSpeaking || slot.playback.isActive
-                            || slot.playback.canReplay {
-                            CCPlaybackBar(remote: slot.playback)
-                                .padding(.bottom, CC.Space.snug)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
+                        //
+                        // 开着文字框时**不在这儿画**，改排进聊天那一列、输入框正上方（`chatStack`）。
+                        // Chris 2026-10-06：浮在底部的播放条把文字输入框盖住了。
+                        if !chat { playbackBar }
                     }
                     .ccAnimation(.default, value: slot.isSpeaking)
                     .ccAnimation(.default, value: slot.playback.isActive)
@@ -79,6 +77,48 @@ struct AppView: View {
         .ccAnimation(.default, value: localMedia.isScreenShareEnabled)
     }
 
+    /// 播放条本体（显示条件见上面 overlay 那段注释）。
+    @ViewBuilder
+    private var playbackBar: some View {
+        if slot.isSpeaking || slot.playback.isActive || slot.playback.canReplay {
+            CCPlaybackBar(remote: slot.playback)
+                .padding(.bottom, CC.Space.snug)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    /// 开着文字框时的整块：**聊天在底层占满，波形 / 活脸浮在上面原来的位置**。
+    ///
+    /// 手机原来是 `if chat { TextInteractionView } else { VoiceInteractionView }` 二选一 ——
+    /// 一点开文字框，活脸就缩成顶上一个小头像、跟成员条挤在一起。
+    /// Chris 2026-10-06：「不管点不点文字框，脸和声波条都保持原来的位置不动，别挤上去；
+    /// 它本来就是透明的，放在原位也不耽误看后面的字。」⇒ 手机也用宽屏那套「叠起来」（见下面 `wideInteractions` 的长注释）。
+    ///
+    /// - 浮层 `.ignoresSafeArea(.keyboard)`：键盘弹起时只有聊天那一列往上让，脸留在原位。
+    /// - 播放条排在输入框正上方（不再浮在底部盖住输入框）。
+    private func chatStack() -> some View {
+        ZStack {
+            VStack(spacing: 0) {
+                ChatView()
+                    .blurredTop()
+                    // **显式声明「剩下的空间归我」**（理由见 `wideInteractions`）。
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    #if os(iOS)
+                    .contentShape(Rectangle())
+                    .onTapGesture { keyboardFocus = false }
+                    #endif
+                playbackBar
+                ChatInputView(keyboardFocus: _keyboardFocus)
+            }
+
+            // 浮在最上层，不占布局、不吃点击（理由见 `wideInteractions`）。
+            VoiceInteractionView()
+                .allowsHitTesting(false)
+                .ignoresSafeArea(.keyboard)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     @ViewBuilder
     private func interactions() -> some View {
         #if os(visionOS)
@@ -87,9 +127,10 @@ struct AppView: View {
             if wide {
                 wideInteractions()
             } else {
-                // 手机上只能二选一 —— 屏幕就那么大，两样并排谁都看不清。
+                // 手机也叠起来（2026-10-06 起，见 `chatStack`）。原来是二选一：
+                // 「屏幕就那么大，两样并排谁都看不清」—— 但叠起来不是并排，那条理由不成立。
                 if chat {
-                    TextInteractionView(keyboardFocus: $keyboardFocus)
+                    chatStack()
                 } else {
                     VoiceInteractionView()
                 }
@@ -172,27 +213,10 @@ struct AppView: View {
     @ViewBuilder
     private func wideInteractions() -> some View {
         if chat {
-            ZStack {
-                VStack(spacing: 0) {
-                    // ⚠️ 这里**不用 `TextInteractionView`**。那个组件里还带了
-                    //    一份参与者头像（`participants()`）—— 手机上它是必要的，
-                    //    因为切过去之后波形那一屏就看不见了。
-                    //    宽屏上波形就浮在上面，再放一份是同一件事说两遍。
-                    ChatView()
-                        .blurredTop()
-                        // **显式声明「剩下的空间归我」**。不写这行的话，
-                        // 这个 `ScrollView` 和下面固定高度的输入框之间
-                        // 没人规定谁让谁 —— 第二版就是这么把输入框顶没的。
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    ChatInputView(keyboardFocus: _keyboardFocus)
-                }
-
-                // 浮在最上层。不占布局空间，所以上面那块是**整块**不是剩下的一块。
-                VoiceInteractionView()
-                    .allowsHitTesting(false)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 跟手机共用一份（`chatStack`）。⚠️ 不用 `TextInteractionView`：那个组件带一份参与者头像，
+            // 波形就浮在上面时再放一份是同一件事说两遍。ChatView 那行 `maxHeight: .infinity`
+            // 是「谁吃掉剩余空间」的显式声明 —— 不写的话第二版就是这么把输入框顶没的。
+            chatStack()
         } else {
             // 字幕收起来时波形独占整块，跟原来一样。
             VoiceInteractionView()
