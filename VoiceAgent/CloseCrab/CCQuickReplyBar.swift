@@ -56,18 +56,26 @@ struct CCQuickReplyBar: View {
             case let .replied(line):
                 Text(verbatim: line)
                     .font(CC.Font.label)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, CC.Space.snug)
+                    .padding(.vertical, CC.Space.tight)
+                    .background(.regularMaterial, in: Capsule())
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
                     .transition(.opacity)
             case let .offer(prompt):
                 VStack(spacing: CC.Space.tight) {
                     if !prompt.isEmpty {
+                        // 垫一块磨砂胶囊：这行字落在面板和按钮之间，底下是用户选的天空背景 ——
+                        // 灰字直接压在蓝天上几乎看不清（Chris 2026-10-06 截图）。
                         Text(verbatim: prompt)
                             .font(CC.Font.label)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
+                            .padding(.horizontal, CC.Space.snug)
+                            .padding(.vertical, CC.Space.tight)
+                            .background(.regularMaterial, in: Capsule())
                     }
                     // bot 带了推荐答案就是它的，没带就是固定那两句（`CCQuickReply.choices(options:labels:)`）。
                     // 2~4 颗都排一行（Chris 2026-10-06）；超过两颗时不画图标、间距收紧，宽度留给字。
