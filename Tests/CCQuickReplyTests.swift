@@ -103,9 +103,10 @@ check("⭐ 去重跳过的那个，标签也跟着跳（按原下标对齐）",
       Q.choices(options: ["A", "A", "B"], labels: ["甲", "乙", "丙"]).map(\.short) == ["甲", "丙"])
 check("只带一个就一颗，不凑固定句", Q.choices(options: ["好"]).map(\.text) == ["好"])
 check("去空白、去空串、去重", Q.choices(options: [" A ", "", "  ", "A", "B"]).map(\.text) == ["A", "B"])
-check("⭐ 最多两颗", Q.choices(options: ["A", "B", "C"]).count == 2 && Q.maxOptions == 2)
+check("⭐ 最多四颗", Q.choices(options: ["A", "B", "C", "D", "E"]).count == 4 && Q.maxOptions == 4)
+check("三颗就三颗", Q.choices(options: ["A", "B", "C"]).count == 3)
 check("全是空白 ⇒ 退回固定那两句", Q.choices(options: [" ", "\n"]) == Q.choices)
-check("两颗图标不同（最推荐的是星）", Q.choices(options: ["A", "B"]).map(\.symbol) == ["star", "arrow.turn.down.right"])
+check("最推荐的是星，其余是箭头", Q.choices(options: ["A", "B", "C"]).map(\.symbol) == ["star", "arrow.turn.down.right", "arrow.turn.down.right"])
 
 // MARK: - 从 nonisolated 上下文用（扩展的视图、ActivityKit 线程会读；编译过就算过）
 

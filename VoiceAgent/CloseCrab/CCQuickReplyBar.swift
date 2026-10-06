@@ -69,11 +69,14 @@ struct CCQuickReplyBar: View {
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
                     }
-                    HStack(spacing: CC.Space.snug) {
-                        // bot 带了推荐答案就是它的，没带就是固定那两句（`CCQuickReply.choices(options:)`）。
-                        ForEach(CCQuickReply.choices(options: slot.botStatus.snap?.opts,
-                                                     labels: slot.botStatus.snap?.optl), id: \.self) { c in
-                            button(c)
+                    // bot 带了推荐答案就是它的，没带就是固定那两句（`CCQuickReply.choices(options:labels:)`）。
+                    // 2~4 颗都排一行（Chris 2026-10-06）；超过两颗时不画图标、间距收紧，宽度留给字。
+                    let choices = CCQuickReply.choices(options: slot.botStatus.snap?.opts,
+                                                       labels: slot.botStatus.snap?.optl)
+                    let roomy = choices.count <= 2
+                    HStack(spacing: roomy ? CC.Space.snug : CC.Space.tight) {
+                        ForEach(choices, id: \.self) { c in
+                            button(c, icon: roomy)
                         }
                     }
                 }
@@ -94,7 +97,7 @@ struct CCQuickReplyBar: View {
         }
     }
 
-    private func button(_ c: CCQuickReply.Choice) -> some View {
+    private func button(_ c: CCQuickReply.Choice, icon: Bool) -> some View {
         Button {
             Task { await slot.quickReply.send(c.text) }
         } label: {
@@ -102,9 +105,9 @@ struct CCQuickReplyBar: View {
             // 最后一档不定宽、截断显示 —— bot 没给短标签（或短标签也放不下）时
             // 前两档都是定宽的，ViewThatFits 会拿最后一档硬塞，定宽的话就溢出按钮。
             ViewThatFits(in: .horizontal) {
-                label(c.text, c.symbol)
-                label(c.short, c.symbol)
-                label(c.short, c.symbol, fixed: false)
+                label(c.text, icon ? c.symbol : nil)
+                label(c.short, icon ? c.symbol : nil)
+                label(c.short, icon ? c.symbol : nil, fixed: false)
             }
             .frame(maxWidth: .infinity)
             .frame(height: CC.Size.bar)
@@ -120,17 +123,19 @@ struct CCQuickReplyBar: View {
         .accessibilityLabel(Text(verbatim: c.text))
     }
 
-    private func label(_ title: String, _ symbol: String, fixed: Bool = true) -> some View {
+    private func label(_ title: String, _ symbol: String?, fixed: Bool = true) -> some View {
         HStack(spacing: CC.Space.tight) {
-            Image(systemName: symbol)
-                .font(.system(size: 17, weight: .semibold))
+            if let symbol {
+                Image(systemName: symbol)
+                    .font(.system(size: 17, weight: .semibold))
+            }
             Text(verbatim: title)
                 .font(.system(size: 17, weight: .semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(fixed ? 1 : 0.8)
         }
         .foregroundStyle(.primary)
-        .padding(.horizontal, CC.Space.snug)
+        .padding(.horizontal, symbol == nil ? CC.Space.tight : CC.Space.snug)
         .fixedSize(horizontal: fixed, vertical: fixed)
     }
 }

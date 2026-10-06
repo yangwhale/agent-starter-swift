@@ -55,7 +55,8 @@ struct CCLiveActivityWidget: Widget {
                         Text(shown.statusLine)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            // 等你回话时下面多一行小播放条，状态让成一行（预算见锁屏卡片那段）。
+                            .lineLimit(shown.quickReplyShown ? 1 : 2)
                             .multilineTextAlignment(.center)
                     }
                 }
@@ -64,8 +65,7 @@ struct CCLiveActivityWidget: Widget {
                     // 岛的下沿两角是大圆弧：按钮贴边会被切掉角（同一张截图），
                     // 所以左右各缩 12pt、按钮矮到 38pt，给下沿留出圆弧的位置。
                     VStack(spacing: 6) {
-                        if !stale && shown.playDisplay != .hidden { CCActivityProgress(state: shown) }
-                        if !stale { CCActivityActionRow(state: shown) }
+                        if !stale { CCActivityBottom(state: shown) }
                     }
                     .environment(\.ccActivityButtonHeight, 38)
                     .padding(.horizontal, 12)
@@ -106,6 +106,15 @@ struct CCActivityLockScreen: View {
     //   ─────────────────────────────────────────────────────────
     //   合计（最坏：两行状态 ＋ 进度 ＋ 按钮）                     ＝ 156 ≤ 160
     //
+    // **等你回话时**（2026-10-06）下面换成「小播放条 ＋ 一行 2~4 颗回答」，见 `CCActivityBottom`：
+    //
+    //   上下内边距                                                ＝  20
+    //   第一行   状态让成一行：max(脸 44, 22 ＋ 2 ＋ 20)          ＝  44
+    //   行距 6 ＋ 小播放条（暂停 ⟷ 进度 ⟷ 重播，图标键 28）       ＝  34
+    //   行距 6 ＋ 回答 44                                          ＝  50
+    //   ─────────────────────────────────────────────────────────
+    //   合计                                                       ＝ 148 ≤ 160
+    //
     // 其他房间的小圆点挪进名字那一行右侧，不再单独占一行（省下 ≈ 22）。
     // 字号按系统默认（Large）算；用户把动态字体调大时系统会自己缩实时活动里的字，
     // 但调到辅助功能那几档时这份预算不保证 —— 那时状态行会先被截成一行。
@@ -131,12 +140,11 @@ struct CCActivityLockScreen: View {
                     Text(shown.statusLine)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.85))
-                        .lineLimit(2)
+                        // 等你回话时让成一行，腾出地方给小播放条（预算见上）。
+                        .lineLimit(shown.quickReplyShown ? 1 : 2)
                 }
             }
-            // 语音进度：有正在播 / 能重播的那段才出现（样子照 app 里的 CCPlaybackBar）。
-            if !stale && shown.playDisplay != .hidden { CCActivityProgress(state: shown) }
-            if !stale { CCActivityActionRow(state: shown) }
+            if !stale { CCActivityBottom(state: shown) }
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 14)
@@ -219,30 +227,86 @@ struct CCActivityControls: View {
 /// 原来 48pt 时整张卡超高被截）。字从 title3 降到 headline，44pt 里放得下图标 ＋ 字。
 struct CCActivityBigLabel: View {
     let title: String
-    let systemImage: String
+    /// nil ⇒ 只有字（一行三四颗回答时，宽度留给字）。
+    let systemImage: String?
     @Environment(\.ccActivityButtonHeight) private var height
 
     var body: some View {
-        Label(title, systemImage: systemImage)
+        Group {
+            if let systemImage {
+                Label(title, systemImage: systemImage)
+            } else {
+                Text(title)
+            }
+        }
             .font(.headline)
             .lineLimit(1)
+            .minimumScaleFactor(systemImage == nil ? 0.75 : 1)
+            .padding(.horizontal, systemImage == nil ? 4 : 0)
             .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.white.opacity(0.18)))
             .contentShape(Rectangle())
     }
 }
 
-/// 卡片最下面那一行：平时是暂停 / 重播，**bot 在等你回话时换成快捷回复**。
-/// 两种同高（44pt），换来换去卡片不跳。
-struct CCActivityActionRow: View {
+/// 卡片下半截：平时是「进度条 ＋ 暂停 / 重播两颗大按钮」；**bot 在等你回话时**是
+/// 「小播放条 ＋ 一行 2~4 颗回答」。
+///
+/// Chris 2026-10-06：「等你选的时候，重播和暂停还得要着，哪怕扁一点 —— 我要重播
+/// 通常就是没听清，没听清让我在四个选项里选，我也选不上来，这时候得能点重播。」
+/// 所以等你时不把播放控制换掉，而是**缩成进度条两头的两颗图标键**，跟回答共存。
+struct CCActivityBottom: View {
     let state: CCLiveActivityState
 
     var body: some View {
         if state.quickReplyShown {
-            CCActivityQuickReplies(state: state)
+            VStack(spacing: 6) {
+                // 没有可播 / 可重播的语音就不画这条（按了也没东西放）。
+                if state.playDisplay != .hidden || state.canReplay { CCActivityMiniPlayRow(state: state) }
+                CCActivityQuickReplies(state: state)
+            }
         } else {
-            CCActivityControls(state: state)
+            VStack(spacing: 6) {
+                // 语音进度：有正在播 / 能重播的那段才出现（样子照 app 里的 CCPlaybackBar）。
+                if state.playDisplay != .hidden { CCActivityProgress(state: state) }
+                CCActivityControls(state: state)
+            }
         }
+    }
+}
+
+/// 等你回话时的小播放条：左暂停 / 继续、中间进度、右重播。两颗键是 28pt 的圆形图标键 ——
+/// 比大按钮扁，但仍是独立可点的键（同一个 intent，动作跟大按钮完全一样）。
+struct CCActivityMiniPlayRow: View {
+    let state: CCLiveActivityState
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button(intent: CCLiveActivityToggleIntent(room: state.room)) {
+                icon(state.isPlaying ? "pause.fill" : "play.fill")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: state.isPlaying ? "暂停" : "继续"))
+            if state.playDisplay != .hidden {
+                CCActivityProgress(state: state)
+            } else {
+                Spacer(minLength: 0)
+            }
+            Button(intent: CCLiveActivityReplayIntent(room: state.room)) {
+                icon("arrow.counterclockwise")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: "重播"))
+        }
+        .frame(height: 28)
+    }
+
+    private func icon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 13, weight: .bold))
+            .frame(width: 28, height: 28)
+            .background(Circle().fill(.white.opacity(0.18)))
+            .contentShape(Circle())
     }
 }
 
@@ -254,14 +318,17 @@ struct CCActivityQuickReplies: View {
     let state: CCLiveActivityState
 
     var body: some View {
-        HStack(spacing: 10) {
-            // bot 带了推荐答案就是它的，没带就是固定那两句（跟 app 主界面同一个函数）。
-            ForEach(CCQuickReply.choices(options: state.replyOptions, labels: state.replyLabels), id: \.self) { r in
+        // bot 带了推荐答案就是它的，没带就是固定那两句（跟 app 主界面同一个函数）。
+        let choices = CCQuickReply.choices(options: state.replyOptions, labels: state.replyLabels)
+        // 2~4 颗都排**一行**（Chris 2026-10-06）。超过两颗时去掉图标、缩小间距，把宽度留给字。
+        let roomy = choices.count <= 2
+        HStack(spacing: roomy ? 10 : 6) {
+            ForEach(choices, id: \.self) { r in
                 Button(intent: CCLiveActivityQuickReplyIntent(room: state.room, text: r.text)) {
                     // 先试整句，放不下再用简写 —— 两种同高，换了卡片不跳。
                     ViewThatFits(in: .horizontal) {
-                        CCActivityBigLabel(title: r.text, systemImage: r.symbol)
-                        CCActivityBigLabel(title: r.short, systemImage: r.symbol)
+                        CCActivityBigLabel(title: r.text, systemImage: roomy ? r.symbol : nil)
+                        CCActivityBigLabel(title: r.short, systemImage: roomy ? r.symbol : nil)
                     }
                 }
                 .buttonStyle(.plain)

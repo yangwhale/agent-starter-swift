@@ -603,7 +603,7 @@ let ql = qs(opts: ["先修启动时麦克风闪烁", "先做锁屏切房间"], l
 check("⭐ 带短标签 ⇒ 卡片带上，跟答案对齐", ql.replyLabels == ["修麦克风", "切房间"] && ql.replyOptions?.count == 2)
 check("没给标签 ⇒ 标签就是答案", qs(opts: ["A"]).replyLabels == ["A"])
 check("推荐全是空白 ⇒ nil", qs(opts: [" ", ""]).replyOptions == nil)
-check("推荐在卡片里也清洗过（去重、最多两个）", qs(opts: ["A", "A", "B", "C"]).replyOptions == ["A", "B"])
+check("推荐在卡片里也清洗过（去重、最多四个）", qs(opts: ["A", "A", "B", "C", "D", "E"]).replyOptions == ["A", "B", "C", "D"])
 check("不在等你 ⇒ 不带推荐", qs(mood: .working, opts: ["A"]).replyOptions == nil)
 check("已回复窗口里 ⇒ 不带推荐", qs(replied: "已回复：A", opts: ["A"]).replyOptions == nil)
 check("过期版不带推荐", qs(opts: ["A"]).staleVersion.replyOptions == nil)

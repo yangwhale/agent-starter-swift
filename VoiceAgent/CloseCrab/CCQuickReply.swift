@@ -40,12 +40,12 @@ nonisolated enum CCQuickReply {
     /// 推到屏幕上去做选择。」服务端从 `<ask-user>摘要|答案一|答案二</ask-user>` 里取出来，
     /// 放进 bot 状态快照的 `opts`。
     ///
-    /// - 去空白、去空串、去重，最多 `maxOptions` 个；清完一个不剩 ⇒ 固定那两句
+    /// - 去空白、去空串、去重，最多 `maxOptions`（4）个；清完一个不剩 ⇒ 固定那两句
     /// - 只有一个也照用（bot 只想推荐一个答案时，不硬凑一个固定句子进来）
     /// - `labels`：跟 `options` 按下标一一对应的按钮短标签（快照 `optl`，同日补：
     ///   「每个答案再给一个简短的 summary，显示在按钮上」）。**按钮上先试完整答案、放不下才用短标签**
     ///   （`ViewThatFits`），所以 `short` 就是短标签；缺了 / 空的那个 ⇒ 用完整答案本身
-    /// - 图标：第一个（bot 最推荐的）是星，第二个是箭头
+    /// - 图标：第一个（bot 最推荐的）是星，其余是箭头（超过两颗时界面不画图标）
     static func choices(options: [String]?, labels: [String]? = nil) -> [Choice] {
         var out: [Choice] = []
         for (i, o) in (options ?? []).enumerated() {
@@ -60,8 +60,9 @@ nonisolated enum CCQuickReply {
         return out.isEmpty ? choices : out
     }
 
-    /// 推荐答案最多几个（主界面、锁屏卡片都只放得下两颗）。服务端也截到 2，这里再守一道。
-    static let maxOptions = 2
+    /// 推荐答案最多几个。Chris 2026-10-06：「可以动态的，2、3、4 个」，主界面和锁屏都排一行，
+    /// 四颗是一行的上限。服务端也截到 4，这里再守一道。
+    static let maxOptions = 4
 
     /// 点了之后「已回复：…」显示多久。这 3 秒里按钮先收起来（防连按）。
     static let repliedShowFor: TimeInterval = 3
