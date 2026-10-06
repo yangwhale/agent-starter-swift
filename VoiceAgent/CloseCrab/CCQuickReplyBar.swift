@@ -53,30 +53,16 @@ struct CCQuickReplyBar: View {
             switch shown {
             case .hidden:
                 EmptyView()
-            case let .replied(line):
-                Text(verbatim: line)
-                    .font(CC.Font.label)
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, CC.Space.snug)
-                    .padding(.vertical, CC.Space.tight)
-                    .background(.regularMaterial, in: Capsule())
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
-                    .transition(.opacity)
-            case let .offer(prompt):
+            case .replied:
+                // 「已回复：…」和下面那行问题一样**不在这儿画**（见 `.offer` 里的说明）——
+                // 点完按钮就整块收起；回了什么，聊天记录和飞书回显里都有。
+                EmptyView()
+            case .offer:
                 VStack(spacing: CC.Space.tight) {
-                    if !prompt.isEmpty {
-                        // 垫一块磨砂胶囊：这行字落在面板和按钮之间，底下是用户选的天空背景 ——
-                        // 灰字直接压在蓝天上几乎看不清（Chris 2026-10-06 截图）。
-                        Text(verbatim: prompt)
-                            .font(CC.Font.label)
-                            .foregroundStyle(.primary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, CC.Space.snug)
-                            .padding(.vertical, CC.Space.tight)
-                            .background(.regularMaterial, in: Capsule())
-                    }
+                    // ⛔ 按钮上方原来有一行「bot 在等你什么」的小字。Chris 2026-10-06：
+                    //    「这个缝里的小字去掉，看不见、没用，光占一个缝。」—— 它落在面板和按钮之间的缝里，
+                    //    底下是天空背景，垫磨砂底也只是勉强可读；而同一句话顶上状态条里本来就有（橙色那行）。
+                    //    去掉之后缝也没了，上面的面板自然往下延到按钮这里。
                     // bot 带了推荐答案就是它的，没带就是固定那两句（`CCQuickReply.choices(options:labels:)`）。
                     // 2~4 颗都排一行（Chris 2026-10-06）；超过两颗时不画图标、间距收紧，宽度留给字。
                     let choices = CCQuickReply.choices(options: slot.botStatus.snap?.opts,
