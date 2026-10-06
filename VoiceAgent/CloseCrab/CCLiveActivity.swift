@@ -23,6 +23,31 @@
     import Observation
     import UIKit
 
+    /// 实时活动的事件流（带毫秒时间戳），诊断页看。
+    ///
+    /// Chris 2026-10-06：「点了暂停以后卡片就一直卡在那，推选项、播下一段都不变 ——
+    /// app 没挂起，声音照样从 app 出来。」卡片不更新可能卡在四个地方：
+    /// 没察觉到变化 / Policy 判了 skip 或 wait / update 调了但系统没收 / 卡片已被换掉。
+    /// **没有逐步记录就只能猜**（我第一次就猜成了「app 被挂起」，猜错了）。
+    /// 这里把每一步记下来，配合 `update` 之后回读系统里那份内容，一次复现就能定位。
+    @MainActor
+    @Observable
+    final class CCLiveActivityLog {
+        static let shared = CCLiveActivityLog()
+        private(set) var events: [String] = []
+        private static let stamp: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "HH:mm:ss.SSS"
+            return f
+        }()
+
+        func log(_ text: String) {
+            events.append("\(Self.stamp.string(from: Date())) \(text)")
+            if events.count > 24 { events.removeFirst(events.count - 24) }
+            print("[CCLiveActivity] \(text)")
+        }
+    }
+
     /// 锁屏 / 灵动岛实时活动的 app 这一半：**开卡、推更新、结束、换卡、接按钮**。
     ///
     /// 判定全在 `CCLiveActivityPolicy`（纯 Foundation，离线测过）。这里只做三件事：
@@ -348,6 +373,18 @@
 
         // MARK: - ActivityKit
 
+        /// 一份卡片内容的一行摘要（诊断用）：状态行 · 心情 · 播放样子。
+        nonisolated private static func brief(_ s: CCLiveActivityState) -> String {
+            let play: String
+            switch s.playDisplay {
+            case .hidden: play = "无进度"
+            case .running: play = "在播"
+            case .growing: play = "在播(生成中)"
+            case let .still(p, t): play = "停@\(Int(p))/\(t.map { String(Int($0)) } ?? "?")"
+            }
+            return "\(s.headline) · \(s.mood) · \(play)\(s.quickReplyShown ? " · 快捷回复" : "")"
+        }
+
         /// 现取一份手上那张卡。**必须是 `nonisolated static`**，理由见文件头那节。
         nonisolated private static func find(_ id: String?) -> Activity<CCLiveActivityAttributes>? {
             guard let id else { return nil }
@@ -368,7 +405,7 @@
                 return
             }
             if CCLiveActivityPolicy.goneMeansUserDismissed(age: age, enabled: enabled) { dismissedByUser = true }
-            print("[CCLiveActivity] 卡片没了（已开 \(Int(age)) 秒）→ \(dismissedByUser ? "当成用户划掉" : "系统到点收走")")
+            CCLiveActivityLog.shared.log("卡片没了（已开 \(Int(age)) 秒）→ \(dismissedByUser ? "当成用户划掉" : "系统到点收走")")
             forget()
         }
 
@@ -384,11 +421,11 @@
                 lastPushed = state
                 lastPushAt = now
                 lastStartFailure = nil
-                print("[CCLiveActivity] 开卡 \(state.room)")
+                CCLiveActivityLog.shared.log("开卡 \(state.room)")
                 return true
             } catch {
                 lastStartFailure = now
-                print("⚠️ [CCLiveActivity] 开卡失败（后台时开不了是正常的）：\(error)")
+                CCLiveActivityLog.shared.log("⚠️ 开卡失败（后台时开不了是正常的）：\(error)")
                 return false
             }
         }
@@ -399,6 +436,7 @@
                 return
             case let .wait(dt):
                 wakeAt.append(now.addingTimeInterval(dt))
+                CCLiveActivityLog.shared.log("等 \(String(format: "%.1f", dt))s 再推（节流）")
                 return
             case .now:
                 break
@@ -411,8 +449,13 @@
             // 等你回话的那一下：带 AlertConfiguration 推 —— 系统据此展开灵动岛、点亮锁屏、响一声。
             let alert = pendingAlert
             pendingAlert = nil
+            let brief = Self.brief(state)
+            CCLiveActivityLog.shared.log("推 → \(brief)\(alert != nil ? " ＋提醒" : "")")
             Task {
-                guard let a = Self.find(id) else { return }
+                guard let a = Self.find(id) else {
+                    CCLiveActivityLog.shared.log("⚠️ 推不出去：系统里找不到这张卡")
+                    return
+                }
                 if let alert {
                     // 标题 / 正文是运行时字符串：走字符串插值进 LocalizedStringResource
                     // （没有对应的本地化条目，系统按原文显示）。
@@ -421,6 +464,14 @@
                 } else {
                     await a.update(content)
                 }
+                // 回读系统手里那份：跟刚推的不一样 ＝ 系统没收（节流 / 丢弃），不是我们没推。
+                // **现取一份新的**，不复用上面那个 `a` —— 它已经被 `update` 拿走（sending），
+                // 再碰它 Swift 6 编不过（见文件头「Activity 对象怎么拿」）。
+                if let b = Self.find(id) {
+                    let got = Self.brief(b.content.state)
+                    let st = "\(b.activityState)"
+                    CCLiveActivityLog.shared.log(got == brief ? "系统已收（\(st)）" : "⚠️ 系统没收：手里还是 \(got)（\(st)）")
+                }
             }
         }
 
@@ -428,7 +479,7 @@
             let target = id ?? activityID
             if id == nil || id == activityID { forget() }
             guard let target else { return }
-            print("[CCLiveActivity] 结束卡片")
+            CCLiveActivityLog.shared.log("结束卡片")
             Task {
                 guard let a = Self.find(target) else { return }
                 await a.end(nil, dismissalPolicy: .immediate)
@@ -469,10 +520,10 @@
             switch action {
             case .toggle:
                 let r = await slot.playback.smartToggle()
-                print("[CCLiveActivity] 按钮 toggle \(room) [\(r.before)] → \(r.action)：\(slot.playback.lastError ?? "ok")")
+                CCLiveActivityLog.shared.log("按钮 toggle \(room) [\(r.before)] → \(r.action)：\(slot.playback.lastError ?? "ok")")
             case .replay:
                 await slot.playback.replay()
-                print("[CCLiveActivity] 按钮 replay \(room) → \(slot.playback.lastError ?? "ok")")
+                CCLiveActivityLog.shared.log("按钮 replay \(room) → \(slot.playback.lastError ?? "ok")")
             case .activate:
                 // 卡片的重算靠观察 activeName（readInputs 读了 rooms.active），不用手动 sync。
                 rooms?.activate(slot.name)
