@@ -65,6 +65,8 @@ struct AgentView: View {
     }
     /// 看不见就别定时重算 —— 见 `CCRenderGate`。
     @Environment(\.ccRendering) private var rendering
+    /// 活脸底下那排小柱子离底边多高（由 `AppView` 按开没开文字框给）。
+    @Environment(\.ccFaceBarsBottomInset) private var barsInset
 
 
     var body: some View {
@@ -158,8 +160,13 @@ struct AgentView: View {
     private func faceStage(_ skin: CCFaceSkin) -> some View {
         GeometryReader { g in
             let side = max(80, min(g.size.width * 0.72, g.size.height * 0.62, 300))
-            VStack(spacing: 2 * .grid) {
+            // 脸在整块里居中；小柱子单独贴底、离底边 `barsInset`（为什么分开见 `AppView.barsInsetChat`）。
+            ZStack(alignment: .bottom) {
                 CCSlotFace(slot: slot, presence: rooms.presence(for: slot), skin: skin, side: side)
+                    // 原来脸和柱子（44 高 ＋ 间距 8）一起在 VStack 里居中，脸的中心在正中偏上 26pt。
+                    // 柱子拆走之后补回这 26pt，脸的位置跟 2026-10-06 之前一模一样。
+                    .offset(y: -(44 + 2 * .grid) / 2)
+                    .frame(width: g.size.width, height: g.size.height)
                 CCVoiceBars(
                     tracks: slot.botAudioTracks,
                     isSpeaking: slot.isSpeaking,
@@ -170,6 +177,7 @@ struct AgentView: View {
                     maxHeight: 44,
                     glow: 0.35
                 )
+                .padding(.bottom, barsInset)
             }
             .frame(width: g.size.width, height: g.size.height)
         }
@@ -195,4 +203,17 @@ struct AgentView: View {
         )
     }
 
+}
+
+
+/// 活脸底下那排小柱子离底边多高。默认 0 ＝ 贴底；`AppView` 按底下有哪些控件给值。
+private struct CCFaceBarsBottomInsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    var ccFaceBarsBottomInset: CGFloat {
+        get { self[CCFaceBarsBottomInsetKey.self] }
+        set { self[CCFaceBarsBottomInsetKey.self] = newValue }
+    }
 }

@@ -77,14 +77,18 @@ struct AppView: View {
         .ccAnimation(.default, value: localMedia.isScreenShareEnabled)
     }
 
-    /// 声波柱 / 活脸在**哪一块里居中**：整块减去底部这一截。
+    /// 活脸底下那排小柱子**离底边多高**（脸本身照旧在整块里居中，不动）。
     ///
-    /// Chris 2026-10-06 截图：开着文字框时，声波柱正好压在输入框上方的播放条上。
-    /// 原因是它在整块里居中，而底部那一截（播放条 ＋ 输入框）也是整块的一部分。
-    /// ⇒ 让出底部这一截再居中，柱子整体上移。**开不开文字框都让同样多**，
-    ///   所以切换文字框时柱子的位置不跳（同一天的另一条要求）。
-    /// 144pt ≈ 输入框一行（48 ＋ 下边距 16）＋ 播放条（两行控件约 80）。
-    static let voiceBottomInset: CGFloat = 36 * .grid
+    /// Chris 2026-10-06 两轮反馈：
+    /// ① 开着文字框时，小柱子正好压在输入框上方的播放条上；
+    /// ② 上一版把脸和柱子一起往上抬（整块让出底部 144pt 再居中），脸被顶到状态条底下挡住了 ——
+    ///    「脸别动，光挪下面那排柱子，放在控制条上面一点点就行，它俩本来就离得挺远。」
+    /// ⇒ 柱子不再跟着脸排，改成**贴底**、离底边留出「底下那些控件的高度 ＋ 一点空隙」：
+    ///   - 开文字框：输入框一行（≈49 ＋ 下边距 16）＋ 播放条（≈51 ＋ 8）＋ 空隙 8 ≈ 132
+    ///   - 不开：只有底部浮着的播放条（≈51 ＋ 8）＋ 空隙 8 ≈ 68
+    /// 估的是常见的单行输入框；输入框长到三行时柱子会被盖住一点，可接受（打字时不看柱子）。
+    static let barsInsetChat: CGFloat = 33 * .grid
+    static let barsInsetPlain: CGFloat = 17 * .grid
 
     /// 播放条本体（显示条件见上面 overlay 那段注释）。
     @ViewBuilder
@@ -122,7 +126,7 @@ struct AppView: View {
 
             // 浮在最上层，不占布局、不吃点击（理由见 `wideInteractions`）。
             VoiceInteractionView()
-                .padding(.bottom, Self.voiceBottomInset)
+                .environment(\.ccFaceBarsBottomInset, Self.barsInsetChat)
                 .allowsHitTesting(false)
                 .ignoresSafeArea(.keyboard)
         }
@@ -143,7 +147,7 @@ struct AppView: View {
                     chatStack()
                 } else {
                     VoiceInteractionView()
-                        .padding(.bottom, Self.voiceBottomInset)
+                        .environment(\.ccFaceBarsBottomInset, Self.barsInsetPlain)
                 }
             }
         #endif
@@ -229,9 +233,9 @@ struct AppView: View {
             // 是「谁吃掉剩余空间」的显式声明 —— 不写的话第二版就是这么把输入框顶没的。
             chatStack()
         } else {
-            // 字幕收起来时波形独占整块，跟原来一样（底部同样让出播放条那段，见 `voiceBottomInset`）。
+            // 字幕收起来时波形独占整块，跟原来一样（活脸下那排小柱子贴在播放条上方，见 `barsInsetPlain`）。
             VoiceInteractionView()
-                .padding(.bottom, Self.voiceBottomInset)
+                .environment(\.ccFaceBarsBottomInset, Self.barsInsetPlain)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
