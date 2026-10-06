@@ -201,16 +201,27 @@
             }
             let presence = rooms.presence(for: slot)
             let snap = slot.botStatus.snap
+            // ## 「在说话」看播放器，不看音量（2026-10-06）
+            //
+            // app 里的脸和声波柱看的是 `slot.isSpeaking` —— 按音量判，一句话里句与句之间
+            // 停顿几百毫秒就会掉成「不在说」（再靠 1.5 秒宽限撑着）。对会动的脸这没问题，
+            // 但卡片每变一次就推一次：一段话里「在说话 ⇄ 空闲」来回切，推得太密，
+            // 系统把更新丢了（诊断页实锤），卡片停在旧状态上。
+            // Chris：「一段话是连着的，中间隔几百毫秒不算停；卡片和灵动岛没有声波控件，
+            // 不需要这个数据。」⇒ 卡片的「在说话」改成**服务端播放器在播这一段**
+            // （`isActive && !isPaused`），整段只变两次：开始、结束（或暂停）。
+            let playing = slot.playback.isActive && !slot.playback.isPaused
             let mood = CCFaceMood.derive(
                 presence: presence,
                 botPresent: slot.botPresent,
                 wait: snap?.wait ?? "",
                 on: snap?.on ?? false,
                 holding: slot.micPolicy.isHolding,
-                speaking: slot.isSpeaking,
+                speaking: playing,
                 muted: slot.isMuted,
                 finishedAt: slot.botStatus.finishedAt,
-                speechEndedAt: slot.speechEndedAt,
+                // 宽限是给音量判据补句间停顿的；播放器状态本身是连续的，不需要。
+                speechEndedAt: nil,
                 now: now
             )
             return Inputs(
@@ -240,7 +251,7 @@
                 playback: slot.playback,
                 peers: peers,
                 finishedAt: slot.botStatus.finishedAt,
-                speechEndedAt: slot.speechEndedAt
+                speechEndedAt: nil
             )
         }
 
