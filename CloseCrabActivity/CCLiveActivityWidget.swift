@@ -44,41 +44,53 @@ struct CCLiveActivityWidget: Widget {
                 // 只有 `.leading` / `.trailing` 两块能用摄像头左右两侧那段高度。
                 // Chris 2026-10-06 截图：等你回话时「中间名字 ＋ 小播放条 ＋ 一行回答」叠下来，
                 // 上面左右两块空着、最下面那行回答被岛的下沿切掉一半。
-                // ⇒ 等你回话时把**暂停 / 重播挪到摄像头两侧**（左右两块），下面只放一行回答。
-                //    脸让位（状态行已经写着在等你什么）。
-                let waitingKeys = !stale && shown.quickReplyShown
-                    && (shown.playDisplay != .hidden || shown.canReplay)
+                //
+                // ⇒ 等你回话时（Chris 同日的排法）：
+                //   摄像头左侧（leading）  名字 ＋ 在等你什么（各一行）
+                //   中间（center）         小播放条：暂停 ⟷ 进度 ⟷ 重播 —— 跟锁屏卡片同一个零件
+                //   最下（bottom）         一行 2~4 颗回答
+                //   脸让位（状态行已经写着在等你什么）。平时不变。
+                let waiting = !stale && shown.quickReplyShown
+                let keys = waiting && (shown.playDisplay != .hidden || shown.canReplay)
                 DynamicIslandExpandedRegion(.leading) {
-                    if waitingKeys {
-                        CCActivityToggleKey(state: shown)
-                            .padding(.leading, 6)
+                    if waiting {
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 5) {
+                                CCActivityDot(dot: shown.dot, size: 7)
+                                Text(shown.room)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(1)
+                            }
+                            Text(shown.statusLine)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .padding(.leading, 6)
                     } else {
                         CCActivityFace(state: shown, side: 44)
                             .padding(.leading, 4)
                     }
                 }
-                DynamicIslandExpandedRegion(.trailing) {
-                    // 平时不放东西：岛的圆角很大，原来那列小圆点（自己 ＋ 其他房间）
-                    // 被切掉一半（Chris 2026-10-06 截图）。在线点挪到名字前面，其他房间只在锁屏卡片上显示。
-                    if waitingKeys {
-                        CCActivityReplayKey(state: shown)
-                            .padding(.trailing, 6)
-                    }
-                }
+                // 右上角不放东西：岛的圆角很大，原来那列小圆点（自己 ＋ 其他房间）
+                // 被切掉一半（Chris 2026-10-06 截图）。在线点挪到名字前面，其他房间只在锁屏卡片上显示。
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(spacing: 2) {
-                        HStack(spacing: 6) {
-                            CCActivityDot(dot: shown.dot, size: 8)
-                            Text(shown.room)
-                                .font(.headline)
-                                .lineLimit(1)
+                    if waiting {
+                        if keys { CCActivityMiniPlayRow(state: shown).padding(.horizontal, 4) }
+                    } else {
+                        VStack(spacing: 2) {
+                            HStack(spacing: 6) {
+                                CCActivityDot(dot: shown.dot, size: 8)
+                                Text(shown.room)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                            }
+                            Text(shown.statusLine)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.center)
                         }
-                        Text(shown.statusLine)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            // 等你回话时下面多一行小播放条，状态让成一行（预算见锁屏卡片那段）。
-                            .lineLimit(shown.quickReplyShown ? 1 : 2)
-                            .multilineTextAlignment(.center)
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
@@ -86,8 +98,8 @@ struct CCLiveActivityWidget: Widget {
                     // 岛的下沿两角是大圆弧：按钮贴边会被切掉角（同一张截图），
                     // 所以左右各缩 12pt、按钮矮到 38pt，给下沿留出圆弧的位置。
                     VStack(spacing: 6) {
-                        if waitingKeys {
-                            // 暂停 / 重播已经在摄像头两侧了，这里只放回答。
+                        if waiting {
+                            // 小播放条已经在中间那行了，这里只放回答。
                             CCActivityQuickReplies(state: shown)
                         } else if !stale {
                             CCActivityBottom(state: shown)
