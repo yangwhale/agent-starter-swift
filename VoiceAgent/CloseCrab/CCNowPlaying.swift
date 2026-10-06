@@ -341,7 +341,7 @@
         ///
         /// ⇒ 多一次 RPC 往返（几十毫秒，只在按键那一刻发生），
         /// 换掉一整类「按了反而更糟」。**比让轮询一直开着便宜得多** ——
-        /// 后者是每 4 秒一次，前者是一天几次。
+        /// 后者是每秒一次，前者是一天几次。
         private func toggle(via name: String) -> MPRemoteCommandHandlerStatus {
             guard let remote = target else {
                 log("\(name) → 没有挂接的房间")

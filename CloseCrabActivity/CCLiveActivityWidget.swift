@@ -250,8 +250,8 @@ struct CCActivityDot: View {
 
 /// 暂停 / 继续 ＋ 重播。
 ///
-/// ⚠️ 图标按卡片上那份状态画，**可能差几秒**：有卡时 app 替卡片挂着进度轮询，但播完后
-/// 4 秒才拉一次（`CCPlaybackRemote.acquirePolling`），卡片也有 1 秒节流。
+/// ⚠️ 图标按卡片上那份状态画，**可能差一两秒**：有卡时 app 替卡片挂着进度轮询，
+/// 1 秒拉一次（`CCPlaybackRemote.acquirePolling`），卡片也有 1 秒节流。
 /// 不要紧 —— 那颗键做的是「先问服务端、再决定停还是继续还是重播」
 /// （`CCPlaybackRemote.smartToggle`），动作一定对，图标按完就会跟上。
 struct CCActivityControls: View {

@@ -166,8 +166,7 @@ final class CCPlaybackRemote {
     /// （`onAppear` 和 `onChange` 可能对同一次出现各调一遍）—— 整数计数会多数一次、永远停不下来。
     @ObservationIgnored private var pollOwners: Set<String> = []
 
-    /// 挂号：要轮询进度。第一个挂号的人把轮询开起来。
-    /// 节奏不变：在播 1 秒一次、否则 4 秒一次。
+    /// 挂号：要轮询进度。第一个挂号的人把轮询开起来。节奏：1 秒一次。
     func acquirePolling(_ owner: String) {
         pollOwners.insert(owner)
         guard poller == nil else { return }
@@ -179,10 +178,11 @@ final class CCPlaybackRemote {
                 //    **它不防「泄漏循环」**，这两件事得分开处理。
                 guard let self else { return }
                 await refresh()
-                // 在播的时候 1 秒一次（进度要动）；播完之后 4 秒一次 ——
-                // 那时候服务端不会自己变，**唯一的变化来自用户按按钮或者
-                // 新的一段开始**，前者按完立刻会刷，后者几秒内跟上够用了。
-                try? await Task.sleep(for: .seconds(isActive ? 1 : 4))
+                // **一律 1 秒一次**（2026-10-06 起）。原来播完之后放慢到 4 秒，理由是「那时唯一的
+                // 变化来自用户按按钮或新的一段开始，几秒内跟上够用」—— 漏了**按钮不在这台手机上**
+                // 的情况：在飞书上点暂停 / 重播 / 新的一段开始，手机要等最多 4 秒才知道。
+                // Chris：「省电不是重要的，实时的同步才是重要的。」
+                try? await Task.sleep(for: .seconds(1))
             }
         }
     }
