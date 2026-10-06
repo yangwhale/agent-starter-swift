@@ -115,10 +115,14 @@ nonisolated public enum CCFaceMood: String, Sendable, Equatable, CaseIterable {
         return dt >= 0 && dt < doneWindow
     }
 
-    /// 在查东西时底下亮几个打字点。**有子任务就多亮几个**，封顶 5 ——
-    /// 再多就成了进度条，而它只是个「很忙」的氛围信号。
+    /// 在查东西时底下亮几个打字点：**固定 4 个**，谷歌四原色各一个。
+    ///
+    /// 原来是 3 个、有子任务就多亮几个（封顶 5）。Chris 2026-10-06：「三个点换成四个，用谷歌四原色。」
+    /// 四色一套刚好四个点；点数再跟子任务挂钩的话，3 个缺一色、5 个重复一色，都不成套。
+    /// 参数留着，调用方不用改（子任务数在状态条上本来就有）。
     public static func typingDots(runningSubtasks: Int) -> Int {
-        min(5, 3 + max(0, runningSubtasks))
+        _ = runningSubtasks
+        return 4
     }
 
     /// 读屏念的那句（脸本身是纯图形，不能只靠形状传信息）。

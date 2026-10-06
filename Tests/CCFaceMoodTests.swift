@@ -124,10 +124,8 @@ for p in [CCPresenceDot.off, .connecting, .retrying] {
 
 // MARK: - 打字点
 
-check("没子任务 3 个点", M.typingDots(runningSubtasks: 0) == 3)
-check("⭐ 有子任务点更多", M.typingDots(runningSubtasks: 1) > M.typingDots(runningSubtasks: 0))
-check("封顶 5 个", M.typingDots(runningSubtasks: 40) == 5)
-check("负数当 0", M.typingDots(runningSubtasks: -3) == 3)
+// 2026-10-06：固定 4 个点（谷歌四原色一色一个），不再跟子任务数挂钩。
+check("⭐ 固定 4 个点（谷歌四原色）", [0, 1, 5, 40, -3].allSatisfy { M.typingDots(runningSubtasks: $0) == 4 })
 
 // MARK: - 读屏
 
@@ -178,7 +176,7 @@ nonisolated func readFromNonisolatedContext() -> Int {
     _ = CCFaceEvent.detect(prevOn: nil, prevWait: nil, nextOn: false, nextWait: "", nextSum: "")
     return CCFaceMood.typingDots(runningSubtasks: 0) + (m == .working ? 1 : 0)
 }
-check("能从 nonisolated 上下文调用（编译过就算过）", readFromNonisolatedContext() == 4)
+check("能从 nonisolated 上下文调用（编译过就算过）", readFromNonisolatedContext() == 5)   // 4 个点 ＋ 在忙 1
 
 // MARK: - 说话宽限（句间停顿不跳脸）
 

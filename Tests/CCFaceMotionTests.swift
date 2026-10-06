@@ -82,7 +82,13 @@ check("dim565 → 遮罩里按比例变淡", close(K.alpha(CCFaceInk.eye.dim(0.2
 check("⭐ 层次保留：白眼 > 灰色耷拉眼 > 暗 z", K.alpha(.eye) > K.alpha(.greyEye) && K.alpha(.greyEye) > K.alpha(.zDark))
 check("近的 z 比远的 z 显眼（zLight > zDark）", K.alpha(.zLight) > K.alpha(.zDark))
 check("睡着的 grok 比醒着淡、断线的更淡", K.alpha(.grokWhite) > K.alpha(.grokSleep) && K.alpha(.grokSleep) > K.alpha(.grokGone))
-check("除了切口，每种墨都看得见（≥0.3）", CCFaceTone.allCases.filter { $0 != .cut }.allSatisfy { K.alpha(CCFaceInk($0)) >= 0.3 })
+check("除了切口和彩色笔，每种墨都看得见（≥0.3）",
+      CCFaceTone.allCases.filter { $0 != .cut && K.signalHex(CCFaceInk($0)) == nil }.allSatisfy { K.alpha(CCFaceInk($0)) >= 0.3 })
+// 打字点：谷歌四原色（2026-10-06）
+check("⭐ 彩色笔不进金属遮罩", CCFaceInk.googleDots.allSatisfy { K.alpha($0) == 0 && K.signalHex($0) != nil })
+check("⭐ 四色各不相同、是谷歌品牌色", CCFaceInk.googleDots.compactMap(K.signalHex) == [0x4285F4, 0xEA4335, 0xFBBC05, 0x34A853])
+check("其余墨都没有自带颜色", CCFaceTone.allCases.filter { ![.gBlue, .gRed, .gYellow, .gGreen].contains($0) }
+      .allSatisfy { K.signalHex(CCFaceInk($0)) == nil })
 check("遮罩不透明度都在 0…1", CCFaceTone.allCases.allSatisfy { (0...1).contains(K.alpha(CCFaceInk($0, level: 3))) })
 
 // 金属＋三道阴影：跟声音柱子共用的那一份（CCMetalGlow）。

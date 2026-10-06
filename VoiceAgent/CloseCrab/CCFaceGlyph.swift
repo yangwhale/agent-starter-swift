@@ -39,6 +39,15 @@ struct CCFaceGlyph: View {
             }
             .frame(width: side, height: side)
             .ccMetalGlow(tint: tint, glow: CCMetalGlowSpec.faceGlow(side: Double(side)))
+            // 自带颜色的几笔（打字点的谷歌四原色）画在金属上面一层，不进遮罩 ——
+            // 进遮罩就只剩身份色了。各带一圈同色的淡光，跟金属那层的发光呼应。
+            .overlay {
+                Canvas { ctx, size in
+                    CCFacePainter.paintColored(&ctx, size: size, prims: prims)
+                }
+                .frame(width: side, height: side)
+                .shadow(color: .white.opacity(0.35), radius: max(1, side / 160))
+            }
     }
 }
 
@@ -71,6 +80,24 @@ nonisolated enum CCFacePainter {
                     layer.fill(pathT, with: .color(Color.white.opacity(a)), style: FillStyle(eoFill: true))
                 }
             }
+        }
+    }
+
+    /// 只画自带颜色的那几笔（`CCFaceMask.signalHex` 非 nil），不透明度 ＝ 墨的 level（起伏靠它）。
+    static func paintColored(_ ctx: inout GraphicsContext, size: CGSize, prims: [CCFacePrim]) {
+        let side = min(size.width, size.height)
+        let s = side / 480
+        let tf = CGAffineTransform(a: s, b: 0, c: 0, d: s,
+                                   tx: (size.width - side) / 2, ty: (size.height - side) / 2)
+        for p in prims {
+            let (path, ink, _) = shape(p)
+            guard let hex = CCFaceMask.signalHex(ink) else { continue }
+            let c = Color(.sRGB,
+                          red: Double((hex >> 16) & 0xFF) / 255,
+                          green: Double((hex >> 8) & 0xFF) / 255,
+                          blue: Double(hex & 0xFF) / 255,
+                          opacity: min(1, max(0, ink.level)))
+            ctx.fill(path.applying(tf), with: .color(c))
         }
     }
 

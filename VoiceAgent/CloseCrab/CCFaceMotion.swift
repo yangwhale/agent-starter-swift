@@ -97,6 +97,9 @@ nonisolated public enum CCFaceSkin: String, Sendable, Equatable, CaseIterable {
 nonisolated public enum CCFaceTone: Sendable, Equatable, CaseIterable {
     case eye, greyText, greyEye, greyDim, micBar, sweat, zDark, zLight, blush, pink, green
     case grokWhite, grokSleep, grokGone
+    /// 「在查东西」底下那排打字点 —— **谷歌四原色**，不走金属遮罩（见 `CCFaceMask.signalHex`）。
+    /// Chris 2026-10-06：「三个点换成四个，用谷歌四原色。」
+    case gBlue, gRed, gYellow, gGreen
     /// **眼皮 / 高光缺口 / o 形嘴的内圈** —— 原固件是拿背景色（纯黑）画一块盖上去。
     /// 我们的脸没有自己的底（直接落在宿主容器上），盖色块会露馅，
     /// 所以它不是一种颜色，是在遮罩上「挖掉」。
@@ -132,6 +135,9 @@ nonisolated public struct CCFaceInk: Sendable, Equatable {
     public static let grokWhite = CCFaceInk(.grokWhite)
     public static let grokSleep = CCFaceInk(.grokSleep)
     public static let grokGone = CCFaceInk(.grokGone)
+    /// 谷歌四原色，打字点按这个顺序排（Google 标志里四色的出场顺序：蓝、红、黄、绿）。
+    public static let googleDots: [CCFaceInk] = [CCFaceInk(.gBlue), CCFaceInk(.gRed),
+                                                 CCFaceInk(.gYellow), CCFaceInk(.gGreen)]
 }
 
 /// 墨色 → 遮罩。**纯函数，离线可测。**
@@ -156,8 +162,22 @@ nonisolated public enum CCFaceMask {
         case .greyDim: base = 0.35
         case .zDark: base = 0.3
         case .cut: return 0
+        // 彩色那几笔不进遮罩（金属上透出来就只剩身份色了），由 `CCFaceGlyph` 另画一层彩色。
+        case .gBlue, .gRed, .gYellow, .gGreen: return 0
         }
         return base * min(1, max(0, ink.level))
+    }
+
+    /// 自带颜色、不走金属遮罩的那几笔：sRGB 十六进制；其余返回 nil。
+    /// 谷歌品牌色（Google 标志用色）：蓝 #4285F4、红 #EA4335、黄 #FBBC05、绿 #34A853。
+    public static func signalHex(_ ink: CCFaceInk) -> UInt32? {
+        switch ink.tone {
+        case .gBlue: 0x4285F4
+        case .gRed: 0xEA4335
+        case .gYellow: 0xFBBC05
+        case .gGreen: 0x34A853
+        default: nil
+        }
     }
 
     /// 这一笔是**改写**遮罩（不管底下画了什么，这里就是这个不透明度），还是叠上去。
@@ -932,7 +952,7 @@ nonisolated public enum CCFaceMotion {
             }
         }
 
-        /// `drawTypingDots`：一排点按顺序起伏（1.3 秒一轮、相邻错 220 ms）。
+        /// `drawTypingDots`：一排点按顺序起伏（1.3 秒一轮、相邻错 220 ms）。颜色是谷歌四原色（2026-10-06）。
         mutating func typingDots(n: Int, dy: Double) {
             for k in 0..<n {
                 var lvl = 0.25, lift = 0.0
@@ -947,7 +967,9 @@ nonisolated public enum CCFaceMotion {
                     }
                 }
                 let x = 240 - Double(n - 1) * 14 + Double(k) * 28
-                p.append(.circle(cx: x, cy: 322 + dy - lift, r: 7, CCFaceInk.eye.dim(lvl)))
+                // 谷歌四原色轮着用（点数超过 4 时从蓝色重新开始）。起伏照旧靠亮度 ＋ 抬高。
+                let ink = CCFaceInk.googleDots[k % CCFaceInk.googleDots.count]
+                p.append(.circle(cx: x, cy: 322 + dy - lift, r: 7, ink.dim(lvl)))
             }
         }
 
