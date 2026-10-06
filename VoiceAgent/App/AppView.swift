@@ -77,6 +77,15 @@ struct AppView: View {
         .ccAnimation(.default, value: localMedia.isScreenShareEnabled)
     }
 
+    /// 声波柱 / 活脸在**哪一块里居中**：整块减去底部这一截。
+    ///
+    /// Chris 2026-10-06 截图：开着文字框时，声波柱正好压在输入框上方的播放条上。
+    /// 原因是它在整块里居中，而底部那一截（播放条 ＋ 输入框）也是整块的一部分。
+    /// ⇒ 让出底部这一截再居中，柱子整体上移。**开不开文字框都让同样多**，
+    ///   所以切换文字框时柱子的位置不跳（同一天的另一条要求）。
+    /// 144pt ≈ 输入框一行（48 ＋ 下边距 16）＋ 播放条（两行控件约 80）。
+    static let voiceBottomInset: CGFloat = 36 * .grid
+
     /// 播放条本体（显示条件见上面 overlay 那段注释）。
     @ViewBuilder
     private var playbackBar: some View {
@@ -113,6 +122,7 @@ struct AppView: View {
 
             // 浮在最上层，不占布局、不吃点击（理由见 `wideInteractions`）。
             VoiceInteractionView()
+                .padding(.bottom, Self.voiceBottomInset)
                 .allowsHitTesting(false)
                 .ignoresSafeArea(.keyboard)
         }
@@ -133,6 +143,7 @@ struct AppView: View {
                     chatStack()
                 } else {
                     VoiceInteractionView()
+                        .padding(.bottom, Self.voiceBottomInset)
                 }
             }
         #endif
@@ -218,8 +229,9 @@ struct AppView: View {
             // 是「谁吃掉剩余空间」的显式声明 —— 不写的话第二版就是这么把输入框顶没的。
             chatStack()
         } else {
-            // 字幕收起来时波形独占整块，跟原来一样。
+            // 字幕收起来时波形独占整块，跟原来一样（底部同样让出播放条那段，见 `voiceBottomInset`）。
             VoiceInteractionView()
+                .padding(.bottom, Self.voiceBottomInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
