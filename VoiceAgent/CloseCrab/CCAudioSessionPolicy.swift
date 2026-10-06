@@ -284,6 +284,29 @@ final class CCAudioSessionPolicy {
         print("[CCAudioSessionPolicy] 静音模式：\(muteMode)")
     }
 
+    /// 关掉 SDK 的「录音一直预热」（`AudioManager.setRecordingAlwaysPreparedMode`）。
+    ///
+    /// SDK 的 `LocalMedia.observeDevices()`（2.17.0 第 117 行）每建一个 `LocalMedia`
+    /// 就开一次它。它的文档原话：「the audio engine is started configured for mic input
+    /// in a muted state」—— **闭着麦也让引擎按录音配置跑起来**，图的是开口时快。
+    ///
+    /// 跟我们「不说话时让出麦克风」正面冲突：它把引擎拉成录音态（麦克风灯亮），
+    /// 我们的观察者看到在录又不该录，把会话切回只放音、引擎停掉重来 ——
+    /// Chris 2026-10-05 说的「启动时麦克风先绿后关、声音滋溜一小节」，
+    /// 那一小节就是放着声的引擎被这么来回拆了一次。
+    ///
+    /// 跟 `reassertMuteMode` 同一个道理：每建一个房间都会被 SDK 改回去，所以每次都要关。
+    /// 受同一个开关管（`isEnabled`）—— 关掉「让出麦克风」就整个退回 SDK 的行为。
+    func dropAlwaysPrepared(reason: String) async {
+        guard Self.isEnabled, AudioManager.shared.isRecordingAlwaysPreparedMode else { return }
+        do {
+            try await AudioManager.shared.setRecordingAlwaysPreparedMode(false)
+            log("关掉录音预热（\(reason)）")
+        } catch {
+            log("⚠️ 关录音预热失败（\(reason)）：\(error.localizedDescription)")
+        }
+    }
+
     /// **在 App 启动时调一次，连房间之前。**
     ///
     /// SDK 的文档明确说 `isAutomaticConfigurationEnabled` 要在连接前设。

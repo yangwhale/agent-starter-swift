@@ -84,6 +84,13 @@ final class CCRoomSlot: Identifiable {
         //    详见 `CCAudioSessionPolicy.reassertMuteMode()` 上面那段。
         #if os(iOS) || os(visionOS)
             CCAudioSessionPolicy.shared.reassertMuteMode()
+            // 同一个 `LocalMedia` init 里还异步打开了「录音一直预热」—— 见 `dropAlwaysPrepared`。
+            // 它是个排在后面的 Task，这里同步关会被它盖回去，所以也排一个 Task、稍等再关；
+            // 连上房间时（`connectAwait`）再关一次兜底。
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                await CCAudioSessionPolicy.shared.dropAlwaysPrepared(reason: "新建房间 \(name)")
+            }
         #endif
         audioOptions = AudioOptions(localMedia: localMedia)
         micPolicy = CCMicPolicy(session: session)
@@ -203,6 +210,9 @@ final class CCRoomSlot: Identifiable {
     /// 连接错误 / 助手错误 —— 错误条要显示它们，所以也得镜像。
     private(set) var connectionError: Error?
     private(set) var agentError: Error?
+    /// 自己连（`connectWithoutMic`）失败的原因。不走 `session.start()` 之后
+    /// `session.error` 不再被写，错误条改读这一份。
+    private var connectFailure: Error?
 
     /// 同一批事件只干一次活。
     ///
@@ -308,7 +318,7 @@ final class CCRoomSlot: Identifiable {
         if av?.id != avatarVideoTrack?.id { avatarVideoTrack = av }
 
         // Error 没法直接比，比文案 —— 错误条显示的本来也就是这个。
-        let e = session.error
+        let e = connectFailure ?? session.error
         if e?.localizedDescription != connectionError?.localizedDescription { connectionError = e }
         let ae = session.agent.error
         if ae?.localizedDescription != agentError?.localizedDescription { agentError = ae }
@@ -316,6 +326,34 @@ final class CCRoomSlot: Identifiable {
 
     /// 旧名字留着：方块上的小波形只关心「有没有东西在响」，给它第一条就够。
     var agentAudioTrack: (any AudioTrack)? { session.agent.audioTrack ?? botAudioTracks.first }
+
+    /// 连房间，**但不开麦** —— 替代 `session.start()`。
+    ///
+    /// Chris 2026-10-05：「启动的时候麦克风先变绿了，又被关上了，声音也会滋溜放一小节。」
+    /// 一半原因在 SDK 的 `Session.start()`（2.17.0 第 287 行）：连上之后
+    /// **无条件** `setMicrophone(enabled: true)`，我们只能等它返回再按回去 ——
+    /// 灯已经亮过、录音引擎已经起过一次了。按回去再快也是「先开后关」。
+    ///
+    /// 所以干脆不调它，自己做 `start()` 里真正有用的那两步：要 token、`room.connect`。
+    /// `Session` 订着 `room.changes`，连接状态、agent 状态照样跟着房间走
+    /// （`Session.updateAgent`），`isConnected` / `end()` 都不受影响。
+    /// 丢掉的只有它的「agent N 秒没来就报超时」—— 我们的 bot 常驻房间，用不上。
+    ///
+    /// 代价：麦克风轨要到**第一次按住说话**时才发布，那一下比原来多一次协商。
+    /// 「可以开口了」的绿灯看的是引擎真在采集（`CCAudioSessionPolicy.isCapturing`），
+    /// 所以慢的那一下不会丢字，只是等得久一点。
+    func connectWithoutMic() async {
+        guard !session.isConnected else { return }
+        do {
+            let r = try await CloseCrabTokenSource(room: name).fetch(TokenRequestOptions())
+            try await session.room.connect(url: r.serverURL.absoluteString, token: r.participantToken)
+            connectFailure = nil
+        } catch {
+            connectFailure = error
+            print("[CCRooms] \(name) 连接失败：\(error.localizedDescription)")
+        }
+        scheduleRefresh()
+    }
 
     /// 静音 = 把这个房间所有远端音轨的音量拧到 0。
     ///
@@ -639,16 +677,36 @@ final class CCRooms {
         }
     }
 
+    /// 连房间时绕开 `session.start()` 那次无条件开麦（见 `CCRoomSlot.connectWithoutMic`）。
+    ///
+    /// 跟「不说话时让出麦克风」同一个开关：真机上出问题时在设置里关掉它，
+    /// 就整个退回 SDK 原来的连法，不用重新编译。macOS 没有那个开关，一律绕开。
+    static var connectsWithoutMic: Bool {
+        #if os(iOS) || os(visionOS)
+            CCAudioSessionPolicy.isEnabled
+        #else
+            true
+        #endif
+    }
+
     private func connect(_ slot: CCRoomSlot) {
         Task { await connectAwait(slot) }
     }
 
     private func connectAwait(_ slot: CCRoomSlot) async {
         connecting.insert(slot.name)
-        await slot.session.start()
-        // start() 内部连上之后会无条件开一次麦，必须在它返回之后按回去。
-        // 靠监听连接状态是拦不住的，原因见 CCMicPolicy.enforceMutedAfterConnect。
+        if Self.connectsWithoutMic {
+            await slot.connectWithoutMic()
+        } else {
+            await slot.session.start()
+        }
+        // 走 start() 时它连上之后会无条件开一次麦，必须在它返回之后按回去
+        // （靠监听连接状态拦不住，见 CCMicPolicy.enforceMutedAfterConnect）。
+        // 走 connectWithoutMic 时这一句是空操作的保险。
         await slot.micPolicy.enforceMutedAfterConnect()
+        #if os(iOS) || os(visionOS)
+            await CCAudioSessionPolicy.shared.dropAlwaysPrepared(reason: "连上 \(slot.name)")
+        #endif
         // ⭐ 再过一次总闸。**上面那句只按住了这一个房间** ——
         //    而 SDK 在每条 session 连上时都会开一次麦（`Session.swift:287`），
         //    并发连多个房间时，别人那一下可能刚好落在这一句之后。
