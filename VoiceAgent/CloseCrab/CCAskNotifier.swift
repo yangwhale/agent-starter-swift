@@ -315,17 +315,45 @@
             super.init()
         }
 
+        // ## completionHandler 必须回主线程调（2026-10-06 真机崩溃）
+        //
+        // 原来写的是 async 版 `didReceive(_:) async`。编译器替它生成的 `@objc` 包装会在 async 体
+        // 跑完的**那个线程**上调系统给的 completionHandler —— 而这个类是 nonisolated，跑在后台线程。
+        // UIKit 的那个 completionHandler 里要更新快照 / 状态恢复，断言必须在主线程：
+        //   'NSInternalInconsistencyException', reason: 'Call must be made on main thread'
+        //   ← -[UIApplication _updateSnapshotAndStateRestorationWithAction:…]
+        //   ← @objc closure #1 in CCAskNotifyDelegate.userNotificationCenter(_:didReceive:)
+        // 表现：点通知上的按钮，回答已经发出去了，app 随即崩溃退出（Chris 复现三次，tommy 挂 console 抓到栈）。
+        // ⇒ 手写 completionHandler 版：先在当前线程把字符串抠出来，Task 里把事办完，
+        //    **最后显式回到 MainActor 再调 completionHandler**。
         func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                    didReceive response: UNNotificationResponse) async {
+                                    didReceive response: UNNotificationResponse,
+                                    withCompletionHandler completionHandler: @escaping () -> Void) {
             let action = response.actionIdentifier
             let info = response.notification.request.content.userInfo
+            let tap: Tap?
             if let r = CCAskNotifyPolicy.reply(userInfo: info, actionID: action) {
-                await onTap(.reply(room: r.room, text: r.text))
+                tap = .reply(room: r.room, text: r.text)
             } else if action == UNNotificationDefaultActionIdentifier,
                       let room = CCAskNotifyPolicy.tappedRoom(userInfo: info) {
-                await onTap(.open(room: room))
+                tap = .open(room: room)
+            } else {
+                tap = nil            // 别的（划掉、别家的通知）不管
             }
-            // 别的（划掉、别家的通知）不管。
+            // completionHandler 不是 Sendable；包一层再带进 Task（只在主线程上调它一次）。
+            let done = CompletionBox(completionHandler)
+            let onTap = self.onTap
+            Task {
+                if let tap { await onTap(tap) }
+                await MainActor.run { done.call() }
+            }
+        }
+
+        /// 把系统给的 completionHandler 带过隔离边界。只调一次、只在主线程上调（见上）。
+        nonisolated private final class CompletionBox: @unchecked Sendable {
+            private let fn: () -> Void
+            init(_ fn: @escaping () -> Void) { self.fn = fn }
+            func call() { fn() }
         }
 
         // 不实现 `willPresent`：app 在前台时系统默认不弹横幅 —— 正是要的（我们本来也只在后台发；
