@@ -38,12 +38,33 @@ struct CCLiveActivityWidget: Widget {
             let shown = context.isStale ? context.state.staleVersion : context.state
             let stale = context.isStale
             return DynamicIsland {
+                // ## 岛的上沿是摄像头那块
+                //
+                // 展开态最上面一条是前置摄像头 / 传感器的位置，`.center` 区被系统排在它**下面**，
+                // 只有 `.leading` / `.trailing` 两块能用摄像头左右两侧那段高度。
+                // Chris 2026-10-06 截图：等你回话时「中间名字 ＋ 小播放条 ＋ 一行回答」叠下来，
+                // 上面左右两块空着、最下面那行回答被岛的下沿切掉一半。
+                // ⇒ 等你回话时把**暂停 / 重播挪到摄像头两侧**（左右两块），下面只放一行回答。
+                //    脸让位（状态行已经写着在等你什么）。
+                let waitingKeys = !stale && shown.quickReplyShown
+                    && (shown.playDisplay != .hidden || shown.canReplay)
                 DynamicIslandExpandedRegion(.leading) {
-                    CCActivityFace(state: shown, side: 44)
-                        .padding(.leading, 4)
+                    if waitingKeys {
+                        CCActivityToggleKey(state: shown)
+                            .padding(.leading, 6)
+                    } else {
+                        CCActivityFace(state: shown, side: 44)
+                            .padding(.leading, 4)
+                    }
                 }
-                // 右上角不放东西：岛的圆角很大，原来那列小圆点（自己 ＋ 其他房间）
-                // 被切掉一半（Chris 2026-10-06 截图）。在线点挪到名字前面，其他房间只在锁屏卡片上显示。
+                DynamicIslandExpandedRegion(.trailing) {
+                    // 平时不放东西：岛的圆角很大，原来那列小圆点（自己 ＋ 其他房间）
+                    // 被切掉一半（Chris 2026-10-06 截图）。在线点挪到名字前面，其他房间只在锁屏卡片上显示。
+                    if waitingKeys {
+                        CCActivityReplayKey(state: shown)
+                            .padding(.trailing, 6)
+                    }
+                }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(spacing: 2) {
                         HStack(spacing: 6) {
@@ -65,7 +86,12 @@ struct CCLiveActivityWidget: Widget {
                     // 岛的下沿两角是大圆弧：按钮贴边会被切掉角（同一张截图），
                     // 所以左右各缩 12pt、按钮矮到 38pt，给下沿留出圆弧的位置。
                     VStack(spacing: 6) {
-                        if !stale { CCActivityBottom(state: shown) }
+                        if waitingKeys {
+                            // 暂停 / 重播已经在摄像头两侧了，这里只放回答。
+                            CCActivityQuickReplies(state: shown)
+                        } else if !stale {
+                            CCActivityBottom(state: shown)
+                        }
                     }
                     .environment(\.ccActivityButtonHeight, 38)
                     .padding(.horizontal, 12)
@@ -286,26 +312,48 @@ struct CCActivityMiniPlayRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Button(intent: CCLiveActivityToggleIntent(room: state.room)) {
-                icon(state.isPlaying ? "pause.fill" : "play.fill")
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: state.isPlaying ? "暂停" : "继续"))
+            CCActivityToggleKey(state: state)
             if state.playDisplay != .hidden {
                 CCActivityProgress(state: state)
             } else {
                 Spacer(minLength: 0)
             }
-            Button(intent: CCLiveActivityReplayIntent(room: state.room)) {
-                icon("arrow.counterclockwise")
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(verbatim: "重播"))
+            CCActivityReplayKey(state: state)
         }
         .frame(height: 36)
     }
+}
 
-    private func icon(_ name: String) -> some View {
+/// 暂停 / 继续的圆形图标键（36pt）。锁屏小播放条、灵动岛摄像头左侧共用。
+struct CCActivityToggleKey: View {
+    let state: CCLiveActivityState
+
+    var body: some View {
+        Button(intent: CCLiveActivityToggleIntent(room: state.room)) {
+            CCActivityRoundIcon(name: state.isPlaying ? "pause.fill" : "play.fill")
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: state.isPlaying ? "暂停" : "继续"))
+    }
+}
+
+/// 重播的圆形图标键（36pt）。锁屏小播放条、灵动岛摄像头右侧共用。
+struct CCActivityReplayKey: View {
+    let state: CCLiveActivityState
+
+    var body: some View {
+        Button(intent: CCLiveActivityReplayIntent(room: state.room)) {
+            CCActivityRoundIcon(name: "arrow.counterclockwise")
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "重播"))
+    }
+}
+
+struct CCActivityRoundIcon: View {
+    let name: String
+
+    var body: some View {
         Image(systemName: name)
             .font(.system(size: 15, weight: .bold))
             .frame(width: 36, height: 36)
