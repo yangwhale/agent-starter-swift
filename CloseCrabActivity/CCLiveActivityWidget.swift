@@ -47,12 +47,18 @@ struct CCLiveActivityWidget: Widget {
                 //
                 // ⇒ 等你回话时（Chris 同日的排法）：
                 //   摄像头左侧（leading）  名字 ＋ 在等你什么（各一行）
-                //   中间（center）         小播放条：暂停 ⟷ 进度 ⟷ 重播 —— 跟锁屏卡片同一个零件
-                //   最下（bottom）         一行 2~4 颗回答
+                //   最下（bottom）第一行   小播放条：暂停 ⟷ 进度 ⟷ 重播 —— 跟锁屏卡片同一个零件
+                //   最下（bottom）第二行   一行 2~4 颗回答
                 //   脸让位（状态行已经写着在等你什么）。平时不变。
+                //
+                // ⚠️ 小播放条**不能放 `.center`**：leading / center / trailing 是**并排的三列**，
+                //    center 夹在中间、leading 是它左边一条竖栏。小播放条要撑满宽度，
+                //    于是把 leading 挤成一条缝 —— 名字和问题只剩一个绿点和「…」（Chris 同日第二张截图）。
+                //    `.bottom` 才是横跨整个宽度、排在三列下面的那一块。
                 let waiting = !stale && shown.quickReplyShown
                 let keys = waiting && (shown.playDisplay != .hidden || shown.canReplay)
-                DynamicIslandExpandedRegion(.leading) {
+                // 等你时右边和中间都空着，让 leading 多分宽度（priority 高的先拿）。
+                DynamicIslandExpandedRegion(.leading, priority: waiting ? 1 : 0) {
                     if waiting {
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 5) {
@@ -76,7 +82,7 @@ struct CCLiveActivityWidget: Widget {
                 // 被切掉一半（Chris 2026-10-06 截图）。在线点挪到名字前面，其他房间只在锁屏卡片上显示。
                 DynamicIslandExpandedRegion(.center) {
                     if waiting {
-                        if keys { CCActivityMiniPlayRow(state: shown).padding(.horizontal, 4) }
+                        EmptyView()
                     } else {
                         VStack(spacing: 2) {
                             HStack(spacing: 6) {
@@ -99,7 +105,7 @@ struct CCLiveActivityWidget: Widget {
                     // 所以左右各缩 12pt、按钮矮到 38pt，给下沿留出圆弧的位置。
                     VStack(spacing: 6) {
                         if waiting {
-                            // 小播放条已经在中间那行了，这里只放回答。
+                            if keys { CCActivityMiniPlayRow(state: shown) }
                             CCActivityQuickReplies(state: shown)
                         } else if !stale {
                             CCActivityBottom(state: shown)
