@@ -70,7 +70,8 @@ struct CCQuickReplyBar: View {
                             .multilineTextAlignment(.center)
                     }
                     HStack(spacing: CC.Space.snug) {
-                        ForEach(CCQuickReply.choices, id: \.self) { c in
+                        // bot 带了推荐答案就是它的，没带就是固定那两句（`CCQuickReply.choices(options:)`）。
+                        ForEach(CCQuickReply.choices(options: slot.botStatus.snap?.opts), id: \.self) { c in
                             button(c)
                         }
                     }
@@ -97,9 +98,12 @@ struct CCQuickReplyBar: View {
             Task { await slot.quickReply.send(c.text) }
         } label: {
             // 先试整句，放不下再用简写 —— 同高，换了不跳。
+            // 最后一档不定宽、截断显示 —— bot 推荐的答案没有简写，整句放不下时
+            // 前两档都是定宽的，ViewThatFits 会拿最后一档硬塞，定宽的话就溢出按钮。
             ViewThatFits(in: .horizontal) {
                 label(c.text, c.symbol)
                 label(c.short, c.symbol)
+                label(c.short, c.symbol, fixed: false)
             }
             .frame(maxWidth: .infinity)
             .frame(height: CC.Size.bar)
@@ -115,16 +119,17 @@ struct CCQuickReplyBar: View {
         .accessibilityLabel(Text(verbatim: c.text))
     }
 
-    private func label(_ title: String, _ symbol: String) -> some View {
+    private func label(_ title: String, _ symbol: String, fixed: Bool = true) -> some View {
         HStack(spacing: CC.Space.tight) {
             Image(systemName: symbol)
                 .font(.system(size: 17, weight: .semibold))
             Text(verbatim: title)
                 .font(.system(size: 17, weight: .semibold))
                 .lineLimit(1)
+                .minimumScaleFactor(fixed ? 1 : 0.8)
         }
         .foregroundStyle(.primary)
         .padding(.horizontal, CC.Space.snug)
-        .fixedSize()
+        .fixedSize(horizontal: fixed, vertical: fixed)
     }
 }

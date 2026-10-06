@@ -89,11 +89,22 @@ check("恰好 40 字不截", Q.prompt(wait: String(repeating: "好", count: 40))
 let long = Q.prompt(wait: String(repeating: "长", count: 100))
 check("超了截到 40（含省略号）", long.count == Q.promptMax && long.hasSuffix("…") && Q.promptMax == 40)
 
+// MARK: - ⑤ bot 推荐的答案（2026-10-06：`<ask-user>摘要|答案一|答案二</ask-user>` → 快照 opts）
+
+check("⭐ 没带推荐答案 ⇒ 固定那两句", Q.choices(options: nil) == Q.choices && Q.choices(options: []) == Q.choices)
+check("⭐ 带了 ⇒ 用 bot 的，原句照发", Q.choices(options: ["先修麦克风", "先做切房间"]).map(\.text) == ["先修麦克风", "先做切房间"])
+check("推荐答案没有另外的简写", Q.choices(options: ["先修麦克风"]).allSatisfy { $0.short == $0.text })
+check("只带一个就一颗，不凑固定句", Q.choices(options: ["好"]).map(\.text) == ["好"])
+check("去空白、去空串、去重", Q.choices(options: [" A ", "", "  ", "A", "B"]).map(\.text) == ["A", "B"])
+check("⭐ 最多两颗", Q.choices(options: ["A", "B", "C"]).count == 2 && Q.maxOptions == 2)
+check("全是空白 ⇒ 退回固定那两句", Q.choices(options: [" ", "\n"]) == Q.choices)
+check("两颗图标不同（最推荐的是星）", Q.choices(options: ["A", "B"]).map(\.symbol) == ["star", "arrow.turn.down.right"])
+
 // MARK: - 从 nonisolated 上下文用（扩展的视图、ActivityKit 线程会读；编译过就算过）
 
 nonisolated func touch() -> Int {
     let d = Q.display(mood: .waiting, wait: "x", repliedText: nil, repliedAt: nil, now: Date())
-    return Q.choices.count + (d == .hidden ? 0 : 1) + Q.prompt(wait: "y").count
+    return Q.choices.count + Q.choices(options: ["a"]).count + (d == .hidden ? 0 : 1) + Q.prompt(wait: "y").count
         + (Q.repliedLine(text: "a", at: Date(), now: Date()) ?? "").count
 }
 check("能从 nonisolated 上下文用（编译过就算过）", touch() > 0)

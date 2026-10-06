@@ -255,7 +255,8 @@ struct CCActivityQuickReplies: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ForEach(CCQuickReply.choices, id: \.self) { r in
+            // bot 带了推荐答案就是它的，没带就是固定那两句（跟 app 主界面同一个函数）。
+            ForEach(CCQuickReply.choices(options: state.replyOptions), id: \.self) { r in
                 Button(intent: CCLiveActivityQuickReplyIntent(room: state.room, text: r.text)) {
                     // 先试整句，放不下再用简写 —— 两种同高，换了卡片不跳。
                     ViewThatFits(in: .horizontal) {

@@ -34,6 +34,32 @@ nonisolated enum CCQuickReply {
         Choice(text: "按照你的想法来", short: "按你的来", symbol: "hand.thumbsup"),
     ]
 
+    /// 这一次该画哪两颗：**bot 带了推荐答案就用它的，没带就用上面那两句固定的。**
+    ///
+    /// Chris 2026-10-06：「举手标记除了带问题，还要带推荐的答案，给两个最推荐的，
+    /// 推到屏幕上去做选择。」服务端从 `<ask-user>摘要|答案一|答案二</ask-user>` 里取出来，
+    /// 放进 bot 状态快照的 `opts`。
+    ///
+    /// - 去空白、去空串、去重，最多 `maxOptions` 个；清完一个不剩 ⇒ 固定那两句
+    /// - 只有一个也照用（bot 只想推荐一个答案时，不硬凑一个固定句子进来）
+    /// - 推荐答案没有单独的简写：`short` 就是原句，放不下时界面截断显示，发出去的仍是原句
+    /// - 图标：第一个（bot 最推荐的）是星，第二个是箭头
+    static func choices(options: [String]?) -> [Choice] {
+        var seen: [String] = []
+        for o in options ?? [] {
+            let t = o.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !t.isEmpty, !seen.contains(t) { seen.append(t) }
+            if seen.count == maxOptions { break }
+        }
+        guard !seen.isEmpty else { return choices }
+        return seen.enumerated().map { i, t in
+            Choice(text: t, short: t, symbol: i == 0 ? "star" : "arrow.turn.down.right")
+        }
+    }
+
+    /// 推荐答案最多几个（主界面、锁屏卡片都只放得下两颗）。服务端也截到 2，这里再守一道。
+    static let maxOptions = 2
+
     /// 点了之后「已回复：…」显示多久。这 3 秒里按钮先收起来（防连按）。
     static let repliedShowFor: TimeInterval = 3
     /// 按钮上方那句「bot 在等你什么」最多几个字符（wait 原文去空白后截断）。

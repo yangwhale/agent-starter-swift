@@ -144,6 +144,7 @@
             var presence: CCPresenceDot = .off
             var snapHeadline: String?
             var wait = ""
+            var opts: [String] = []
             /// 刚快捷回复过的那句和时刻（`CCQuickReplySender`，主界面点的也算 —— 一个槽位一份）。
             var repliedText: String?
             var repliedAt: Date?
@@ -192,6 +193,7 @@
                 presence: presence,
                 snapHeadline: snap?.headline,
                 wait: snap?.wait ?? "",
+                opts: snap?.opts ?? [],
                 repliedText: slot.quickReply.repliedText,
                 repliedAt: slot.quickReply.repliedAt,
                 on: snap?.on ?? false,
@@ -336,7 +338,7 @@
                 room: i.room, mood: i.mood, skin: i.skin, presence: i.presence,
                 snapHeadline: i.snapHeadline, runningSubtasks: i.subs, timerStart: start,
                 isActive: i.isActive, isPaused: i.isPaused, canReplay: i.canReplay,
-                peers: i.peers, play: play, wait: i.wait, repliedLine: line)
+                peers: i.peers, play: play, wait: i.wait, repliedLine: line, options: i.opts)
         }
 
         // MARK: - ActivityKit

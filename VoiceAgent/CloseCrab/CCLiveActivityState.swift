@@ -82,6 +82,8 @@ nonisolated struct CCLiveActivityState: Codable, Hashable, Sendable {
     var waitText: String?
     /// 卡片上把「暂停 / 重播」那一行换成两颗快捷回复按钮。nil ＝ 不换（旧卡也是 nil）。
     var showsQuickReply: Bool?
+    /// bot 推荐的答案（2026-10-06 加）。nil / 空 ⇒ 按钮用固定那两句。同样必须可选。
+    var replyOptions: [String]?
 
     // 按钮上的字、什么时候出现、「已回复」多久 —— 全在 `CCQuickReply`（app 主界面和这里共用一份）。
 
@@ -112,6 +114,7 @@ nonisolated struct CCLiveActivityState: Codable, Hashable, Sendable {
         // app 不在了，按了快捷回复也没人接。
         s.showsQuickReply = nil
         s.waitText = nil
+        s.replyOptions = nil
         return s
     }
 
